@@ -1,13 +1,36 @@
 import { Client, Collection, Partials, GatewayIntentBits } from "discord.js";
-import path from "path";
-import { fileURLToPath } from "url";
-import { readdirSync } from "fs";
 import { logger } from "../lib/logger.js";
 import { BotClient } from "./types.js";
 import { setBotClient as setBotClientForBot } from "../routes/bot.js";
 import { setBotClient as setBotClientForGuilds } from "../routes/guilds.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// Utility commands
+import pingCmd from "./commands/utility/ping.js";
+import avatarCmd from "./commands/utility/avatar.js";
+import serverinfoCmd from "./commands/utility/serverinfo.js";
+import userinfoCmd from "./commands/utility/userinfo.js";
+import helpCmd from "./commands/utility/help.js";
+
+// Moderation commands
+import banCmd from "./commands/moderation/ban.js";
+import kickCmd from "./commands/moderation/kick.js";
+import muteCmd from "./commands/moderation/mute.js";
+import unmuteCmd from "./commands/moderation/unmute.js";
+import warnCmd from "./commands/moderation/warn.js";
+import warnsCmd from "./commands/moderation/warns.js";
+import clearwarnsCmd from "./commands/moderation/clearwarns.js";
+import purgeCmd from "./commands/moderation/purge.js";
+
+// Fun commands
+import eightballCmd from "./commands/fun/8ball.js";
+import coinflipCmd from "./commands/fun/coinflip.js";
+import rollCmd from "./commands/fun/roll.js";
+
+const ALL_COMMANDS = [
+  pingCmd, avatarCmd, serverinfoCmd, userinfoCmd, helpCmd,
+  banCmd, kickCmd, muteCmd, unmuteCmd, warnCmd, warnsCmd, clearwarnsCmd, purgeCmd,
+  eightballCmd, coinflipCmd, rollCmd,
+];
 
 export async function startBot() {
   if (!process.env.DISCORD_TOKEN) {
@@ -29,28 +52,14 @@ export async function startBot() {
   client.commands = new Collection();
   client.cooldowns = new Collection();
 
-  // Load commands
-  const commandDirs = ["utility", "moderation", "fun"];
-  for (const dir of commandDirs) {
-    const dirPath = path.join(__dirname, "commands", dir);
-    let files: string[] = [];
-    try {
-      files = readdirSync(dirPath).filter((f) => f.endsWith(".js"));
-    } catch {
-      continue;
-    }
-    for (const file of files) {
-      const mod = await import(path.join(dirPath, file));
-      const command = mod.default;
-      if (command?.data && command?.execute) {
-        client.commands.set(command.data.name, command);
-      }
+  for (const command of ALL_COMMANDS) {
+    if (command?.data && command?.execute) {
+      client.commands.set(command.data.name, command);
     }
   }
 
   logger.info(`${client.commands.size} comandos cargados.`);
 
-  // Load events
   client.once("ready", async () => {
     const { default: onReady } = await import("./events/ready.js");
     await onReady(client);

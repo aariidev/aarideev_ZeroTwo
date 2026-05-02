@@ -26,7 +26,7 @@ export default async function onReady(client: Client) {
   const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN!);
   const commands = botClient.commands.map((cmd) => cmd.data.toJSON());
   try {
-    await rest.put(Routes.applicationCommands(process.env.DISCORD_CLIENT_ID!), { body: commands });
+    await rest.put(Routes.applicationCommands(process.env.CLIENT_ID!), { body: commands });
     logger.info(`${commands.length} comandos registrados globalmente.`);
   } catch (err) {
     logger.error({ err }, "Error registrando comandos");
