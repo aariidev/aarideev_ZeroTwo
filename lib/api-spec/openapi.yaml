@@ -2,14 +2,22 @@ openapi: 3.1.0
 info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
-  version: 0.1.0
-  description: API specification
+  version: 0.2.0
+  description: ZeroTwo Bot API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: bot
+    description: Bot statistics and info
+  - name: guilds
+    description: Guild (server) information
+  - name: commands
+    description: Command usage tracking
+  - name: warns
+    description: Warning management
 paths:
   /healthz:
     get:
@@ -24,6 +32,127 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /bot/stats:
+    get:
+      operationId: getBotStats
+      tags: [bot]
+      summary: Get bot statistics
+      description: Returns overall bot statistics
+      responses:
+        "200":
+          description: Bot statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotStats"
+
+  /bot/activity:
+    get:
+      operationId: getBotActivity
+      tags: [bot]
+      summary: Get recent bot activity
+      description: Returns recent command executions
+      responses:
+        "200":
+          description: Recent activity list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityEntry"
+
+  /guilds:
+    get:
+      operationId: listGuilds
+      tags: [guilds]
+      summary: List all guilds
+      responses:
+        "200":
+          description: List of guilds
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Guild"
+
+  /commands/stats:
+    get:
+      operationId: getCommandStats
+      tags: [commands]
+      summary: Get command usage statistics
+      responses:
+        "200":
+          description: Command stats
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CommandStat"
+
+  /warns:
+    get:
+      operationId: listWarns
+      tags: [warns]
+      summary: List all warnings
+      parameters:
+        - name: guildId
+          in: query
+          schema:
+            type: string
+        - name: userId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of warnings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Warn"
+    post:
+      operationId: createWarn
+      tags: [warns]
+      summary: Create a warning
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWarnBody"
+      responses:
+        "201":
+          description: Warning created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Warn"
+
+  /warns/{id}:
+    delete:
+      operationId: deleteWarn
+      tags: [warns]
+      summary: Delete a warning
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Warning deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Warn"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +163,150 @@ components:
       required:
         - status
 
+    BotStats:
+      type: object
+      properties:
+        guildCount:
+          type: integer
+        userCount:
+          type: integer
+        commandsExecuted:
+          type: integer
+        uptime:
+          type: number
+        ping:
+          type: integer
+        botName:
+          type: string
+        botAvatar:
+          type: string
+          nullable: true
+        version:
+          type: string
+      required:
+        - guildCount
+        - userCount
+        - commandsExecuted
+        - uptime
+        - ping
+        - botName
+        - version
+
+    ActivityEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        command:
+          type: string
+        userId:
+          type: string
+        username:
+          type: string
+        guildId:
+          type: string
+        guildName:
+          type: string
+        executedAt:
+          type: string
+          format: date-time
+        success:
+          type: boolean
+      required:
+        - id
+        - command
+        - userId
+        - username
+        - guildId
+        - guildName
+        - executedAt
+        - success
+
+    Guild:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        memberCount:
+          type: integer
+        iconUrl:
+          type: string
+          nullable: true
+        joinedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - memberCount
+        - joinedAt
+
+    CommandStat:
+      type: object
+      properties:
+        command:
+          type: string
+        count:
+          type: integer
+        lastUsed:
+          type: string
+          format: date-time
+      required:
+        - command
+        - count
+        - lastUsed
+
+    Warn:
+      type: object
+      properties:
+        id:
+          type: integer
+        guildId:
+          type: string
+        userId:
+          type: string
+        username:
+          type: string
+        moderatorId:
+          type: string
+        moderatorName:
+          type: string
+        reason:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - guildId
+        - userId
+        - username
+        - moderatorId
+        - moderatorName
+        - reason
+        - createdAt
+
+    CreateWarnBody:
+      type: object
+      properties:
+        guildId:
+          type: string
+        userId:
+          type: string
+        username:
+          type: string
+        moderatorId:
+          type: string
+        moderatorName:
+          type: string
+        reason:
+          type: string
+      required:
+        - guildId
+        - userId
+        - username
+        - moderatorId
+        - moderatorName
+        - reason
