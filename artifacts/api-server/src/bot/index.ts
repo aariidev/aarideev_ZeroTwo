@@ -3,6 +3,11 @@ import { logger } from "../lib/logger.js";
 import { BotClient } from "./types.js";
 import { setBotClient as setBotClientForBot } from "../routes/bot.js";
 import { setBotClient as setBotClientForGuilds } from "../routes/guilds.js";
+import { setBotClientForDev } from "../routes/dev.js";
+import { devState } from "../lib/devState.js";
+import { db } from "@workspace/db";
+import { botConfigTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 
 // Utility commands
 import pingCmd from "./commands/utility/ping.js";
@@ -65,6 +70,19 @@ export async function startBot() {
     await onReady(client);
     setBotClientForBot(client);
     setBotClientForGuilds(client);
+    setBotClientForDev(client);
+
+    // Restore maintenance mode from DB
+    try {
+      const rows = await db.select().from(botConfigTable);
+      const maintenanceRow = rows.find((r) => r.key === "maintenance_mode");
+      if (maintenanceRow) devState.maintenanceMode = maintenanceRow.value === "true";
+      const messageRow = rows.find((r) => r.key === "maintenance_message");
+      if (messageRow) devState.maintenanceMessage = messageRow.value;
+      logger.info({ maintenanceMode: devState.maintenanceMode }, "Dev state restored from DB");
+    } catch (err) {
+      logger.error({ err }, "Could not restore dev state from DB");
+    }
   });
 
   client.on("interactionCreate", async (interaction) => {
