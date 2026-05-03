@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Activity, Server, Terminal, AlertTriangle } from "lucide-react";
+import { Activity, Server, Terminal, AlertTriangle, Shield } from "lucide-react";
 import { useGetBotStats, getGetBotStatsQueryKey } from "@workspace/api-client-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -21,6 +21,7 @@ export function Sidebar() {
     { href: "/guilds", label: "Servers", icon: Server },
     { href: "/commands", label: "Commands", icon: Terminal },
     { href: "/warns", label: "Warnings", icon: AlertTriangle },
+    { href: "/dev", label: "Dev Panel", icon: Shield, dev: true },
   ];
 
   return (

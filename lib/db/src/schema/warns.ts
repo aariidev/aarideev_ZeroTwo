@@ -42,3 +42,26 @@ export const commandStatsTable = pgTable("command_stats", {
 export const insertCommandStatSchema = createInsertSchema(commandStatsTable).omit({ id: true });
 export type InsertCommandStat = z.infer<typeof insertCommandStatSchema>;
 export type CommandStat = typeof commandStatsTable.$inferSelect;
+
+// Dev config: key-value store for bot settings
+export const botConfigTable = pgTable("bot_config", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type BotConfig = typeof botConfigTable.$inferSelect;
+
+// Dev changelogs: update history posted from the dashboard
+export const changelogsTable = pgTable("changelogs", {
+  id: serial("id").primaryKey(),
+  version: text("version").notNull(),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  type: text("type").notNull().default("feature"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertChangelogSchema = createInsertSchema(changelogsTable).omit({ id: true, createdAt: true });
+export type InsertChangelog = z.infer<typeof insertChangelogSchema>;
+export type Changelog = typeof changelogsTable.$inferSelect;

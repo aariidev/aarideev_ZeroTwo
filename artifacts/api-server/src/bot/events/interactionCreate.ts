@@ -4,6 +4,7 @@ import { BotClient } from "../types.js";
 import { db } from "@workspace/db";
 import { activityTable, commandStatsTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
+import { devState } from "../../lib/devState.js";
 
 export default async function onInteractionCreate(interaction: Interaction) {
   if (!interaction.isChatInputCommand()) return;
@@ -11,6 +12,21 @@ export default async function onInteractionCreate(interaction: Interaction) {
   const client = interaction.client as BotClient;
   const command = client.commands.get(interaction.commandName);
   if (!command) return;
+
+  // Maintenance mode check
+  if (devState.maintenanceMode) {
+    return interaction.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0xff2d6b)
+          .setTitle("🔧 Modo Mantenimiento")
+          .setDescription(devState.maintenanceMessage)
+          .setFooter({ text: "ZeroTwo · Dev" })
+          .setTimestamp(),
+      ],
+      ephemeral: true,
+    });
+  }
 
   // Cooldown check
   if (!client.cooldowns.has(command.data.name)) {
