@@ -37,5 +37,3 @@ channel = "stable-25_05"
 [userenv]
 
 [userenv.shared]
-DISCORD_TOKEN = "MTI5MDU0MDExOTYwNTkwMzM3MQ.GQ7qlU._EB2knHyL4A8lWGervuVPSCP0wUflafiJhOvSE"
-CLIENT_ID = "1290540119605903371"
