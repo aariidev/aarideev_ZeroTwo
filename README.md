@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-2.0.0-ec4899?style=for-the-badge" alt="version"/>
+  <img src="https://img.shields.io/badge/version-2.1.0-ec4899?style=for-the-badge" alt="version"/>
   <img src="https://img.shields.io/badge/discord.js-v14-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="discord.js"/>
   <img src="https://img.shields.io/badge/TypeScript-5.0-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="typescript"/>
   <img src="https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="react"/>
@@ -39,6 +39,12 @@
     <td><img src="assets/screenshots/dashboard-guilds.jpg" alt="Servers" width="480"/></td>
     <td><img src="assets/screenshots/dashboard-warns.jpg" alt="Warnings" width="480"/></td>
   </tr>
+  <tr>
+    <td align="center" colspan="2"><strong>System Logs</strong></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><img src="assets/screenshots/dashboard-logs.jpg" alt="System Logs" width="960"/></td>
+  </tr>
 </table>
 
 <p align="center">
@@ -48,11 +54,12 @@
 ## Features
 
 ### Bot
-- **16 slash commands** across three categories: utility, moderation and fun
+- **22 slash commands** across three categories: utility, moderation and fun
 - **Cooldown system** — per-user, per-command rate limiting
 - **Permission enforcement** — each command checks member permissions before executing
 - **DM notifications** — users receive a DM when banned, kicked or warned
 - **Activity logging** — every command execution is recorded to PostgreSQL
+- **Moderation logging** — ban, kick, warn, timeout and other actions logged to `bot_logs` table
 - **Rotating presence** — cycles through status messages automatically
 
 ### Dashboard
@@ -61,6 +68,7 @@
 - **Command analytics** — bar chart + table of most-used commands
 - **Server browser** — grid view of all servers the bot is in
 - **Warnings manager** — view and delete infractions across all servers
+- **System logs** — terminal-style moderation event log with filters and auto-refresh
 - **Auto-refresh** every 30 seconds
 
 <p align="center">
@@ -85,10 +93,16 @@
 | `/kick` | Kick a user from the server | Kick Members |
 | `/mute` | Timeout a user (10m / 1h / 7d) | Moderate Members |
 | `/unmute` | Remove a timeout from a user | Moderate Members |
+| `/timeout` | Apply a custom-duration timeout (60s – 7d) | Moderate Members |
+| `/untimeout` | Remove an active timeout | Moderate Members |
+| `/unban` | Unban a user by ID | Ban Members |
 | `/warn` | Issue a warning to a user | Moderate Members |
 | `/warns` | View all warnings for a user | Moderate Members |
 | `/clearwarns` | Clear all warnings for a user | Moderate Members |
 | `/purge` | Bulk delete messages in a channel | Manage Messages |
+| `/slowmode` | Set channel slowmode (0 to disable) | Manage Channels |
+| `/lock` | Lock a channel so no one can send messages | Manage Channels |
+| `/unlock` | Unlock a previously locked channel | Manage Channels |
 
 ### Fun
 | Command | Description |
@@ -126,13 +140,16 @@ ZeroTwo/
 │   │       ├── bot/
 │   │       │   ├── commands/
 │   │       │   │   ├── utility/     # ping, avatar, serverinfo, userinfo, help
-│   │       │   │   ├── moderation/  # ban, kick, mute, unmute, warn, warns, clearwarns, purge
+│   │       │   │   ├── moderation/  # ban, kick, mute, unmute, timeout, untimeout,
+│   │       │   │   │                #   unban, warn, warns, clearwarns, purge,
+│   │       │   │   │                #   slowmode, lock, unlock
 │   │       │   │   └── fun/         # 8ball, coinflip, roll
 │   │       │   └── events/          # ready, interactionCreate, guildCreate
-│   │       └── routes/              # /bot, /guilds, /commands, /warns
+│   │       ├── lib/                 # botLogger, devState, logger
+│   │       └── routes/              # /bot, /guilds, /commands, /warns, /logs, /dev
 │   └── dashboard/           # React + Vite dashboard
 │       └── src/
-│           ├── pages/               # Home, Guilds, Commands, Warns
+│           ├── pages/               # Home, Guilds, Commands, Warns, Logs, Dev
 │           └── components/          # Layout, Sidebar, formatters
 ├── lib/
 │   ├── api-spec/            # OpenAPI 3.0 spec + orval config
@@ -174,6 +191,7 @@ DISCORD_TOKEN=your_bot_token
 CLIENT_ID=your_application_id
 DATABASE_URL=postgresql://user:password@host:5432/dbname
 SESSION_SECRET=a_random_secret_string
+DEV_TOKEN=a_secret_token_for_the_dev_panel
 ```
 
 ### Database Setup
@@ -221,6 +239,7 @@ Slash commands are registered globally and may take up to 1 hour to propagate.
 | GET | `/api/warns` | List warnings (filterable by guild/user) |
 | POST | `/api/warns` | Create a warning |
 | DELETE | `/api/warns/:id` | Delete a warning |
+| GET | `/api/logs` | Moderation event logs (filterable) |
 
 <p align="center">
   <img src="https://i.imgur.com/wax8Fqw.png" alt="separator"/>
