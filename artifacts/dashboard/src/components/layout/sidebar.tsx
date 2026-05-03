@@ -6,13 +6,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export function Sidebar() {
   const [location] = useLocation();
-  
+
   const { data: stats, isLoading } = useGetBotStats({
     query: {
       queryKey: getGetBotStatsQueryKey(),
-      refetchInterval: 30000,
+      refetchInterval: 15000,
     }
   });
+
+  const isOnline = stats !== undefined && stats.ping >= 0;
 
   const links = [
     { href: "/", label: "Dashboard", icon: Activity, exact: true },
@@ -28,12 +30,18 @@ export function Sidebar() {
           {isLoading ? (
             <Skeleton className="h-10 w-10 rounded-full" />
           ) : (
-            <Avatar className="h-10 w-10 border border-sidebar-border">
-              <AvatarImage src={stats?.botAvatar || ""} alt={stats?.botName || "Bot"} />
-              <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground">
-                {stats?.botName?.substring(0, 2).toUpperCase() || "ZT"}
-              </AvatarFallback>
-            </Avatar>
+            <div className="relative">
+              <Avatar className="h-10 w-10 border border-sidebar-border">
+                <AvatarImage src={stats?.botAvatar || ""} alt={stats?.botName || "Bot"} />
+                <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground">
+                  {stats?.botName?.substring(0, 2).toUpperCase() || "ZT"}
+                </AvatarFallback>
+              </Avatar>
+              <span
+                className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-sidebar ${isOnline ? "bg-green-500" : "bg-zinc-500"}`}
+                title={isOnline ? "Online" : "Offline"}
+              />
+            </div>
           )}
           <div className="flex flex-col overflow-hidden">
             {isLoading ? (
@@ -46,8 +54,8 @@ export function Sidebar() {
                 <span className="truncate font-bold tracking-tight text-lg text-sidebar-primary">
                   {stats?.botName || "ZeroTwo"}
                 </span>
-                <span className="truncate text-xs text-sidebar-foreground/60 font-mono">
-                  v{stats?.version || "1.0.0"}
+                <span className={`text-xs font-medium ${isOnline ? "text-green-400" : "text-zinc-400"}`}>
+                  {isOnline ? "Online" : "Offline"}
                 </span>
               </>
             )}
@@ -59,7 +67,7 @@ export function Sidebar() {
         {links.map((link) => {
           const Icon = link.icon;
           const isActive = link.exact ? location === link.href : location.startsWith(link.href);
-          
+
           return (
             <Link
               key={link.href}
@@ -77,6 +85,12 @@ export function Sidebar() {
           );
         })}
       </nav>
+
+      <div className="px-4 pb-6">
+        <div className="rounded-md border border-sidebar-border bg-sidebar-accent/30 px-3 py-2 text-xs text-sidebar-foreground/50 font-mono">
+          v{stats?.version || "2.0.0"}
+        </div>
+      </div>
     </div>
   );
 }
