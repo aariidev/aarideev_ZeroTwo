@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://i.imgur.com/wax8Fqw.png" alt="separator"/>
+  <img src="https://raw.githubusercontent.com/aariidev/ZeroTwo/main/assets/separador.png" alt="separator"/>
 </p>
 
 <h1 align="center">ZeroTwo</h1>
@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <img src="https://i.imgur.com/wax8Fqw.png" alt="separator"/>
+  <img src="https://raw.githubusercontent.com/aariidev/ZeroTwo/main/assets/separador.png" alt="separator"/>
 </p>
 
 ## Dashboard Preview
@@ -48,7 +48,7 @@
 </table>
 
 <p align="center">
-  <img src="https://i.imgur.com/wax8Fqw.png" alt="separator"/>
+  <img src="https://raw.githubusercontent.com/aariidev/ZeroTwo/main/assets/separador.png" alt="separator"/>
 </p>
 
 ## Features
@@ -72,7 +72,7 @@
 - **Auto-refresh** every 30 seconds
 
 <p align="center">
-  <img src="https://i.imgur.com/wax8Fqw.png" alt="separator"/>
+  <img src="https://raw.githubusercontent.com/aariidev/ZeroTwo/main/assets/separador.png" alt="separator"/>
 </p>
 
 ## Commands
@@ -112,7 +112,7 @@
 | `/8ball` | Ask the magic 8-ball a question |
 
 <p align="center">
-  <img src="https://i.imgur.com/wax8Fqw.png" alt="separator"/>
+  <img src="https://raw.githubusercontent.com/aariidev/ZeroTwo/main/assets/separador.png" alt="separator"/>
 </p>
 
 ## Tech Stack
@@ -127,7 +127,7 @@
 | Monorepo | pnpm workspaces |
 
 <p align="center">
-  <img src="https://i.imgur.com/wax8Fqw.png" alt="separator"/>
+  <img src="https://raw.githubusercontent.com/aariidev/ZeroTwo/main/assets/separador.png" alt="separator"/>
 </p>
 
 ## Project Structure
@@ -161,7 +161,7 @@ ZeroTwo/
 ```
 
 <p align="center">
-  <img src="https://i.imgur.com/wax8Fqw.png" alt="separator"/>
+  <img src="https://raw.githubusercontent.com/aariidev/ZeroTwo/main/assets/separador.png" alt="separator"/>
 </p>
 
 ## Setup
@@ -224,7 +224,7 @@ The API server runs on port `8080` and the dashboard on port `5173` by default.
 Slash commands are registered globally and may take up to 1 hour to propagate.
 
 <p align="center">
-  <img src="https://i.imgur.com/wax8Fqw.png" alt="separator"/>
+  <img src="https://raw.githubusercontent.com/aariidev/ZeroTwo/main/assets/separador.png" alt="separator"/>
 </p>
 
 ## API Endpoints
@@ -242,7 +242,7 @@ Slash commands are registered globally and may take up to 1 hour to propagate.
 | GET | `/api/logs` | Moderation event logs (filterable) |
 
 <p align="center">
-  <img src="https://i.imgur.com/wax8Fqw.png" alt="separator"/>
+  <img src="https://raw.githubusercontent.com/aariidev/ZeroTwo/main/assets/separador.png" alt="separator"/>
 </p>
 
 <p align="center">
