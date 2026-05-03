@@ -39,7 +39,7 @@ router.get("/stats", async (req, res) => {
       ping,
       botName,
       botAvatar,
-      version: "2.0.0",
+      version: "2.1.0",
     });
   } catch (err) {
     req.log.error({ err }, "Error getting bot stats");

@@ -8,6 +8,7 @@ import Guilds from "@/pages/guilds";
 import Commands from "@/pages/commands";
 import Warns from "@/pages/warns";
 import DevPanel from "@/pages/dev";
+import Logs from "@/pages/logs";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -20,6 +21,7 @@ function Router() {
         <Route path="/guilds" component={Guilds} />
         <Route path="/commands" component={Commands} />
         <Route path="/warns" component={Warns} />
+        <Route path="/logs" component={Logs} />
         <Route path="/dev" component={DevPanel} />
         <Route component={NotFound} />
       </Switch>

@@ -2,7 +2,7 @@ import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, ChatInputComman
 import { Command } from "../../types.js";
 import { db } from "@workspace/db";
 import { warnsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { logBotEvent } from "../../../lib/botLogger.js";
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -46,7 +46,7 @@ const command: Command = {
         { name: "ID Advertencia", value: `#${warn?.id}`, inline: true }
       )
       .setTimestamp()
-      .setFooter({ text: "ZeroTwo v2.0", iconURL: client.user?.displayAvatarURL() });
+      .setFooter({ text: "ZeroTwo v2.1.0", iconURL: client.user?.displayAvatarURL() });
 
     await target.send({
       embeds: [new EmbedBuilder()
@@ -60,6 +60,18 @@ const command: Command = {
     }).catch(() => null);
 
     await interaction.reply({ embeds: [embed] });
+
+    await logBotEvent({
+      level: "warn",
+      event: "warn",
+      details: { reason, warnId: warn?.id, totalWarns: warnCount.length },
+      guildId: interaction.guild?.id,
+      guildName: interaction.guild?.name,
+      userId: target.id,
+      username: target.username,
+      moderatorId: interaction.user.id,
+      moderatorName: interaction.user.username,
+    });
   },
 };
 

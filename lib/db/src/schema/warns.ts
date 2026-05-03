@@ -52,6 +52,23 @@ export const botConfigTable = pgTable("bot_config", {
 
 export type BotConfig = typeof botConfigTable.$inferSelect;
 
+// System logs: all moderation actions and bot events
+export const logsTable = pgTable("bot_logs", {
+  id: serial("id").primaryKey(),
+  level: text("level").notNull().default("info"),
+  event: text("event").notNull(),
+  details: text("details").notNull().default("{}"),
+  guildId: text("guild_id"),
+  guildName: text("guild_name"),
+  userId: text("user_id"),
+  username: text("username"),
+  moderatorId: text("moderator_id"),
+  moderatorName: text("moderator_name"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type Log = typeof logsTable.$inferSelect;
+
 // Dev changelogs: update history posted from the dashboard
 export const changelogsTable = pgTable("changelogs", {
   id: serial("id").primaryKey(),

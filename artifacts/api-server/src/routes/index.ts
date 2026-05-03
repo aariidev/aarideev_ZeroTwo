@@ -5,6 +5,7 @@ import guildsRouter from "./guilds";
 import commandsRouter from "./commands";
 import warnsRouter from "./warns";
 import devRouter from "./dev";
+import logsRouter from "./logs";
 
 const router: IRouter = Router();
 
@@ -14,5 +15,6 @@ router.use("/guilds", guildsRouter);
 router.use("/commands", commandsRouter);
 router.use("/warns", warnsRouter);
 router.use("/dev", devRouter);
+router.use("/logs", logsRouter);
 
 export default router;

@@ -7,7 +7,6 @@ import { setBotClientForDev } from "../routes/dev.js";
 import { devState } from "../lib/devState.js";
 import { db } from "@workspace/db";
 import { botConfigTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
 
 // Utility commands
 import pingCmd from "./commands/utility/ping.js";
@@ -25,6 +24,12 @@ import warnCmd from "./commands/moderation/warn.js";
 import warnsCmd from "./commands/moderation/warns.js";
 import clearwarnsCmd from "./commands/moderation/clearwarns.js";
 import purgeCmd from "./commands/moderation/purge.js";
+import timeoutCmd from "./commands/moderation/timeout.js";
+import untimeoutCmd from "./commands/moderation/untimeout.js";
+import unbanCmd from "./commands/moderation/unban.js";
+import slowmodeCmd from "./commands/moderation/slowmode.js";
+import lockCmd from "./commands/moderation/lock.js";
+import unlockCmd from "./commands/moderation/unlock.js";
 
 // Fun commands
 import eightballCmd from "./commands/fun/8ball.js";
@@ -32,8 +37,13 @@ import coinflipCmd from "./commands/fun/coinflip.js";
 import rollCmd from "./commands/fun/roll.js";
 
 const ALL_COMMANDS = [
+  // Utility
   pingCmd, avatarCmd, serverinfoCmd, userinfoCmd, helpCmd,
-  banCmd, kickCmd, muteCmd, unmuteCmd, warnCmd, warnsCmd, clearwarnsCmd, purgeCmd,
+  // Moderation
+  banCmd, kickCmd, muteCmd, unmuteCmd,
+  warnCmd, warnsCmd, clearwarnsCmd, purgeCmd,
+  timeoutCmd, untimeoutCmd, unbanCmd, slowmodeCmd, lockCmd, unlockCmd,
+  // Fun
   eightballCmd, coinflipCmd, rollCmd,
 ];
 
@@ -72,7 +82,7 @@ export async function startBot() {
     setBotClientForGuilds(client);
     setBotClientForDev(client);
 
-    // Restore maintenance mode from DB
+    // Restore dev state from DB
     try {
       const rows = await db.select().from(botConfigTable);
       const maintenanceRow = rows.find((r) => r.key === "maintenance_mode");

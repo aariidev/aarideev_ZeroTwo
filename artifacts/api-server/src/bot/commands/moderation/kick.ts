@@ -1,5 +1,6 @@
 import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, ChatInputCommandInteraction, Client } from "discord.js";
 import { Command } from "../../types.js";
+import { logBotEvent } from "../../../lib/botLogger.js";
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -18,15 +19,9 @@ const command: Command = {
     const reason = interaction.options.getString("motivo") ?? "Sin motivo especificado";
     const member = interaction.guild?.members.cache.get(target.id);
 
-    if (!member) {
-      return interaction.reply({ content: "No pude encontrar a ese usuario.", ephemeral: true });
-    }
-    if (!member.kickable) {
-      return interaction.reply({ content: "No puedo expulsar a ese usuario.", ephemeral: true });
-    }
-    if (member.id === interaction.user.id) {
-      return interaction.reply({ content: "No puedes expulsarte a ti mismo.", ephemeral: true });
-    }
+    if (!member) return interaction.reply({ content: "No pude encontrar a ese usuario.", ephemeral: true });
+    if (!member.kickable) return interaction.reply({ content: "No puedo expulsar a ese usuario.", ephemeral: true });
+    if (member.id === interaction.user.id) return interaction.reply({ content: "No puedes expulsarte a ti mismo.", ephemeral: true });
 
     await member.send({
       embeds: [new EmbedBuilder()
@@ -48,9 +43,21 @@ const command: Command = {
         { name: "Motivo", value: reason }
       )
       .setTimestamp()
-      .setFooter({ text: "ZeroTwo v2.0", iconURL: client.user?.displayAvatarURL() });
+      .setFooter({ text: "ZeroTwo v2.1.0", iconURL: client.user?.displayAvatarURL() });
 
     await interaction.reply({ embeds: [embed] });
+
+    await logBotEvent({
+      level: "warn",
+      event: "kick",
+      details: { reason },
+      guildId: interaction.guild?.id,
+      guildName: interaction.guild?.name,
+      userId: target.id,
+      username: target.username,
+      moderatorId: interaction.user.id,
+      moderatorName: interaction.user.username,
+    });
   },
 };
 
