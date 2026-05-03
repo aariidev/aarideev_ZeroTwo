@@ -56,34 +56,34 @@ export default function Warns() {
     <div className="space-y-8">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground flex items-center gap-2">
+          <h1 className="text-3xl font-bold tracking-tight text-primary font-display flex items-center gap-2 glow-text">
             <ShieldAlert className="h-8 w-8 text-primary" />
-            Warnings
+            INFRACTIONS_DB
           </h1>
-          <p className="text-muted-foreground mt-1">Review and manage user infractions across all servers.</p>
+          <p className="text-muted-foreground mt-1 font-mono-custom text-sm">Review and manage user infractions across all servers.</p>
         </div>
         {!isLoading && warns && warns.length > 0 && (
           <div className="text-right">
-            <div className="text-2xl font-bold text-foreground">{warns.length}</div>
-            <div className="text-xs text-muted-foreground">total warnings</div>
+            <div className="text-2xl font-bold text-foreground font-mono-custom">{warns.length}</div>
+            <div className="text-xs text-primary font-mono-custom">total_warnings</div>
           </div>
         )}
       </div>
 
-      <Card className="border-card-border bg-card">
+      <Card className="border-card-border bg-card rounded-none corner-bracket glow-primary">
         <CardHeader>
           <div className="flex items-center justify-between gap-4">
-            <CardTitle className="text-lg flex items-center gap-2">
+            <CardTitle className="text-lg flex items-center gap-2 font-display text-primary">
               <AlertTriangle className="h-5 w-5 text-primary" />
               Recent Warnings
             </CardTitle>
             <div className="relative w-64">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-primary" />
               <Input
                 placeholder="Filter by user, mod, reason..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-8 h-9 bg-sidebar border-border text-sm"
+                className="pl-8 h-9 bg-sidebar border-primary/50 text-sm font-mono-custom rounded-none focus-visible:ring-primary"
                 data-testid="input-filter-warns"
               />
             </div>
@@ -92,34 +92,34 @@ export default function Warns() {
         <CardContent>
           {isLoading ? (
             <div className="space-y-4">
-              {Array(5).fill(0).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
+              {Array(5).fill(0).map((_, i) => <Skeleton key={i} className="h-12 w-full rounded-none" />)}
             </div>
           ) : filtered.length > 0 ? (
-            <div className="rounded-md border border-border overflow-hidden">
+            <div className="rounded-none border border-primary/30 overflow-hidden bg-[#050505]">
               <Table>
-                <TableHeader className="bg-sidebar">
-                  <TableRow className="border-border hover:bg-transparent">
-                    <TableHead>User</TableHead>
-                    <TableHead>Moderator</TableHead>
-                    <TableHead>Reason</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                <TableHeader className="bg-sidebar border-b border-primary/30">
+                  <TableRow className="border-none hover:bg-transparent">
+                    <TableHead className="text-primary font-mono-custom">USER</TableHead>
+                    <TableHead className="text-primary font-mono-custom">MODERATOR</TableHead>
+                    <TableHead className="text-primary font-mono-custom">REASON</TableHead>
+                    <TableHead className="text-primary font-mono-custom">DATE</TableHead>
+                    <TableHead className="text-right text-primary font-mono-custom">ACTIONS</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filtered.map((warn) => (
-                    <TableRow key={warn.id} className="border-border hover:bg-sidebar/50">
-                      <TableCell className="font-medium">{warn.username}</TableCell>
-                      <TableCell className="text-muted-foreground">{warn.moderatorName}</TableCell>
-                      <TableCell className="max-w-[280px] truncate text-sm" title={warn.reason}>{warn.reason}</TableCell>
-                      <TableCell className="text-muted-foreground text-sm whitespace-nowrap">
-                        {format(new Date(warn.createdAt), "MMM d, yyyy HH:mm")}
+                    <TableRow key={warn.id} className="border-b border-primary/10 hover:bg-primary/5">
+                      <TableCell className="font-bold text-foreground font-mono-custom">@{warn.username}</TableCell>
+                      <TableCell className="text-zinc-400 font-mono-custom text-xs">@{warn.moderatorName}</TableCell>
+                      <TableCell className="max-w-[280px] truncate text-sm font-mono-custom text-[#00f5d4]" title={warn.reason}>{warn.reason}</TableCell>
+                      <TableCell className="text-zinc-500 text-xs font-mono-custom whitespace-nowrap">
+                        [{format(new Date(warn.createdAt), "MMM d, yyyy HH:mm")}]
                       </TableCell>
                       <TableCell className="text-right">
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="text-destructive hover:text-destructive hover:bg-destructive/10 h-8 w-8"
+                          className="text-destructive hover:text-destructive hover:bg-destructive/10 h-8 w-8 rounded-none"
                           onClick={() => setPendingDeleteId(warn.id)}
                           data-testid={`button-delete-warn-${warn.id}`}
                         >
@@ -133,13 +133,13 @@ export default function Warns() {
               </Table>
             </div>
           ) : search ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <Search className="h-10 w-10 mx-auto text-muted-foreground/30 mb-3" />
+            <div className="text-center py-12 text-primary font-mono-custom">
+              <Search className="h-10 w-10 mx-auto text-primary/30 mb-3" />
               <p>No warnings match "{search}"</p>
             </div>
           ) : (
-            <div className="text-center py-12 text-muted-foreground">
-              <ShieldAlert className="h-12 w-12 mx-auto text-muted-foreground/30 mb-3" />
+            <div className="text-center py-12 text-primary font-mono-custom">
+              <ShieldAlert className="h-12 w-12 mx-auto text-primary/30 mb-3" />
               <p>No warnings have been issued yet.</p>
             </div>
           )}
@@ -147,27 +147,28 @@ export default function Warns() {
       </Card>
 
       <AlertDialog open={pendingDeleteId !== null} onOpenChange={(open) => { if (!open) setPendingDeleteId(null); }}>
-        <AlertDialogContent className="bg-card border-card-border">
+        <AlertDialogContent className="bg-[#050505] border border-destructive rounded-none shadow-[0_0_15px_rgba(255,0,0,0.3)]">
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Warning</AlertDialogTitle>
-            <AlertDialogDescription className="text-muted-foreground">
+            <AlertDialogTitle className="font-display text-destructive">PURGE_WARNING_DATA</AlertDialogTitle>
+            <AlertDialogDescription className="text-zinc-400 font-mono-custom text-xs">
               Are you sure you want to remove the warning for{" "}
-              <span className="font-semibold text-foreground">{pendingWarn?.username}</span>?
+              <span className="font-bold text-foreground">@{pendingWarn?.username}</span>?
               {pendingWarn && (
-                <span className="block mt-1 text-xs italic">"{pendingWarn.reason}"</span>
+                <span className="block mt-2 p-2 border border-destructive/30 bg-destructive/5 text-destructive font-mono-custom">"{pendingWarn.reason}"</span>
               )}
-              This action cannot be undone.
+              <br/>
+              <span className="text-destructive/80 mt-2 block">[!] This action cannot be undone.</span>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="border-border">Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="border-border rounded-none font-mono-custom hover:bg-zinc-800">CANCEL</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 rounded-none font-mono-custom font-bold"
               onClick={() => pendingDeleteId !== null && deleteMutation.mutate({ id: pendingDeleteId })}
               disabled={deleteMutation.isPending}
               data-testid="button-confirm-delete"
             >
-              Delete
+              CONFIRM_PURGE
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

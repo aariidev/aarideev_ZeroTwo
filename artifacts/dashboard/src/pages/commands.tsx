@@ -31,7 +31,7 @@ export default function Commands() {
     query: { queryKey: getGetCommandStatsQueryKey(), refetchInterval: 30000 }
   });
 
-  const chartConfig = { count: { label: "Uses", color: "hsl(var(--chart-1))" } };
+  const chartConfig = { count: { label: "Uses", color: "url(#colorCount)" } };
   const chartData = stats?.slice(0, 10).map(s => ({ command: s.command, count: s.count })) || [];
 
   const filtered = stats?.filter(s =>
@@ -44,64 +44,70 @@ export default function Commands() {
     <div className="space-y-8">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground flex items-center gap-2">
+          <h1 className="text-3xl font-bold tracking-tight text-primary font-display flex items-center gap-2 glow-text">
             <Terminal className="h-8 w-8 text-primary" />
-            Commands
+            COMMAND_DB
           </h1>
-          <p className="text-muted-foreground mt-1">Command execution statistics and usage frequency.</p>
+          <p className="text-muted-foreground mt-1 font-mono-custom text-sm">Command execution statistics and usage frequency.</p>
         </div>
         {!isLoading && stats && (
           <div className="text-right">
-            <div className="text-2xl font-bold text-foreground">{formatNumber(totalUses)}</div>
-            <div className="text-xs text-muted-foreground">total executions</div>
+            <div className="text-2xl font-bold text-foreground font-mono-custom">{formatNumber(totalUses)}</div>
+            <div className="text-xs text-primary font-mono-custom">total_executions</div>
           </div>
         )}
       </div>
 
-      <Card className="border-card-border bg-card">
+      <Card className="border-card-border bg-card rounded-none corner-bracket glow-cyan">
         <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <BarChart2 className="h-5 w-5 text-primary" />
+          <CardTitle className="text-lg flex items-center gap-2 font-display text-[#00f5d4]">
+            <BarChart2 className="h-5 w-5" />
             Top 10 Commands
           </CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <Skeleton className="h-[300px] w-full" />
+            <Skeleton className="h-[300px] w-full rounded-none" />
           ) : stats && stats.length > 0 ? (
             <div className="h-[300px] w-full">
               <ChartContainer config={chartConfig} className="h-full w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 20 }}>
+                    <defs>
+                      <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="hsl(340 95% 60%)" stopOpacity={1}/>
+                        <stop offset="100%" stopColor="hsl(280 80% 60%)" stopOpacity={1}/>
+                      </linearGradient>
+                    </defs>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                    <XAxis dataKey="command" tickLine={false} axisLine={false} tick={{ fill: "hsl(var(--muted-foreground))" }} />
-                    <YAxis tickLine={false} axisLine={false} tick={{ fill: "hsl(var(--muted-foreground))" }} />
+                    <XAxis dataKey="command" tickLine={false} axisLine={false} tick={{ fill: "hsl(var(--primary))", fontFamily: "var(--app-font-mono)" }} />
+                    <YAxis tickLine={false} axisLine={false} tick={{ fill: "hsl(var(--primary))", fontFamily: "var(--app-font-mono)" }} />
                     <ChartTooltip content={<ChartTooltipContent />} />
-                    <Bar dataKey="count" fill="var(--color-count)" radius={[4, 4, 0, 0]} maxBarSize={60} />
+                    <Bar dataKey="count" fill="url(#colorCount)" radius={[0, 0, 0, 0]} maxBarSize={60} />
                   </BarChart>
                 </ResponsiveContainer>
               </ChartContainer>
             </div>
           ) : (
-            <div className="h-[300px] flex items-center justify-center text-muted-foreground">No command data available</div>
+            <div className="h-[300px] flex items-center justify-center text-muted-foreground font-mono-custom">No command data available</div>
           )}
         </CardContent>
       </Card>
 
-      <Card className="border-card-border bg-card">
+      <Card className="border-card-border bg-card rounded-none corner-bracket glow-primary">
         <CardHeader>
           <div className="flex items-center justify-between gap-4">
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Terminal className="h-5 w-5 text-primary" />
+            <CardTitle className="text-lg flex items-center gap-2 font-display text-primary">
+              <Terminal className="h-5 w-5" />
               All Commands
             </CardTitle>
             <div className="relative w-64">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-primary" />
               <Input
                 placeholder="Filter commands..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-8 h-9 bg-sidebar border-border text-sm"
+                className="pl-8 h-9 bg-sidebar border-primary/50 text-sm font-mono-custom rounded-none focus-visible:ring-primary"
                 data-testid="input-filter-commands"
               />
             </div>
@@ -110,34 +116,34 @@ export default function Commands() {
         <CardContent>
           {isLoading ? (
             <div className="space-y-4">
-              {Array(5).fill(0).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
+              {Array(5).fill(0).map((_, i) => <Skeleton key={i} className="h-10 w-full rounded-none" />)}
             </div>
           ) : filtered.length > 0 ? (
-            <div className="rounded-md border border-border overflow-hidden">
+            <div className="rounded-none border border-primary/30 overflow-hidden bg-[#050505]">
               <Table>
-                <TableHeader className="bg-sidebar">
-                  <TableRow className="border-border hover:bg-transparent">
-                    <TableHead className="w-10">#</TableHead>
-                    <TableHead>Command</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead className="text-right">Total Uses</TableHead>
-                    <TableHead className="text-right">Last Used</TableHead>
+                <TableHeader className="bg-sidebar border-b border-primary/30">
+                  <TableRow className="border-none hover:bg-transparent">
+                    <TableHead className="w-10 text-primary font-mono-custom">#</TableHead>
+                    <TableHead className="text-primary font-mono-custom">CMD</TableHead>
+                    <TableHead className="text-primary font-mono-custom">CAT</TableHead>
+                    <TableHead className="text-right text-primary font-mono-custom">USES</TableHead>
+                    <TableHead className="text-right text-primary font-mono-custom">LAST_USED</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filtered.map((stat, index) => {
                     const category = CATEGORY_MAP[stat.command] || "utility";
                     return (
-                      <TableRow key={stat.command} className="border-border hover:bg-sidebar/50">
-                        <TableCell className="text-muted-foreground text-xs w-10">{index + 1}</TableCell>
-                        <TableCell className="font-medium text-primary">/{stat.command}</TableCell>
+                      <TableRow key={stat.command} className="border-b border-primary/10 hover:bg-primary/5">
+                        <TableCell className="text-zinc-500 font-mono-custom text-xs w-10">[{index + 1}]</TableCell>
+                        <TableCell className="font-bold text-[#00f5d4] font-mono-custom">/{stat.command}</TableCell>
                         <TableCell>
-                          <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${CATEGORY_COLORS[category]}`}>
+                          <span className={`inline-flex items-center rounded-none border px-2 py-0.5 text-[10px] font-bold font-mono-custom uppercase ${CATEGORY_COLORS[category]}`}>
                             {category}
                           </span>
                         </TableCell>
-                        <TableCell className="text-right font-mono">{formatNumber(stat.count)}</TableCell>
-                        <TableCell className="text-right text-muted-foreground text-sm">
+                        <TableCell className="text-right font-mono-custom text-foreground">{formatNumber(stat.count)}</TableCell>
+                        <TableCell className="text-right text-zinc-400 text-xs font-mono-custom">
                           {formatDistanceToNow(new Date(stat.lastUsed), { addSuffix: true })}
                         </TableCell>
                       </TableRow>
@@ -147,9 +153,9 @@ export default function Commands() {
               </Table>
             </div>
           ) : search ? (
-            <div className="text-center py-8 text-muted-foreground">No commands match "{search}"</div>
+            <div className="text-center py-8 text-primary font-mono-custom">No commands match "{search}"</div>
           ) : (
-            <div className="text-center py-8 text-muted-foreground">No commands have been executed yet.</div>
+            <div className="text-center py-8 text-primary font-mono-custom">No commands have been executed yet.</div>
           )}
         </CardContent>
       </Card>
