@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Activity, Server, Terminal, AlertTriangle, Shield } from "lucide-react";
+import { Activity, Server, Terminal, AlertTriangle, Shield, FileText } from "lucide-react";
 import { useGetBotStats, getGetBotStatsQueryKey } from "@workspace/api-client-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -21,6 +21,7 @@ export function Sidebar() {
     { href: "/guilds", label: "Servers", icon: Server },
     { href: "/commands", label: "Commands", icon: Terminal },
     { href: "/warns", label: "Warnings", icon: AlertTriangle },
+    { href: "/logs", label: "Logs", icon: FileText },
     { href: "/dev", label: "Dev Panel", icon: Shield, dev: true },
   ];
 
@@ -93,7 +94,7 @@ export function Sidebar() {
 
       <div className="px-4 pb-6">
         <div className="rounded-none border border-sidebar-border bg-sidebar-accent/30 px-3 py-2 text-xs text-sidebar-foreground/50 font-mono-custom text-center">
-          [ ZeroTwo OS v2.0.0 ]
+          [ ZeroTwo OS v2.1.0 ]
         </div>
       </div>
     </div>

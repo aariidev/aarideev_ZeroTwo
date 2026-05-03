@@ -1,5 +1,6 @@
 import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, ChatInputCommandInteraction, Client } from "discord.js";
 import { Command } from "../../types.js";
+import { logBotEvent } from "../../../lib/botLogger.js";
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -23,15 +24,9 @@ const command: Command = {
 
     const member = interaction.guild?.members.cache.get(target.id);
 
-    if (!member) {
-      return interaction.reply({ content: "No pude encontrar a ese usuario en el servidor.", ephemeral: true });
-    }
-    if (!member.bannable) {
-      return interaction.reply({ content: "No puedo banear a ese usuario.", ephemeral: true });
-    }
-    if (member.id === interaction.user.id) {
-      return interaction.reply({ content: "No puedes banearte a ti mismo.", ephemeral: true });
-    }
+    if (!member) return interaction.reply({ content: "No pude encontrar a ese usuario en el servidor.", ephemeral: true });
+    if (!member.bannable) return interaction.reply({ content: "No puedo banear a ese usuario.", ephemeral: true });
+    if (member.id === interaction.user.id) return interaction.reply({ content: "No puedes banearte a ti mismo.", ephemeral: true });
 
     try {
       await member.send({
@@ -54,10 +49,22 @@ const command: Command = {
           { name: "Motivo", value: reason }
         )
         .setTimestamp()
-        .setFooter({ text: "ZeroTwo v2.0", iconURL: client.user?.displayAvatarURL() });
+        .setFooter({ text: "ZeroTwo v2.1.0", iconURL: client.user?.displayAvatarURL() });
 
       await interaction.reply({ embeds: [embed] });
-    } catch (err) {
+
+      await logBotEvent({
+        level: "warn",
+        event: "ban",
+        details: { reason, deleteMessageDays: days },
+        guildId: interaction.guild?.id,
+        guildName: interaction.guild?.name,
+        userId: target.id,
+        username: target.username,
+        moderatorId: interaction.user.id,
+        moderatorName: interaction.user.username,
+      });
+    } catch {
       await interaction.reply({ content: "Ocurrió un error al banear al usuario.", ephemeral: true });
     }
   },
