@@ -31,14 +31,14 @@ export function Sidebar() {
             <Skeleton className="h-10 w-10 rounded-full" />
           ) : (
             <div className="relative">
-              <Avatar className="h-10 w-10 border border-sidebar-border">
-                <AvatarImage src={stats?.botAvatar || ""} alt={stats?.botName || "Bot"} />
-                <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground">
+              <Avatar className="h-10 w-10 border border-sidebar-border corner-bracket rounded-none glow-primary">
+                <AvatarImage src={stats?.botAvatar || ""} alt={stats?.botName || "Bot"} className="rounded-none" />
+                <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground rounded-none font-display">
                   {stats?.botName?.substring(0, 2).toUpperCase() || "ZT"}
                 </AvatarFallback>
               </Avatar>
               <span
-                className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-sidebar ${isOnline ? "bg-green-500" : "bg-zinc-500"}`}
+                className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-none border border-sidebar ${isOnline ? "bg-green-500 glow-cyan animate-pulse" : "bg-zinc-500"}`}
                 title={isOnline ? "Online" : "Offline"}
               />
             </div>
@@ -51,17 +51,19 @@ export function Sidebar() {
               </>
             ) : (
               <>
-                <span className="truncate font-bold tracking-tight text-lg text-sidebar-primary">
+                <span className="truncate font-bold tracking-tight text-lg text-sidebar-primary font-display">
                   {stats?.botName || "ZeroTwo"}
                 </span>
-                <span className={`text-xs font-medium ${isOnline ? "text-green-400" : "text-zinc-400"}`}>
-                  {isOnline ? "Online" : "Offline"}
+                <span className={`text-[10px] font-mono-custom tracking-widest ${isOnline ? "text-[#00f5d4] animate-pulse" : "text-zinc-400"}`}>
+                  {isOnline ? "SISTEMA ACTIVO" : "SISTEMA CAIDO"}
                 </span>
               </>
             )}
           </div>
         </div>
       </div>
+      
+      <div className="h-px bg-gradient-to-r from-transparent via-primary to-transparent mx-4 mb-4" />
 
       <nav className="flex-1 space-y-1 px-4 py-4">
         {links.map((link) => {
@@ -72,23 +74,25 @@ export function Sidebar() {
             <Link
               key={link.href}
               href={link.href}
-              className={`flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors ${
+              className={`flex items-center gap-3 rounded-none px-3 py-2.5 text-sm font-medium transition-colors font-mono-custom border border-transparent ${
                 isActive
-                  ? "bg-sidebar-primary/10 text-sidebar-primary"
-                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                  ? "bg-sidebar-primary/10 text-sidebar-primary border-l-sidebar-primary glow-primary"
+                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:border-sidebar-accent-foreground/20"
               }`}
               data-testid={`link-sidebar-${link.label.toLowerCase()}`}
             >
               <Icon className={`h-4 w-4 ${isActive ? "text-sidebar-primary" : "text-sidebar-foreground/50"}`} />
-              {link.label}
+              {isActive ? `> ${link.label}` : link.label}
             </Link>
           );
         })}
       </nav>
 
+      <div className="h-px bg-gradient-to-r from-transparent via-sidebar-border to-transparent mx-4 mb-4" />
+
       <div className="px-4 pb-6">
-        <div className="rounded-md border border-sidebar-border bg-sidebar-accent/30 px-3 py-2 text-xs text-sidebar-foreground/50 font-mono">
-          v{stats?.version || "2.0.0"}
+        <div className="rounded-none border border-sidebar-border bg-sidebar-accent/30 px-3 py-2 text-xs text-sidebar-foreground/50 font-mono-custom text-center">
+          [ ZeroTwo OS v2.0.0 ]
         </div>
       </div>
     </div>
