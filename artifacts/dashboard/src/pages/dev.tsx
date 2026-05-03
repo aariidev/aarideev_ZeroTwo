@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
-import { Terminal, Shield, Megaphone, GitCommit, Trash2, Power, AlertTriangle, CheckCircle2, XCircle, Lock, Loader2 } from "lucide-react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Terminal, Shield, Megaphone, GitCommit, Trash2, Power, AlertTriangle, CheckCircle2, XCircle, Lock, Loader2, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -67,6 +67,11 @@ export default function DevPanel() {
   const [announceTitle, setAnnounceTitle] = useState("");
   const [announceMsg, setAnnounceMsg] = useState("");
   const [announceLoading, setAnnounceLoading] = useState(false);
+
+  // Restart bot
+  const [restartState, setRestartState] = useState<"idle" | "confirm" | "restarting" | "done">("idle");
+  const [restartCountdown, setRestartCountdown] = useState(0);
+  const restartTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Changelog form
   const [clVersion, setClVersion] = useState("");
@@ -209,6 +214,38 @@ export default function DevPanel() {
       setChangelogs((prev) => prev.filter((c) => c.id !== id));
       toast({ title: "Entrada eliminada" });
     }
+  };
+
+  const handleRestartConfirm = () => setRestartState("confirm");
+  const handleRestartCancel = () => setRestartState("idle");
+
+  const handleRestart = async () => {
+    setRestartState("restarting");
+    setRestartCountdown(12);
+
+    try {
+      await devFetch("/restart", token, { method: "POST" });
+    } catch {
+      // network error is expected as bot restarts
+    }
+
+    // Countdown
+    restartTimerRef.current = setInterval(() => {
+      setRestartCountdown((c) => {
+        if (c <= 1) {
+          clearInterval(restartTimerRef.current!);
+          restartTimerRef.current = null;
+          setRestartState("done");
+          // Refresh status
+          setTimeout(() => {
+            fetchData(token);
+            setRestartState("idle");
+          }, 2000);
+          return 0;
+        }
+        return c - 1;
+      });
+    }, 1000);
   };
 
   // ── Auth gate ──────────────────────────────────────────────────────────────
@@ -380,6 +417,86 @@ export default function DevPanel() {
           </div>
         </DevCard>
       </div>
+
+      {/* Restart Bot */}
+      <DevCard icon={RotateCcw} title="RESTART_BOT" glowColor="cyan">
+        <div className="space-y-4">
+          <p className="text-xs text-muted-foreground font-mono">
+            Desconecta y reconecta el bot de Discord sin reiniciar el servidor API. El bot tardará ~5–10 segundos en volver a estar online.
+          </p>
+
+          {/* Current bot status */}
+          <div className="flex items-center gap-3 border border-border bg-sidebar px-4 py-3">
+            <span className={`h-2.5 w-2.5 rounded-full flex-shrink-0 ${
+              restartState === "restarting" ? "bg-yellow-500 animate-pulse" :
+              restartState === "done" ? "bg-green-500 animate-pulse" :
+              status?.botOnline ? "bg-cyan-500 animate-pulse" : "bg-red-500"
+            }`} />
+            <span className="font-mono text-xs text-foreground">
+              {restartState === "restarting"
+                ? `Reiniciando... esperando ${restartCountdown}s`
+                : restartState === "done"
+                ? "¡Bot reconectado!"
+                : status?.botOnline
+                ? `Bot online · ${status.guildsCount} servidores`
+                : "Bot offline"}
+            </span>
+          </div>
+
+          {restartState === "idle" && (
+            <Button
+              variant="outline"
+              className="w-full font-display tracking-widest text-sm border-cyan-500/40 text-cyan-400 hover:bg-cyan-500/10 hover:border-cyan-500/70"
+              onClick={handleRestartConfirm}
+              disabled={!status?.botOnline}
+            >
+              <RotateCcw className="h-4 w-4 mr-2" />
+              REINICIAR BOT
+            </Button>
+          )}
+
+          {restartState === "confirm" && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 border border-yellow-500/30 bg-yellow-500/10 p-3 text-yellow-400 text-xs font-mono">
+                <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                El bot no responderá comandos durante el reinicio. ¿Confirmas?
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  variant="outline"
+                  className="font-mono text-sm border-border text-muted-foreground hover:text-foreground"
+                  onClick={handleRestartCancel}
+                >
+                  CANCELAR
+                </Button>
+                <Button
+                  className="font-display tracking-widest text-sm bg-cyan-600 hover:bg-cyan-700 text-black"
+                  onClick={handleRestart}
+                >
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  CONFIRMAR
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {restartState === "restarting" && (
+            <div className="flex items-center justify-center gap-3 border border-yellow-500/30 bg-yellow-500/5 py-4">
+              <Loader2 className="h-5 w-5 animate-spin text-yellow-400" />
+              <span className="font-mono text-sm text-yellow-400">
+                Reconectando a Discord... {restartCountdown}s
+              </span>
+            </div>
+          )}
+
+          {restartState === "done" && (
+            <div className="flex items-center justify-center gap-3 border border-green-500/30 bg-green-500/5 py-4">
+              <CheckCircle2 className="h-5 w-5 text-green-400" />
+              <span className="font-mono text-sm text-green-400">Bot reconectado correctamente</span>
+            </div>
+          )}
+        </div>
+      </DevCard>
 
       {/* Changelog */}
       <DevCard icon={GitCommit} title="CHANGELOG_MANAGER" glowColor="primary">

@@ -141,6 +141,36 @@ router.post("/announce", requireDevAuth, async (req, res) => {
   }
 });
 
+// POST /api/dev/restart — graceful bot reconnect
+router.post("/restart", requireDevAuth, async (req, res) => {
+  if (!botClient) {
+    return res.status(503).json({ error: "Bot is not connected" });
+  }
+  if (!process.env.DISCORD_TOKEN) {
+    return res.status(503).json({ error: "DISCORD_TOKEN not configured" });
+  }
+
+  req.log.warn("Bot restart requested via dev panel");
+  res.json({ message: "Bot restart initiated. Reconnecting in ~3s." });
+
+  // Capture refs before async work
+  const client = botClient;
+  const token = process.env.DISCORD_TOKEN;
+
+  setImmediate(async () => {
+    try {
+      client.destroy();
+      botClient = null;
+      await new Promise((r) => setTimeout(r, 3000));
+      await client.login(token);
+      botClient = client;
+      req.log.info("Bot reconnected after restart");
+    } catch (err) {
+      req.log.error({ err }, "Error during bot restart");
+    }
+  });
+});
+
 // GET /api/dev/changelogs
 router.get("/changelogs", requireDevAuth, async (req, res) => {
   try {
