@@ -38,7 +38,10 @@ const command: Command = {
       const name = `\`/${cmd.data.name}\``;
       if (["ping", "avatar", "serverinfo", "userinfo", "help"].includes(cmd.data.name)) {
         categories["🛠️ Utilidad"].push(name);
-      } else if (["ban", "kick", "mute", "unmute", "warn", "warns", "clearwarns", "purge"].includes(cmd.data.name)) {
+      } else if ([
+        "ban", "kick", "mute", "unmute", "warn", "warns", "clearwarns", "purge",
+        "timeout", "untimeout", "unban", "slowmode", "lock", "unlock", "logs"
+      ].includes(cmd.data.name)) {
         categories["🛡️ Moderación"].push(name);
       } else {
         categories["🎮 Diversión"].push(name);
