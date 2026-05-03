@@ -30,6 +30,7 @@ import unbanCmd from "./commands/moderation/unban.js";
 import slowmodeCmd from "./commands/moderation/slowmode.js";
 import lockCmd from "./commands/moderation/lock.js";
 import unlockCmd from "./commands/moderation/unlock.js";
+import logsCmd from "./commands/moderation/logs.js";
 
 // Fun commands
 import eightballCmd from "./commands/fun/8ball.js";
@@ -42,7 +43,7 @@ const ALL_COMMANDS = [
   // Moderation
   banCmd, kickCmd, muteCmd, unmuteCmd,
   warnCmd, warnsCmd, clearwarnsCmd, purgeCmd,
-  timeoutCmd, untimeoutCmd, unbanCmd, slowmodeCmd, lockCmd, unlockCmd,
+  timeoutCmd, untimeoutCmd, unbanCmd, slowmodeCmd, lockCmd, unlockCmd, logsCmd,
   // Fun
   eightballCmd, coinflipCmd, rollCmd,
 ];
