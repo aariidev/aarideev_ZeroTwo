@@ -1,23 +1,70 @@
-import { SlashCommandBuilder, EmbedBuilder, ChatInputCommandInteraction, Client } from "discord.js";
+import {
+  SlashCommandBuilder,
+  EmbedBuilder,
+  ChatInputCommandInteraction,
+  Client,
+} from "discord.js";
 import { Command } from "../../types.js";
 
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("roll")
-    .setDescription("🎲 Lanza un dado")
+    .setDescription(
+      "🎲 Lanza un dado cuántico de alta precisión con modificadores",
+    )
     .addIntegerOption((opt) =>
-      opt.setName("caras").setDescription("Número de caras del dado (default: 6)").setMinValue(2).setMaxValue(1000)
+      opt
+        .setName("caras")
+        .setDescription("Caras del dado (Default: 6)")
+        .setMinValue(2)
+        .setMaxValue(10000),
+    )
+    .addIntegerOption((opt) =>
+      opt
+        .setName("modificador")
+        .setDescription("Suma o resta un valor fijo al resultado final"),
     ),
   cooldown: 3,
+
   async execute(interaction: ChatInputCommandInteraction, client: Client) {
     const sides = interaction.options.getInteger("caras") ?? 6;
-    const result = Math.floor(Math.random() * sides) + 1;
+    const modifier = interaction.options.getInteger("modificador") ?? 0;
+
+    const rawResult = Math.floor(Math.random() * sides) + 1;
+    const finalResult = rawResult + modifier;
+
+    let tier = "🎲 Lanzamiento Estándar";
+    let comment = "Un resultado promedio. Ni grandioso, ni patético.";
+    let color = 0xff2d6b;
+
+    if (rawResult === sides) {
+      tier = "🔥 ¡ÉXITO CRÍTICO PERFECTO! 🔥";
+      comment =
+        "¡Increíble! Has alcanzado la sincronización máxima del Franxx. ¡Directo al objetivo!";
+      color = 0xffd700;
+    } else if (rawResult === 1) {
+      tier = "💀 PIFIA CATASTRÓFICA 💀";
+      comment =
+        "Qué rendimiento tan lamentable... ¿Seguro de que estás calificado para pilotar?";
+      color = 0x3a0007;
+    } else if (finalResult >= sides * 0.75) {
+      tier = "⚡ Rendimiento Sobresaliente";
+      comment = "Buen trabajo, estás demostrando de qué madera estás hecho.";
+    }
+
     const embed = new EmbedBuilder()
-      .setColor(0x9b59b6)
-      .setTitle("🎲 Dado Lanzado")
-      .setDescription(`**d${sides}: ${result}**`)
-      .setTimestamp()
-      .setFooter({ text: "ZeroTwo v2.0", iconURL: client.user?.displayAvatarURL() });
+      .setColor(color)
+      .setAuthor({
+        name: "Módulo Probabilístico Estocástico // Zero Two",
+        iconURL: client.user?.displayAvatarURL(),
+      })
+      .setTitle(tier)
+      .setDescription(
+        `\`\`\`md\n* Dado Lanzado :: d${sides}\n* Valor Base    :: ${rawResult}\n* Modificador   :: ${modifier >= 0 ? `+${modifier}` : modifier}\n* Total Neto    :: ${finalResult}\n\`\`\``,
+      )
+      .addFields({ name: "💬 Comentario de 02", value: `*"${comment}"*` })
+      .setTimestamp();
+
     await interaction.reply({ embeds: [embed] });
   },
 };

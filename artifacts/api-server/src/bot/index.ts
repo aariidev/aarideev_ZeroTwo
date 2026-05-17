@@ -8,14 +8,16 @@ import { devState } from "../lib/devState.js";
 import { db } from "@workspace/db";
 import { botConfigTable } from "@workspace/db";
 
-// Utility commands
+// ── IMPORTACIÓN DE MÓDULOS DE COMANDOS ─────────────────────────────────────────
+
+// Utility
 import pingCmd from "./commands/utility/ping.js";
 import avatarCmd from "./commands/utility/avatar.js";
 import serverinfoCmd from "./commands/utility/serverinfo.js";
 import userinfoCmd from "./commands/utility/userinfo.js";
 import helpCmd from "./commands/utility/help.js";
 
-// Moderation commands
+// Moderation
 import banCmd from "./commands/moderation/ban.js";
 import kickCmd from "./commands/moderation/kick.js";
 import muteCmd from "./commands/moderation/mute.js";
@@ -32,25 +34,42 @@ import lockCmd from "./commands/moderation/lock.js";
 import unlockCmd from "./commands/moderation/unlock.js";
 import logsCmd from "./commands/moderation/logs.js";
 
-// Fun commands
+// Fun
 import eightballCmd from "./commands/fun/8ball.js";
 import coinflipCmd from "./commands/fun/coinflip.js";
 import rollCmd from "./commands/fun/roll.js";
 
 const ALL_COMMANDS = [
-  // Utility
-  pingCmd, avatarCmd, serverinfoCmd, userinfoCmd, helpCmd,
-  // Moderation
-  banCmd, kickCmd, muteCmd, unmuteCmd,
-  warnCmd, warnsCmd, clearwarnsCmd, purgeCmd,
-  timeoutCmd, untimeoutCmd, unbanCmd, slowmodeCmd, lockCmd, unlockCmd, logsCmd,
-  // Fun
-  eightballCmd, coinflipCmd, rollCmd,
+  pingCmd,
+  avatarCmd,
+  serverinfoCmd,
+  userinfoCmd,
+  helpCmd,
+  banCmd,
+  kickCmd,
+  muteCmd,
+  unmuteCmd,
+  warnCmd,
+  warnsCmd,
+  clearwarnsCmd,
+  purgeCmd,
+  timeoutCmd,
+  untimeoutCmd,
+  unbanCmd,
+  slowmodeCmd,
+  lockCmd,
+  unlockCmd,
+  logsCmd,
+  eightballCmd,
+  coinflipCmd,
+  rollCmd,
 ];
 
 export async function startBot() {
   if (!process.env.DISCORD_TOKEN) {
-    logger.warn("DISCORD_TOKEN no configurado — bot de Discord no iniciado.");
+    logger.error(
+      "🚨 DISCORD_TOKEN no configurado — El motor de Zero Two no ha podido inicializarse.",
+    );
     return;
   }
 
@@ -69,43 +88,87 @@ export async function startBot() {
   client.cooldowns = new Collection();
 
   for (const command of ALL_COMMANDS) {
-    if (command?.data && command?.execute) {
+    if (command?.data?.name && command?.execute) {
       client.commands.set(command.data.name, command);
+    } else {
+      logger.warn(
+        `⚠️ Comandante, un módulo falló la verificación de estructura y no se pudo montar.`,
+      );
     }
   }
 
-  logger.info(`${client.commands.size} comandos cargados.`);
+  logger.info(
+    `🌸 [NÚCLEO] Sincronización exitosa: ${client.commands.size} comandos listos en la terminal.`,
+  );
+
+  // ── PRE-CARGA ESTRATÉGICA DE ENRUTADORES DE EVENTOS ──────────────────────────
+
+  const { default: onReady } = await import("./events/ready.js");
+  const { default: onInteractionCreate } = await import(
+    "./events/interactionCreate.js"
+  );
+  const { default: onGuildCreate } = await import("./events/guildCreate.js");
 
   client.once("ready", async () => {
-    const { default: onReady } = await import("./events/ready.js");
-    await onReady(client);
-    setBotClientForBot(client);
-    setBotClientForGuilds(client);
-    setBotClientForDev(client);
-
-    // Restore dev state from DB
     try {
+      await onReady(client);
+
+      setBotClientForBot(client);
+      setBotClientForGuilds(client);
+      setBotClientForDev(client);
+
+      logger.info("🔗 Pasarelas y rutas API vinculadas al cliente central.");
+
       const rows = await db.select().from(botConfigTable);
       const maintenanceRow = rows.find((r) => r.key === "maintenance_mode");
-      if (maintenanceRow) devState.maintenanceMode = maintenanceRow.value === "true";
+      if (maintenanceRow)
+        devState.maintenanceMode = maintenanceRow.value === "true";
+
       const messageRow = rows.find((r) => r.key === "maintenance_message");
       if (messageRow) devState.maintenanceMessage = messageRow.value;
-      logger.info({ maintenanceMode: devState.maintenanceMode }, "Dev state restored from DB");
+
+      logger.info(
+        { maintenanceMode: devState.maintenanceMode },
+        "💾 Estado de depuración restaurado desde el núcleo de datos.",
+      );
     } catch (err) {
-      logger.error({ err }, "Could not restore dev state from DB");
+      logger.error(
+        { err },
+        "❌ Error crítico al restaurar las configuraciones en el bloque listo.",
+      );
     }
   });
 
   client.on("interactionCreate", async (interaction) => {
-    const { default: onInteractionCreate } = await import("./events/interactionCreate.js");
-    await onInteractionCreate(interaction);
+    try {
+      await onInteractionCreate(interaction);
+    } catch (err) {
+      logger.error(
+        { err },
+        `❌ Colapso en el hilo de comandos al procesar interacción.`,
+      );
+    }
   });
 
   client.on("guildCreate", async (guild) => {
-    const { default: onGuildCreate } = await import("./events/guildCreate.js");
-    onGuildCreate(guild);
+    try {
+      await onGuildCreate(guild);
+    } catch (err) {
+      logger.error(
+        { err, guildId: guild.id },
+        `❌ Error al inicializar nexo con un nuevo servidor.`,
+      );
+    }
   });
 
-  await client.login(process.env.DISCORD_TOKEN);
-  return client;
+  try {
+    await client.login(process.env.DISCORD_TOKEN);
+    return client;
+  } catch (err) {
+    logger.fatal(
+      { err },
+      "💀 El núcleo central ha rechazado la firma del Token. Apagando sistemas.",
+    );
+    process.exit(1);
+  }
 }

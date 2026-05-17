@@ -1,34 +1,66 @@
-import { Client, ActivityType } from "discord.js";
+import { ActivityType, REST, Routes } from "discord.js";
 import { logger } from "../../lib/logger.js";
-import { REST, Routes } from "discord.js";
 import { BotClient } from "../types.js";
 
-export default async function onReady(client: Client) {
-  const botClient = client as BotClient;
+export default async function onReady(client: BotClient) {
   logger.info(`Bot listo: ${client.user?.tag}`);
 
-  const activities = [
-    { name: "ZeroTwo v2.0", type: ActivityType.Playing },
-    { name: `${client.guilds.cache.size} servidores`, type: ActivityType.Watching },
-    { name: "/help", type: ActivityType.Listening },
-  ];
+  let activityIndex = 0;
 
-  let i = 0;
   const updateActivity = () => {
-    const act = activities[i % activities.length]!;
-    client.user?.setActivity(act.name, { type: act.type });
-    i++;
-  };
-  updateActivity();
-  setInterval(updateActivity, 20000);
+    const activities = [
+      {
+        name: "ser humanos con mi Darling 🍯",
+        type: ActivityType.Playing,
+      },
+      {
+        name: `${client.guilds.cache.size} plantaciones en busca de parásitos 🌸`,
+        type: ActivityType.Watching,
+      },
+      {
+        name: "tus órdenes... o usa /help 💋",
+        type: ActivityType.Listening,
+      },
+    ];
 
-  // Register slash commands globally
-  const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN!);
-  const commands = botClient.commands.map((cmd) => cmd.data.toJSON());
+    const currentActivity = activities[activityIndex % activities.length];
+    client.user?.setActivity(currentActivity.name, {
+      type: currentActivity.type,
+    });
+
+    activityIndex++;
+  };
+
+  updateActivity();
+  setInterval(updateActivity, 20_000);
+
+  const token = process.env.DISCORD_TOKEN;
+  const clientId = process.env.CLIENT_ID;
+
+  if (!token || !clientId) {
+    logger.error(
+      "Faltan variables de entorno esenciales: DISCORD_TOKEN o CLIENT_ID.",
+    );
+    return;
+  }
+
+  const rest = new REST({ version: "10" }).setToken(token);
+  const commands = client.commands.map((cmd) => cmd.data.toJSON());
+
   try {
-    await rest.put(Routes.applicationCommands(process.env.CLIENT_ID!), { body: commands });
-    logger.info(`${commands.length} comandos registrados globalmente.`);
+    logger.info(
+      `Sincronizando ${commands.length} comandos de barra globalmente...`,
+    );
+
+    await rest.put(Routes.applicationCommands(clientId), { body: commands });
+
+    logger.info(
+      "Todos los comandos globales han sido registrados correctamente.",
+    );
   } catch (err) {
-    logger.error({ err }, "Error registrando comandos");
+    logger.error(
+      { err },
+      "Error crítico al registrar comandos en la API de Discord",
+    );
   }
 }

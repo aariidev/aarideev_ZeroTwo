@@ -1,49 +1,105 @@
-import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, ChatInputCommandInteraction, Client } from "discord.js";
+import {
+  SlashCommandBuilder,
+  EmbedBuilder,
+  ChatInputCommandInteraction,
+  Client,
+} from "discord.js";
 import { Command } from "../../types.js";
 import { logBotEvent } from "../../../lib/botLogger.js";
 
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("kick")
-    .setDescription("👢 Expulsa a un usuario del servidor")
+    .setDescription(
+      "👢 Expulsa de forma inmediata a un parásito fuera de la plantación",
+    )
     .addUserOption((opt) =>
-      opt.setName("usuario").setDescription("Usuario a expulsar").setRequired(true)
+      opt
+        .setName("usuario")
+        .setDescription("Objetivo a expulsar")
+        .setRequired(true),
     )
     .addStringOption((opt) =>
-      opt.setName("motivo").setDescription("Motivo de la expulsión")
-    )
-    .setDefaultMemberPermissions(PermissionFlagsBits.KickMembers),
+      opt.setName("motivo").setDescription("Causa de expulsión estructural"),
+    ),
   cooldown: 5,
+
   async execute(interaction: ChatInputCommandInteraction, client: Client) {
     const target = interaction.options.getUser("usuario", true);
-    const reason = interaction.options.getString("motivo") ?? "Sin motivo especificado";
+    const reason =
+      interaction.options.getString("motivo") ??
+      "Violación de directrices generales.";
     const member = interaction.guild?.members.cache.get(target.id);
 
-    if (!member) return interaction.reply({ content: "No pude encontrar a ese usuario.", ephemeral: true });
-    if (!member.kickable) return interaction.reply({ content: "No puedo expulsar a ese usuario.", ephemeral: true });
-    if (member.id === interaction.user.id) return interaction.reply({ content: "No puedes expulsarte a ti mismo.", ephemeral: true });
+    if (!member)
+      return interaction.reply({
+        content:
+          "❌ No se localizó al parásito dentro de los cuadrantes del servidor.",
+        ephemeral: true,
+      });
+    if (!member.kickable)
+      return interaction.reply({
+        content:
+          "❌ Error crítico: Jerarquía insuficiente para expulsar a este miembro.",
+        ephemeral: true,
+      });
+    if (member.id === interaction.user.id)
+      return interaction.reply({
+        content: "❌ No puedes auto-ejecutar un protocolo de expulsión.",
+        ephemeral: true,
+      });
 
-    await member.send({
-      embeds: [new EmbedBuilder()
-        .setColor(0xff8800)
-        .setTitle(`Has sido expulsado de ${interaction.guild?.name}`)
-        .addFields({ name: "Motivo", value: reason })
-        .setTimestamp()]
-    }).catch(() => null);
+    let dmSent = false;
+    try {
+      await member.send({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xff2d6b)
+            .setTitle(`👢 Expulsión ejecutada en ${interaction.guild?.name}`)
+            .setDescription(`\`\`\`md\n* Causa :: ${reason}\n\`\`\``)
+            .setFooter({
+              text: "Puedes re-ingresar si obtienes una invitación válida.",
+            }),
+        ],
+      });
+      dmSent = true;
+    } catch {
+      dmSent = false;
+    }
 
-    await member.kick(reason);
+    await member.kick(`${reason} | Ejecutado por: ${interaction.user.tag}`);
 
     const embed = new EmbedBuilder()
-      .setColor(0xff8800)
-      .setTitle("👢 Usuario Expulsado")
+      .setColor(0xff2d6b)
+      .setAuthor({
+        name: "Limpieza del Sistema // Zero Two",
+        iconURL: client.user?.displayAvatarURL(),
+      })
+      .setTitle("👢 Parásito Removido del Escuadrón")
       .setThumbnail(target.displayAvatarURL())
       .addFields(
-        { name: "Usuario", value: `${target.tag} (${target.id})`, inline: true },
-        { name: "Moderador", value: `${interaction.user.tag}`, inline: true },
-        { name: "Motivo", value: reason }
+        {
+          name: "👤 Elemento Expulsado",
+          value: `${target.tag} \`(${target.id})\``,
+          inline: true,
+        },
+        {
+          name: "🛡️ Supervisor al Cargo",
+          value: `${interaction.user.tag}`,
+          inline: true,
+        },
+        {
+          name: "📝 Reporte de Salida",
+          value: `\`\`\`\n${reason}\n\`\`\``,
+          inline: false,
+        },
+        {
+          name: "📬 Comunicación Externa",
+          value: dmSent ? "✅ Canal DM Alertado" : "❌ Fallido / DM Privado",
+          inline: true,
+        },
       )
-      .setTimestamp()
-      .setFooter({ text: "ZeroTwo v2.1.0", iconURL: client.user?.displayAvatarURL() });
+      .setTimestamp();
 
     await interaction.reply({ embeds: [embed] });
 
@@ -55,8 +111,6 @@ const command: Command = {
       guildName: interaction.guild?.name,
       userId: target.id,
       username: target.username,
-      moderatorId: interaction.user.id,
-      moderatorName: interaction.user.username,
     });
   },
 };

@@ -1,4 +1,9 @@
-import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, ChatInputCommandInteraction, Client } from "discord.js";
+import {
+  SlashCommandBuilder,
+  EmbedBuilder,
+  ChatInputCommandInteraction,
+  Client,
+} from "discord.js";
 import { Command } from "../../types.js";
 import { logBotEvent } from "../../../lib/botLogger.js";
 
@@ -17,14 +22,19 @@ const DURATIONS: Record<string, number> = {
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("timeout")
-    .setDescription("⏱️ Aplica un timeout a un usuario")
+    .setDescription(
+      "⏱️ Restringe la actividad de un parásito mediante un aislamiento temporal",
+    )
     .addUserOption((opt) =>
-      opt.setName("usuario").setDescription("Usuario a silenciar temporalmente").setRequired(true)
+      opt
+        .setName("usuario")
+        .setDescription("Sujeto de estudio")
+        .setRequired(true),
     )
     .addStringOption((opt) =>
       opt
         .setName("duracion")
-        .setDescription("Duración del timeout")
+        .setDescription("Ventana temporal de restricción")
         .setRequired(true)
         .addChoices(
           { name: "60 segundos", value: "60s" },
@@ -36,39 +46,117 @@ const command: Command = {
           { name: "12 horas", value: "12h" },
           { name: "24 horas", value: "24h" },
           { name: "7 días", value: "7d" },
-        )
+        ),
     )
     .addStringOption((opt) =>
-      opt.setName("motivo").setDescription("Motivo del timeout")
-    )
-    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
+      opt.setName("motivo").setDescription("Razón de la desincronización"),
+    ),
   cooldown: 5,
+
   async execute(interaction: ChatInputCommandInteraction, client: Client) {
     const target = interaction.options.getUser("usuario", true);
     const durationKey = interaction.options.getString("duracion", true);
-    const reason = interaction.options.getString("motivo") ?? "Sin motivo especificado";
-    const durationMs = DURATIONS[durationKey] ?? 300_000;
+    const reason =
+      interaction.options.getString("motivo") ??
+      "Corrección de comportamiento estándar.";
     const member = interaction.guild?.members.cache.get(target.id);
 
-    if (!member) return interaction.reply({ content: "No pude encontrar ese usuario.", ephemeral: true });
-    if (!member.moderatable) return interaction.reply({ content: "No puedo aplicar timeout a ese usuario.", ephemeral: true });
-    if (member.id === interaction.user.id) return interaction.reply({ content: "No puedes silenciarte a ti mismo.", ephemeral: true });
+    if (!member)
+      return interaction.reply({
+        content: "❌ El parásito no se encuentra en este servidor.",
+        ephemeral: true,
+      });
+    if (!member.moderatable)
+      return interaction.reply({
+        content:
+          "❌ Error de privilegios: Jerarquía del bot inferior al objetivo.",
+        ephemeral: true,
+      });
+    if (member.id === interaction.user.id)
+      return interaction.reply({
+        content: "❌ No puedes auto-aplicarte un protocolo de contención.",
+        ephemeral: true,
+      });
+
+    // Validación de jerarquía del moderador ejecutor
+    const modMember = interaction.member as any;
+    if (
+      modMember &&
+      member.roles.highest.position >= modMember.roles.highest.position
+    ) {
+      return interaction.reply({
+        content:
+          "❌ Tus rangos no igualan o superan la firma del parásito seleccionado.",
+        ephemeral: true,
+      });
+    }
+
+    const durationMs = DURATIONS[durationKey];
+    if (!durationMs)
+      return interaction.reply({
+        content: "❌ Parámetro temporal corrupto.",
+        ephemeral: true,
+      });
+
+    let dmSent = false;
+    try {
+      await target.send({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xff2d6b)
+            .setTitle(`⏱️ Aislamiento preventivo en ${interaction.guild?.name}`)
+            .setDescription(
+              `\`\`\`md\n* Plazo   :: ${durationKey}\n* Motivo  :: ${reason}\n\`\`\``,
+            ),
+        ],
+      });
+      dmSent = true;
+    } catch {
+      dmSent = false;
+    }
 
     try {
-      await member.timeout(durationMs, reason);
+      await member.timeout(
+        durationMs,
+        `${reason} | Por: ${interaction.user.tag}`,
+      );
 
       const embed = new EmbedBuilder()
-        .setColor(0xff8c00)
-        .setTitle("⏱️ Timeout Aplicado")
+        .setColor(0xff2d6b)
+        .setAuthor({
+          name: "Protocolo de Retención Cuántica // Zero Two",
+          iconURL: client.user?.displayAvatarURL(),
+        })
+        .setTitle("⏱️ Timeout Desplegado Exitosamente")
         .setThumbnail(target.displayAvatarURL())
         .addFields(
-          { name: "Usuario", value: `${target.tag} (${target.id})`, inline: true },
-          { name: "Moderador", value: interaction.user.tag, inline: true },
-          { name: "Duración", value: durationKey, inline: true },
-          { name: "Motivo", value: reason },
+          {
+            name: "👤 Código Objetivo",
+            value: `${target.tag} \`(${target.id})\``,
+            inline: true,
+          },
+          {
+            name: "🛡️ Moderador",
+            value: `${interaction.user.tag}`,
+            inline: true,
+          },
+          {
+            name: "⏳ Ventana Temporal",
+            value: `\`${durationKey}\``,
+            inline: true,
+          },
+          {
+            name: "📝 Diagnóstico",
+            value: `\`\`\`\n${reason}\n\`\`\``,
+            inline: false,
+          },
+          {
+            name: "📥 Alerta de Enlace",
+            value: dmSent ? "✅ Notificado por DM" : "❌ DM Bloqueado",
+            inline: true,
+          },
         )
-        .setTimestamp()
-        .setFooter({ text: "ZeroTwo v2.1.0", iconURL: client.user?.displayAvatarURL() });
+        .setTimestamp();
 
       await interaction.reply({ embeds: [embed] });
 
@@ -84,7 +172,11 @@ const command: Command = {
         moderatorName: interaction.user.username,
       });
     } catch {
-      await interaction.reply({ content: "Ocurrió un error al aplicar el timeout.", ephemeral: true });
+      await interaction.reply({
+        content:
+          "❌ Error en los sistemas de la API al intentar mitigar al usuario.",
+        ephemeral: true,
+      });
     }
   },
 };
