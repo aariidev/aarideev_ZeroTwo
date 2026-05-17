@@ -1,35 +1,77 @@
-import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, ChatInputCommandInteraction, Client } from "discord.js";
+import {
+  SlashCommandBuilder,
+  EmbedBuilder,
+  ChatInputCommandInteraction,
+  Client,
+} from "discord.js";
 import { Command } from "../../types.js";
-import { db } from "@workspace/db";
-import { warnsTable } from "@workspace/db";
+import { db, warnsTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
+import { logBotEvent } from "../../../lib/botLogger.js";
 
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("clearwarns")
-    .setDescription("🗑️ Elimina todas las advertencias de un usuario")
-    .addUserOption((opt) =>
-      opt.setName("usuario").setDescription("Usuario").setRequired(true)
+    .setDescription(
+      "🗑️ Limpia y formatea a cero el expediente de incidencias de un parásito",
     )
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+    .addUserOption((opt) =>
+      opt
+        .setName("usuario")
+        .setDescription("Objetivo a indultar")
+        .setRequired(true),
+    ),
   cooldown: 5,
+
   async execute(interaction: ChatInputCommandInteraction, client: Client) {
     const target = interaction.options.getUser("usuario", true);
     const guildId = interaction.guild?.id ?? "";
 
     const deleted = await db
       .delete(warnsTable)
-      .where(and(eq(warnsTable.userId, target.id), eq(warnsTable.guildId, guildId)))
+      .where(
+        and(eq(warnsTable.userId, target.id), eq(warnsTable.guildId, guildId)),
+      )
       .returning();
 
     const embed = new EmbedBuilder()
-      .setColor(0x00ff00)
-      .setTitle("🗑️ Advertencias Eliminadas")
-      .setDescription(`Se eliminaron **${deleted.length}** advertencias de ${target.tag}.`)
-      .setTimestamp()
-      .setFooter({ text: "ZeroTwo v2.0", iconURL: client.user?.displayAvatarURL() });
+      .setColor(0xff2d6b)
+      .setAuthor({
+        name: "Purga de Expedientes Sanitarios // Zero Two",
+        iconURL: client.user?.displayAvatarURL(),
+      })
+      .setTitle("🗑️ Amnistía de Advertencias Completada")
+      .setThumbnail(target.displayAvatarURL())
+      .setDescription(
+        `Se han erradicado **${deleted.length}** advertencias de la ficha de identificación de ${target.tag}.`,
+      )
+      .addFields(
+        {
+          name: "👤 Sujeto Re-habilitado",
+          value: `${target.username} \`(${target.id})\``,
+          inline: true,
+        },
+        {
+          name: "🛡️ Mod de Gestión",
+          value: `${interaction.user.tag}`,
+          inline: true,
+        },
+      )
+      .setTimestamp();
 
     await interaction.reply({ embeds: [embed] });
+
+    await logBotEvent({
+      level: "info",
+      event: "purge",
+      details: {
+        action: "clearwarns",
+        clearedCount: deleted.length,
+        affectedUser: target.id,
+      },
+      guildId,
+      guildName: interaction.guild?.name,
+    });
   },
 };
 

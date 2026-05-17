@@ -1,49 +1,93 @@
-import { SlashCommandBuilder, EmbedBuilder, ChatInputCommandInteraction, Client } from "discord.js";
+import {
+  SlashCommandBuilder,
+  EmbedBuilder,
+  ChatInputCommandInteraction,
+  Client,
+} from "discord.js";
 import { Command } from "../../types.js";
 
-const responses = [
-  "Sí, definitivamente.",
-  "Es cierto.",
-  "Sin duda.",
-  "Sí, en mi opinión.",
-  "Puedes confiar en ello.",
-  "Como yo lo veo, sí.",
-  "Muy probablemente.",
-  "Las perspectivas son buenas.",
-  "Las señales apuntan a sí.",
-  "Respuesta poco clara, intenta de nuevo.",
-  "Pregunta de nuevo más tarde.",
-  "Mejor no decirte ahora.",
-  "No puedo predecirlo ahora.",
-  "Concéntrate y pregunta de nuevo.",
-  "No cuentes con ello.",
-  "Mi respuesta es no.",
-  "Mis fuentes dicen que no.",
-  "Las perspectivas no son muy buenas.",
-  "Muy dudoso.",
-];
+const RESPONSES = {
+  positive: [
+    "Sí, mi telemetría lo confirma con total certeza. ✨",
+    "Absolutamente, las señales están alineadas a tu favor.",
+    "Puedes apostar tu Franxx a que sí.",
+    "Mis sensores indican un 98.7% de probabilidad afirmativa.",
+  ],
+  neutral: [
+    "La respuesta está nublada por interferencias en la conexión. Inténtalo de nuevo.",
+    "No puedo predecirlo ahora, mis niveles de energía están fluctuando.",
+    "Concéntrate más y vuelve a interrogar a la terminal.",
+  ],
+  negative: [
+    "Mi diagnóstico dice que no. Olvídalo. ❌",
+    "Las posibilidades caen a cero. No cuentes con ello.",
+    "Fuentes centrales indican un panorama completamente desalentador.",
+    "No... y no me hagas repetirlo.",
+  ],
+};
 
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("8ball")
-    .setDescription("🎱 La bola 8 mágica responde tus preguntas")
+    .setDescription("🎱 Somete una duda al núcleo analítico de Zero Two")
     .addStringOption((opt) =>
-      opt.setName("pregunta").setDescription("Tu pregunta").setRequired(true)
+      opt
+        .setName("pregunta")
+        .setDescription("La incógnita que deseas proyectar")
+        .setRequired(true),
     ),
-  cooldown: 3,
+  cooldown: 4,
+
   async execute(interaction: ChatInputCommandInteraction, client: Client) {
     const question = interaction.options.getString("pregunta", true);
-    const response = responses[Math.floor(Math.random() * responses.length)]!;
+
+    if (question.length < 5) {
+      return interaction.reply({
+        content:
+          "❌ Tu pregunta es demasiado corta y carece de firma psíquica. Formula algo con más sustancia, parásito.",
+        ephemeral: true,
+      });
+    }
+
+    const quantumStability = Math.floor(Math.random() * 40) + 60;
+    const categories = ["positive", "neutral", "negative"] as const;
+    const randomCategory =
+      categories[Math.floor(Math.random() * categories.length)]!;
+    const pool = RESPONSES[randomCategory];
+    const finalAnswer = pool[Math.floor(Math.random() * pool.length)]!;
 
     const embed = new EmbedBuilder()
-      .setColor(0x1a1a2e)
-      .setTitle("🎱 Bola 8 Mágica")
+      .setColor(0xff2d6b)
+      .setAuthor({
+        name: "Núcleo de Predicción Psíquica // Zero Two",
+        iconURL: client.user?.displayAvatarURL(),
+      })
+      .setTitle("🎱 Enlace de Conciencia Establecido")
       .addFields(
-        { name: "Pregunta", value: question },
-        { name: "Respuesta", value: response }
+        {
+          name: "❓ Interrogante Transmitido",
+          value: `\`\`\`📥 ${question}\`\`\``,
+        },
+        { name: "🔮 Diagnóstico de la Unidad", value: `**${finalAnswer}**` },
+        {
+          name: "📊 Estabilidad del Nexo",
+          value: `\`${quantumStability}% de precisión analítica\``,
+          inline: true,
+        },
+        {
+          name: "🧠 Estado Mental",
+          value:
+            randomCategory === "positive"
+              ? "🎵 Alegre / Cooperativa"
+              : randomCategory === "neutral"
+                ? "💤 Indiferente"
+                : "💢 Irritada",
+          inline: true,
+        },
       )
-      .setTimestamp()
-      .setFooter({ text: "ZeroTwo v2.0", iconURL: client.user?.displayAvatarURL() });
+      .setThumbnail("https://i.imgur.com/vH6w88v.png")
+      .setTimestamp();
+
     await interaction.reply({ embeds: [embed] });
   },
 };

@@ -1,55 +1,105 @@
-import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, ChatInputCommandInteraction, Client, TextChannel, OverwriteType } from "discord.js";
+import {
+  SlashCommandBuilder,
+  EmbedBuilder,
+  ChatInputCommandInteraction,
+  Client,
+  TextChannel,
+} from "discord.js";
 import { Command } from "../../types.js";
 import { logBotEvent } from "../../../lib/botLogger.js";
 
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("lock")
-    .setDescription("🔒 Bloquea el canal actual")
-    .addStringOption((opt) =>
-      opt.setName("motivo").setDescription("Motivo del bloqueo")
+    .setDescription(
+      "🔒 Cierra los canales de texto bloqueando el envío de transmisiones",
     )
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
+    .addStringOption((opt) =>
+      opt.setName("motivo").setDescription("Causa del bloqueo del sector"),
+    )
+    .addBooleanOption((opt) =>
+      opt
+        .setName("global")
+        .setDescription("¿Bloquear todos los canales públicos esenciales?"),
+    ),
   cooldown: 5,
+
   async execute(interaction: ChatInputCommandInteraction, client: Client) {
-    const reason = interaction.options.getString("motivo") ?? "Sin motivo especificado";
-    const channel = interaction.channel as TextChannel;
-
-    if (!channel?.isTextBased() || channel.isDMBased()) {
-      return interaction.reply({ content: "Este comando solo funciona en canales de texto.", ephemeral: true });
-    }
-
+    const reason =
+      interaction.options.getString("motivo") ??
+      "Cuarentena de seguridad activa.";
+    const isGlobal = interaction.options.getBoolean("global") ?? false;
     const everyone = interaction.guild?.roles.everyone;
-    if (!everyone) return interaction.reply({ content: "No pude encontrar el rol @everyone.", ephemeral: true });
 
-    try {
-      await channel.permissionOverwrites.edit(everyone, { SendMessages: false }, { reason: `Lock por ${interaction.user.tag}: ${reason}` });
-
-      const embed = new EmbedBuilder()
-        .setColor(0xff0000)
-        .setTitle("🔒 Canal Bloqueado")
-        .addFields(
-          { name: "Canal", value: `<#${channel.id}>`, inline: true },
-          { name: "Moderador", value: interaction.user.tag, inline: true },
-          { name: "Motivo", value: reason },
-        )
-        .setTimestamp()
-        .setFooter({ text: "ZeroTwo v2.1.0", iconURL: client.user?.displayAvatarURL() });
-
-      await interaction.reply({ embeds: [embed] });
-
-      await logBotEvent({
-        level: "warn",
-        event: "lock",
-        details: { reason, channelId: channel.id, channelName: channel.name },
-        guildId: interaction.guild?.id,
-        guildName: interaction.guild?.name,
-        moderatorId: interaction.user.id,
-        moderatorName: interaction.user.username,
+    if (!everyone)
+      return interaction.reply({
+        content: "❌ Imposible mapear el rol base `@everyone`.",
+        ephemeral: true,
       });
-    } catch {
-      await interaction.reply({ content: "No pude bloquear este canal.", ephemeral: true });
+
+    await interaction.deferReply();
+
+    const channelsToLock: TextChannel[] = [];
+    if (isGlobal) {
+      const allText = interaction.guild?.channels.cache.filter(
+        (c) => c.isTextBased() && !c.isThread() && !c.isDMBased(),
+      );
+      allText?.forEach((c) => channelsToLock.push(c as TextChannel));
+    } else {
+      channelsToLock.push(interaction.channel as TextChannel);
     }
+
+    let successCount = 0;
+    for (const channel of channelsToLock) {
+      try {
+        await channel.permissionOverwrites.edit(
+          everyone,
+          { SendMessages: false },
+          { reason: `Lock: ${reason} | Por: ${interaction.user.tag}` },
+        );
+        successCount++;
+      } catch {
+        continue;
+      }
+    }
+
+    const embed = new EmbedBuilder()
+      .setColor(0xff2d6b)
+      .setAuthor({
+        name: "Contención Perimetral // Zero Two",
+        iconURL: client.user?.displayAvatarURL(),
+      })
+      .setTitle("🔒 Protocolo Lock Completo")
+      .addFields(
+        {
+          name: "🌍 Cobertura",
+          value: isGlobal
+            ? `\`Múltiple (${successCount} zonas afectadas)\``
+            : `<#${interaction.channelId}>`,
+          inline: true,
+        },
+        {
+          name: "🛡️ Activado por",
+          value: `${interaction.user.tag}`,
+          inline: true,
+        },
+        {
+          name: "📝 Justificación de Alerta",
+          value: `\`\`\`\n${reason}\n\`\`\``,
+          inline: false,
+        },
+      )
+      .setTimestamp();
+
+    await interaction.editReply({ embeds: [embed] });
+
+    await logBotEvent({
+      level: "warn",
+      event: "lock",
+      details: { reason, totalChannels: successCount },
+      guildId: interaction.guild?.id,
+      guildName: interaction.guild?.name,
+    });
   },
 };
 

@@ -1,98 +1,126 @@
 import { Interaction, EmbedBuilder, Collection } from "discord.js";
 import { logger } from "../../lib/logger.js";
 import { BotClient } from "../types.js";
-import { db } from "@workspace/db";
-import { activityTable, commandStatsTable } from "@workspace/db";
-import { eq, sql } from "drizzle-orm";
+import { db, activityTable, commandStatsTable } from "@workspace/db";
+import { sql } from "drizzle-orm";
 import { devState } from "../../lib/devState.js";
 
 export default async function onInteractionCreate(interaction: Interaction) {
   if (!interaction.isChatInputCommand()) return;
 
   const client = interaction.client as BotClient;
-  const command = client.commands.get(interaction.commandName);
+  const { commandName, user, guild } = interaction;
+
+  const command = client.commands.get(commandName);
   if (!command) return;
 
-  // Maintenance mode check
   if (devState.maintenanceMode) {
     return interaction.reply({
       embeds: [
         new EmbedBuilder()
           .setColor(0xff2d6b)
-          .setTitle("🔧 Modo Mantenimiento")
-          .setDescription(devState.maintenanceMessage)
-          .setFooter({ text: "ZeroTwo · Dev" })
+          .setTitle("🔧 Calibración en Proceso // Mantenimiento")
+          .setDescription(
+            devState.maintenanceMessage ||
+              "Cariño, el sistema se está optimizando en este momento. ¡Vuelve pronto! 💕",
+          )
+          .setFooter({ text: "ZeroTwo System · Laboratorio de Parásitos" })
           .setTimestamp(),
       ],
       ephemeral: true,
     });
   }
 
-  // Cooldown check
   if (!client.cooldowns.has(command.data.name)) {
     client.cooldowns.set(command.data.name, new Collection());
   }
+
   const timestamps = client.cooldowns.get(command.data.name)!;
   const cooldownMs = (command.cooldown ?? 3) * 1000;
   const now = Date.now();
 
-  if (timestamps.has(interaction.user.id)) {
-    const expiration = timestamps.get(interaction.user.id)! + cooldownMs;
-    if (now < expiration) {
-      const remaining = ((expiration - now) / 1000).toFixed(1);
+  if (timestamps.has(user.id)) {
+    const expirationTime = timestamps.get(user.id)!;
+
+    if (now < expirationTime) {
+      const relativeTimestamp = Math.floor(expirationTime / 1000);
+
       return interaction.reply({
-        embeds: [new EmbedBuilder()
-          .setColor(0xff0000)
-          .setDescription(`⏱️ Espera **${remaining}s** antes de usar \`/${command.data.name}\` de nuevo.`)],
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xff0000)
+            .setDescription(
+              `🛑 ¡Cálmate! Estás pilotando demasiado rápido. Podrás usar \`/${command.data.name}\` **<t:${relativeTimestamp}:R>**.`,
+            ),
+        ],
         ephemeral: true,
       });
     }
   }
-  timestamps.set(interaction.user.id, now);
-  setTimeout(() => timestamps.delete(interaction.user.id), cooldownMs);
+
+  const expiration = now + cooldownMs;
+  timestamps.set(user.id, expiration);
+  setTimeout(() => timestamps.delete(user.id), cooldownMs);
 
   let success = true;
+
   try {
-    await command.execute(interaction, interaction.client);
+    await command.execute(interaction, client);
   } catch (err) {
     success = false;
-    logger.error({ err, command: interaction.commandName }, "Error ejecutando comando");
+    logger.error(
+      { err, command: commandName },
+      `Error ejecutando comando: ${commandName}`,
+    );
+
     const errorEmbed = new EmbedBuilder()
       .setColor(0xff0000)
-      .setTitle("❌ Error")
-      .setDescription("Hubo un error al ejecutar este comando.")
+      .setTitle("🚨 Error de Sincronización")
+      .setDescription(
+        "Hubo un fallo en la conexión con el Franxx al ejecutar este comando.",
+      )
       .setTimestamp();
 
     if (interaction.replied || interaction.deferred) {
-      await interaction.followUp({ embeds: [errorEmbed], ephemeral: true }).catch(() => null);
+      await interaction
+        .followUp({ embeds: [errorEmbed], ephemeral: true })
+        .catch(() => null);
     } else {
-      await interaction.reply({ embeds: [errorEmbed], ephemeral: true }).catch(() => null);
+      await interaction
+        .reply({ embeds: [errorEmbed], ephemeral: true })
+        .catch(() => null);
     }
   }
 
-  // Log activity to DB
   try {
-    await db.insert(activityTable).values({
-      command: interaction.commandName,
-      userId: interaction.user.id,
-      username: interaction.user.username,
-      guildId: interaction.guild?.id ?? "DM",
-      guildName: interaction.guild?.name ?? "DM",
-      success,
-    });
-
-    // Upsert command stats
-    await db
-      .insert(commandStatsTable)
-      .values({ command: interaction.commandName, count: 1, lastUsed: new Date() })
-      .onConflictDoUpdate({
-        target: commandStatsTable.command,
-        set: {
-          count: sql`${commandStatsTable.count} + 1`,
+    await Promise.all([
+      db.insert(activityTable).values({
+        command: commandName,
+        userId: user.id,
+        username: user.username,
+        guildId: guild?.id ?? "DM",
+        guildName: guild?.name ?? "DM",
+        success,
+      }),
+      db
+        .insert(commandStatsTable)
+        .values({
+          command: commandName,
+          count: 1,
           lastUsed: new Date(),
-        },
-      });
+        })
+        .onConflictDoUpdate({
+          target: commandStatsTable.command,
+          set: {
+            count: sql`${commandStatsTable.count} + 1`,
+            lastUsed: new Date(),
+          },
+        }),
+    ]);
   } catch (dbErr) {
-    logger.error({ err: dbErr }, "Error logging activity");
+    logger.error(
+      { err: dbErr },
+      "Error al registrar la actividad en la base de datos",
+    );
   }
 }

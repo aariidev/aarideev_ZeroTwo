@@ -1,19 +1,27 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import { db } from "@workspace/db";
 import { logsTable } from "@workspace/db";
 import { desc, eq, and, or, like } from "drizzle-orm";
 
 const router = Router();
 
-router.get("/", async (req, res) => {
+router.get("/", async (req: Request, res: Response) => {
   try {
-    const { level, event, guildId, limit = "100", search } = req.query as Record<string, string>;
+    const {
+      level,
+      event,
+      guildId,
+      limit = "100",
+      search,
+    } = req.query as Record<string, string>;
+
+    const maxLimit = Math.min(parseInt(limit, 10) || 100, 500);
 
     let query = db
       .select()
       .from(logsTable)
       .orderBy(desc(logsTable.createdAt))
-      .limit(Math.min(parseInt(limit) || 100, 500))
+      .limit(maxLimit)
       .$dynamic();
 
     const conditions = [];
@@ -27,7 +35,7 @@ router.get("/", async (req, res) => {
           like(logsTable.moderatorName, `%${search}%`),
           like(logsTable.guildName, `%${search}%`),
           like(logsTable.event, `%${search}%`),
-        )!
+        )!,
       );
     }
 
@@ -37,15 +45,23 @@ router.get("/", async (req, res) => {
 
     const logs = await query;
 
-    res.json(
+    res.status(200).json(
       logs.map((l) => ({
         ...l,
-        details: (() => { try { return JSON.parse(l.details); } catch { return {}; } })(),
+        details: (() => {
+          try {
+            return typeof l.details === "string"
+              ? JSON.parse(l.details)
+              : l.details;
+          } catch {
+            return l.details;
+          }
+        })(),
         createdAt: l.createdAt.toISOString(),
-      }))
+      })),
     );
   } catch (err) {
-    req.log.error({ err }, "Error getting logs");
+    req.log?.error({ err }, "❌ Error consultando logs del sistema");
     res.status(500).json({ error: "Internal server error" });
   }
 });

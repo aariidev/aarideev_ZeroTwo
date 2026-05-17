@@ -1,31 +1,46 @@
-import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ChatInputCommandInteraction, Client } from "discord.js";
+import {
+  SlashCommandBuilder,
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ChatInputCommandInteraction,
+  Client,
+} from "discord.js";
 import { Command } from "../../types.js";
 
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("avatar")
-    .setDescription("🖼️ Muestra el avatar de un usuario")
+    .setDescription("🖼️ Renderiza el archivo visual de perfil de un parásito")
     .addUserOption((opt) =>
-      opt.setName("usuario").setDescription("Usuario a consultar")
+      opt.setName("usuario").setDescription("Sujeto a escanear"),
     ),
   cooldown: 5,
   async execute(interaction: ChatInputCommandInteraction, client: Client) {
     const user = interaction.options.getUser("usuario") ?? interaction.user;
-    const avatarUrl = user.displayAvatarURL({ size: 512 });
+    const avatarUrl = user.displayAvatarURL({ size: 1024 });
 
     const embed = new EmbedBuilder()
-      .setColor(0x5865f2)
-      .setTitle(`🖼️ Avatar de ${user.username}`)
+      .setColor(0xff2d6b)
+      .setAuthor({
+        name: `Transmisión Visual // Archivos Centrales`,
+        iconURL: client.user?.displayAvatarURL(),
+      })
+      .setTitle(`🖼️ Interfaz de: ${user.username}`)
       .setImage(avatarUrl)
       .setTimestamp()
-      .setFooter({ text: "ZeroTwo v2.0", iconURL: client.user?.displayAvatarURL() });
+      .setFooter({
+        text: `Resolución optimizada a 1024px`,
+        iconURL: client.user?.displayAvatarURL(),
+      });
 
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
-        .setLabel("Descargar")
+        .setLabel("Extraer Imagen Abierta")
         .setStyle(ButtonStyle.Link)
         .setURL(avatarUrl)
-        .setEmoji("📥")
+        .setEmoji("📥"),
     );
 
     await interaction.reply({ embeds: [embed], components: [row] });

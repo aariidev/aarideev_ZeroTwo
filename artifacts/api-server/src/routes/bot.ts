@@ -1,15 +1,16 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import { db } from "@workspace/db";
-import { activityTable, commandStatsTable } from "@workspace/db";
-import { desc, count, sql } from "drizzle-orm";
+import { activityTable } from "@workspace/db";
+import { count } from "drizzle-orm";
+import type { Client } from "discord.js";
 
 const router = Router();
 
-let botClient: import("discord.js").Client | null = null;
+let botClient: Client | null = null;
 let botStartTime = Date.now();
 let totalCommandsExecuted = 0;
 
-export function setBotClient(client: import("discord.js").Client) {
+export function setBotClient(client: Client) {
   botClient = client;
   botStartTime = Date.now();
 }
@@ -18,7 +19,7 @@ export function incrementCommands() {
   totalCommandsExecuted++;
 }
 
-router.get("/stats", async (req, res) => {
+router.get("/stats", async (req: Request, res: Response) => {
   try {
     const [cmdCountResult] = await db
       .select({ total: count() })
@@ -31,32 +32,18 @@ router.get("/stats", async (req, res) => {
     const botName = botClient?.user?.username ?? "ZeroTwo";
     const botAvatar = botClient?.user?.displayAvatarURL({ size: 128 }) ?? null;
 
-    res.json({
+    res.status(200).json({
       guildCount,
       userCount,
-      commandsExecuted: Number(cmdCountResult?.total ?? 0),
+      commandsExecuted: Number(cmdCountResult?.total ?? totalCommandsExecuted),
       uptime,
       ping,
       botName,
       botAvatar,
-      version: "2.1.0",
+      version: "2.2.0",
     });
   } catch (err) {
-    req.log.error({ err }, "Error getting bot stats");
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-router.get("/activity", async (req, res) => {
-  try {
-    const activity = await db
-      .select()
-      .from(activityTable)
-      .orderBy(desc(activityTable.executedAt))
-      .limit(50);
-    res.json(activity);
-  } catch (err) {
-    req.log.error({ err }, "Error getting activity");
+    req.log?.error({ err }, "❌ Error crítico obteniendo estadísticas del bot");
     res.status(500).json({ error: "Internal server error" });
   }
 });

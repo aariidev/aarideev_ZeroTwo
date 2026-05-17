@@ -1,50 +1,85 @@
-import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, ChatInputCommandInteraction, Client, TextChannel } from "discord.js";
+import {
+  SlashCommandBuilder,
+  EmbedBuilder,
+  ChatInputCommandInteraction,
+  Client,
+  TextChannel,
+} from "discord.js";
 import { Command } from "../../types.js";
 import { logBotEvent } from "../../../lib/botLogger.js";
 
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("unlock")
-    .setDescription("🔓 Desbloquea el canal actual")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
+    .setDescription(
+      "🔓 Levanta el cierre de seguridad permitiendo transmisiones normales",
+    )
+    .addBooleanOption((opt) =>
+      opt
+        .setName("global")
+        .setDescription("¿Restaurar canales abiertos masivamente?"),
+    ),
   cooldown: 5,
+
   async execute(interaction: ChatInputCommandInteraction, client: Client) {
-    const channel = interaction.channel as TextChannel;
-
-    if (!channel?.isTextBased() || channel.isDMBased()) {
-      return interaction.reply({ content: "Este comando solo funciona en canales de texto.", ephemeral: true });
-    }
-
+    const isGlobal = interaction.options.getBoolean("global") ?? false;
     const everyone = interaction.guild?.roles.everyone;
-    if (!everyone) return interaction.reply({ content: "No pude encontrar el rol @everyone.", ephemeral: true });
 
-    try {
-      await channel.permissionOverwrites.edit(everyone, { SendMessages: null }, { reason: `Unlock por ${interaction.user.tag}` });
-
-      const embed = new EmbedBuilder()
-        .setColor(0x00cc44)
-        .setTitle("🔓 Canal Desbloqueado")
-        .addFields(
-          { name: "Canal", value: `<#${channel.id}>`, inline: true },
-          { name: "Moderador", value: interaction.user.tag, inline: true },
-        )
-        .setTimestamp()
-        .setFooter({ text: "ZeroTwo v2.1.0", iconURL: client.user?.displayAvatarURL() });
-
-      await interaction.reply({ embeds: [embed] });
-
-      await logBotEvent({
-        level: "info",
-        event: "unlock",
-        details: { channelId: channel.id, channelName: channel.name },
-        guildId: interaction.guild?.id,
-        guildName: interaction.guild?.name,
-        moderatorId: interaction.user.id,
-        moderatorName: interaction.user.username,
+    if (!everyone)
+      return interaction.reply({
+        content: "❌ Rol base desincronizado.",
+        ephemeral: true,
       });
-    } catch {
-      await interaction.reply({ content: "No pude desbloquear este canal.", ephemeral: true });
+
+    await interaction.deferReply();
+
+    const channelsToUnlock: TextChannel[] = [];
+    if (isGlobal) {
+      interaction.guild?.channels.cache
+        .filter((c) => c.isTextBased() && !c.isThread())
+        .forEach((c) => channelsToUnlock.push(c as TextChannel));
+    } else {
+      channelsToUnlock.push(interaction.channel as TextChannel);
     }
+
+    let successCount = 0;
+    for (const channel of channelsToUnlock) {
+      try {
+        await channel.permissionOverwrites.edit(
+          everyone,
+          { SendMessages: null },
+          { reason: `Unlock por ${interaction.user.tag}` },
+        );
+        successCount++;
+      } catch {
+        continue;
+      }
+    }
+
+    const embed = new EmbedBuilder()
+      .setColor(0xff2d6b)
+      .setAuthor({
+        name: "Restauración Atmosférica // Zero Two",
+        iconURL: client.user?.displayAvatarURL(),
+      })
+      .setTitle("🔓 Zonas de Comunicación Desbloqueadas")
+      .addFields(
+        {
+          name: "🌍 Frecuencia",
+          value: isGlobal
+            ? `\`Global (${successCount} zonas)\``
+            : `<#${interaction.channelId}>`,
+          inline: true,
+        },
+        {
+          name: "🛡️ Autorizado por",
+          value: `${interaction.user.tag}`,
+          inline: true,
+        },
+      )
+      .setTimestamp();
+
+    await interaction.editReply({ embeds: [embed] });
   },
 };
 

@@ -1,14 +1,24 @@
-import express, { type Express } from "express";
+import express, {
+  type Express,
+  type Request,
+  type Response,
+  type NextFunction,
+} from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
-import router from "./routes";
-import { logger } from "./lib/logger";
+import router from "./routes/index.js";
+import { logger } from "./lib/logger.js";
 
 const app: Express = express();
+
+// ── MIDDLEWARE DE REGISTRO E INSTRUMENTACIÓN DE FLUJO ─────────────────────────
 
 app.use(
   pinoHttp({
     logger,
+    autoLogging: {
+      ignore: (req) => req.url === "/api/health",
+    },
     serializers: {
       req(req) {
         return {
@@ -25,10 +35,42 @@ app.use(
     },
   }),
 );
+
+// ── MIDDLEWARES DE CONFIGURACIÓN BASE ─────────────────────────────────────────
+
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: "10mb" })); // Protegemos el búfer contra payloads masivos maliciosos
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+
+// ── ENRUTAMIENTO Y PASARELAS DE CONTROL ───────────────────────────────────────
+
+app.get("/api/health", (_req: Request, res: Response) => {
+  res.status(200).json({
+    status: "healthy",
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    signature: "Zero Two Core API // v2.2.0",
+  });
+});
 
 app.use("/api", router);
+
+// ── MANEJADOR DE EXCEPCIONES Y ERRORES CRÍTICOS ──────────────────────────────
+
+app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
+  req.log?.error(
+    { err },
+    "❌ Excepción controlada en el núcleo del servidor Express",
+  );
+
+  res.status(500).json({
+    error: "Internal Server Error",
+    message:
+      process.env.NODE_ENV === "development"
+        ? err.message
+        : "Interferencia crítica en los sistemas internos.",
+    code: "CORE_SERVER_COLLAPSE",
+  });
+});
 
 export default app;
