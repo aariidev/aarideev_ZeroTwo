@@ -152,14 +152,14 @@ export default async function onInteractionCreate(interaction: Interaction) {
   const command = client.commands.get(commandName);
   if (!command) return;
 
-  if (devState.maintenanceMode) {
+  if (devState.current.maintenanceMode) {
     return interaction.reply({
       embeds: [
         new EmbedBuilder()
           .setColor(0xff2d6b)
           .setTitle("🔧 Calibración en Proceso // Mantenimiento")
           .setDescription(
-            devState.maintenanceMessage ||
+            devState.current.maintenanceMessage ||
               "Cariño, el sistema se está optimizando en este momento. ¡Vuelve pronto! 💕",
           )
           .setFooter({ text: "ZeroTwo System · Laboratorio de Parásitos" })

@@ -123,14 +123,14 @@ export async function startBot() {
 
       const rows = await db.select().from(botConfigTable);
       const maintenanceRow = rows.find((r) => r.key === "maintenance_mode");
-      if (maintenanceRow)
-        devState.maintenanceMode = maintenanceRow.value === "true";
-
       const messageRow = rows.find((r) => r.key === "maintenance_message");
-      if (messageRow) devState.maintenanceMessage = messageRow.value;
+      devState.setMaintenance(
+        maintenanceRow?.value === "true",
+        messageRow?.value,
+      );
 
       logger.info(
-        { maintenanceMode: devState.maintenanceMode },
+        { maintenanceMode: devState.current.maintenanceMode },
         "💾 Estado de depuración restaurado desde el núcleo de datos.",
       );
     } catch (err) {
