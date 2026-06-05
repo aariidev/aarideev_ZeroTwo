@@ -4,8 +4,146 @@ import { BotClient } from "../types.js";
 import { db, activityTable, commandStatsTable } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { devState } from "../../lib/devState.js";
+import {
+  activeGames,
+  buildEmbed,
+  buildGameButtons,
+  buildBetMenu,
+  createDeck,
+  handValue,
+  dealerPlay,
+  GameState,
+} from "../games/blackjack.js";
+
+// ── Blackjack component handler ───────────────────────────────────────────────
+async function handleBlackjack(interaction: Interaction): Promise<boolean> {
+  if (!interaction.isStringSelectMenu() && !interaction.isButton()) return false;
+
+  const [action, ownerId] = interaction.customId.split(":");
+  if (!action?.startsWith("bj_") || !ownerId) return false;
+
+  // Only the original player can interact
+  if (interaction.user.id !== ownerId) {
+    await interaction.reply({
+      embeds: [new EmbedBuilder().setColor(0xff2d6b).setDescription("❌ Esta partida no es tuya.")],
+      ephemeral: true,
+    });
+    return true;
+  }
+
+  const botIcon = interaction.client.user?.displayAvatarURL();
+
+  // ── Bet selection ─────────────────────────────────────────────────────────
+  if (action === "bj_bet" && interaction.isStringSelectMenu()) {
+    const bet = parseInt(interaction.values[0]!);
+    const deck = createDeck();
+    const playerHand = [deck.pop()!, deck.pop()!];
+    const dealerHand = [deck.pop()!, deck.pop()!];
+
+    const state: GameState = {
+      playerHand,
+      dealerHand,
+      deck,
+      bet,
+      doubled: false,
+      username: interaction.user.username,
+      avatarURL: interaction.user.displayAvatarURL(),
+    };
+    activeGames.set(ownerId, state);
+
+    // Instant blackjack?
+    if (handValue(playerHand) === 21) {
+      activeGames.delete(ownerId);
+      const embed = buildEmbed(state, "blackjack", botIcon);
+      const row = buildGameButtons(ownerId, false, true);
+      await interaction.update({ embeds: [embed], components: [row] });
+      return true;
+    }
+
+    const embed = buildEmbed(state, "playing", botIcon);
+    const row = buildGameButtons(ownerId, true);
+    await interaction.update({ embeds: [embed], components: [row] });
+    return true;
+  }
+
+  // ── Game buttons ──────────────────────────────────────────────────────────
+  if (!interaction.isButton()) return false;
+
+  const state = activeGames.get(ownerId);
+  if (!state) {
+    await interaction.reply({
+      embeds: [new EmbedBuilder().setColor(0xff2d6b).setDescription("❌ No hay partida activa. Usa `/blackjack` para empezar.")],
+      ephemeral: true,
+    });
+    return true;
+  }
+
+  if (action === "bj_hit") {
+    state.playerHand.push(state.deck.pop()!);
+    const val = handValue(state.playerHand);
+
+    if (val > 21) {
+      // Bust
+      activeGames.delete(ownerId);
+      const embed = buildEmbed(state, "bust", botIcon);
+      const row = buildGameButtons(ownerId, false, true);
+      await interaction.update({ embeds: [embed], components: [row] });
+      return true;
+    }
+
+    if (val === 21) {
+      // Auto-stand
+      const status = dealerPlay(state);
+      activeGames.delete(ownerId);
+      const embed = buildEmbed(state, status, botIcon);
+      const row = buildGameButtons(ownerId, false, true);
+      await interaction.update({ embeds: [embed], components: [row] });
+      return true;
+    }
+
+    // Still playing — remove double option after first hit
+    const embed = buildEmbed(state, "playing", botIcon);
+    const row = buildGameButtons(ownerId, false); // can't double after hitting
+    await interaction.update({ embeds: [embed], components: [row] });
+    return true;
+  }
+
+  if (action === "bj_stand") {
+    const status = dealerPlay(state);
+    activeGames.delete(ownerId);
+    const embed = buildEmbed(state, status, botIcon);
+    const row = buildGameButtons(ownerId, false, true);
+    await interaction.update({ embeds: [embed], components: [row] });
+    return true;
+  }
+
+  if (action === "bj_double") {
+    state.bet *= 2;
+    state.doubled = true;
+    state.playerHand.push(state.deck.pop()!);
+    const val = handValue(state.playerHand);
+
+    let status;
+    if (val > 21) {
+      status = "bust" as const;
+    } else {
+      status = dealerPlay(state);
+    }
+
+    activeGames.delete(ownerId);
+    const embed = buildEmbed(state, status, botIcon);
+    const row = buildGameButtons(ownerId, false, true);
+    await interaction.update({ embeds: [embed], components: [row] });
+    return true;
+  }
+
+  return false;
+}
 
 export default async function onInteractionCreate(interaction: Interaction) {
+  // Handle blackjack components first
+  if (await handleBlackjack(interaction)) return;
+
   if (!interaction.isChatInputCommand()) return;
 
   const client = interaction.client as BotClient;
