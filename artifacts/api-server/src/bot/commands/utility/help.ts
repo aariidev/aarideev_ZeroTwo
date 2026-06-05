@@ -112,6 +112,7 @@ const META: Record<
   "8ball": { emoji: "🎱", category: "Diversión", usage: "/8ball <pregunta>" },
   coinflip: { emoji: "🪙", category: "Diversión", usage: "/coinflip" },
   roll: { emoji: "🎲", category: "Diversión", usage: "/roll [caras]" },
+  blackjack: { emoji: "🃏", category: "Diversión", usage: "/blackjack" },
 };
 
 const OPTION_TYPE_LABEL: Record<number, string> = {
@@ -124,7 +125,7 @@ const OPTION_TYPE_LABEL: Record<number, string> = {
   [ApplicationCommandOptionType.Role]: "rol",
   [ApplicationCommandOptionType.Mentionable]: "mención",
   [ApplicationCommandOptionType.Attachment]: "archivo",
-  [ApplicationCommandOptionType.SubCommand]: "subcomando",
+  [ApplicationCommandOptionType.Subcommand]: "subcomando",
 };
 
 const CATEGORY_ORDER = ["Utilidad", "Moderación", "Diversión"];
