@@ -113,6 +113,12 @@ const META: Record<
   coinflip: { emoji: "🪙", category: "Diversión", usage: "/coinflip" },
   roll: { emoji: "🎲", category: "Diversión", usage: "/roll [caras]" },
   blackjack: { emoji: "🃏", category: "Diversión", usage: "/blackjack" },
+  cfgembed: {
+    emoji: "🎨",
+    category: "Utilidad",
+    usage: "/cfgembed [canal]",
+    permission: "Gestionar Mensajes",
+  },
 };
 
 const OPTION_TYPE_LABEL: Record<number, string> = {
