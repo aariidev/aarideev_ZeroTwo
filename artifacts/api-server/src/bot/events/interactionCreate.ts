@@ -14,6 +14,19 @@ import {
   dealerPlay,
   GameState,
 } from "../games/blackjack.js";
+import {
+  activeSessions,
+  buildPanelEmbed,
+  buildPreviewEmbed,
+  buildSectionMenu,
+  buildActionButtons,
+  buildContentModal,
+  buildColorModal,
+  buildAuthorModal,
+  buildFooterModal,
+  buildFieldModal,
+  buildImageModal,
+} from "../builders/cfgembed.js";
 
 // ── Blackjack component handler ───────────────────────────────────────────────
 async function handleBlackjack(interaction: Interaction): Promise<boolean> {
@@ -140,9 +153,229 @@ async function handleBlackjack(interaction: Interaction): Promise<boolean> {
   return false;
 }
 
+// ── CfgEmbed component handler ────────────────────────────────────────────────
+async function handleCfgEmbed(interaction: Interaction): Promise<boolean> {
+  const botIcon = interaction.client.user?.displayAvatarURL();
+
+  // ── Section select menu ──────────────────────────────────────────────────
+  if (interaction.isStringSelectMenu()) {
+    const [action, userId] = interaction.customId.split(":");
+    if (action !== "cfge_section" || !userId) return false;
+
+    if (interaction.user.id !== userId) {
+      await interaction.reply({
+        embeds: [new EmbedBuilder().setColor(0xff2d6b).setDescription("❌ Este panel no es tuyo.")],
+        ephemeral: true,
+      });
+      return true;
+    }
+
+    const state = activeSessions.get(userId);
+    if (!state) {
+      await interaction.reply({
+        embeds: [new EmbedBuilder().setColor(0xff2d6b).setDescription("❌ La sesión expiró. Vuelve a usar `/cfgembed`.")],
+        ephemeral: true,
+      });
+      return true;
+    }
+
+    const section = interaction.values[0];
+
+    // Immediate action — no modal
+    if (section === "removefield") {
+      state.fields.pop();
+      await interaction.update({
+        embeds: [buildPanelEmbed(state, botIcon), buildPreviewEmbed(state, botIcon)],
+        components: [buildSectionMenu(userId), buildActionButtons(userId)],
+      });
+      return true;
+    }
+
+    // Show modal for the selected section
+    switch (section) {
+      case "content":  await interaction.showModal(buildContentModal(userId, state)); break;
+      case "color":    await interaction.showModal(buildColorModal(userId, state));   break;
+      case "author":   await interaction.showModal(buildAuthorModal(userId, state));  break;
+      case "footer":   await interaction.showModal(buildFooterModal(userId, state));  break;
+      case "field":    await interaction.showModal(buildFieldModal(userId));          break;
+      case "image":    await interaction.showModal(buildImageModal(userId, state));   break;
+      default: return false;
+    }
+    return true;
+  }
+
+  // ── Modal submit ─────────────────────────────────────────────────────────
+  if (interaction.isModalSubmit()) {
+    const [action, userId] = interaction.customId.split(":");
+    if (!action?.startsWith("cfge_modal_") || !userId) return false;
+
+    const state = activeSessions.get(userId);
+    if (!state) {
+      await interaction.reply({
+        embeds: [new EmbedBuilder().setColor(0xff2d6b).setDescription("❌ La sesión expiró.")],
+        ephemeral: true,
+      });
+      return true;
+    }
+
+    const section = action.replace("cfge_modal_", "");
+
+    switch (section) {
+      case "content": {
+        const t = interaction.fields.getTextInputValue("title").trim();
+        const d = interaction.fields.getTextInputValue("description").trim();
+        state.title = t || undefined;
+        state.description = d || undefined;
+        break;
+      }
+      case "color": {
+        const hex = interaction.fields.getTextInputValue("color").replace(/^#/, "").trim();
+        const parsed = parseInt(hex, 16);
+        if (!isNaN(parsed) && hex.length === 6) state.color = parsed;
+        break;
+      }
+      case "author": {
+        const name = interaction.fields.getTextInputValue("authorName").trim();
+        const icon = interaction.fields.getTextInputValue("authorIcon").trim();
+        state.authorName = name || undefined;
+        state.authorIconURL = icon || undefined;
+        break;
+      }
+      case "footer": {
+        const text = interaction.fields.getTextInputValue("footerText").trim();
+        state.footerText = text || undefined;
+        break;
+      }
+      case "field": {
+        if (state.fields.length < 25) {
+          state.fields.push({
+            name:   interaction.fields.getTextInputValue("fieldName").trim(),
+            value:  interaction.fields.getTextInputValue("fieldValue").trim(),
+            inline: interaction.fields.getTextInputValue("inline").trim().toLowerCase() === "si",
+          });
+        }
+        break;
+      }
+      case "image": {
+        const url = interaction.fields.getTextInputValue("imageURL").trim();
+        state.imageURL = url || state.botBannerURL || undefined;
+        break;
+      }
+    }
+
+    // Acknowledge and update original panel
+    if (interaction.isFromMessage()) {
+      await interaction.deferUpdate();
+    } else {
+      await interaction.deferReply({ ephemeral: true });
+    }
+
+    await state.originalInteraction.editReply({
+      embeds: [buildPanelEmbed(state, botIcon), buildPreviewEmbed(state, botIcon)],
+      components: [buildSectionMenu(userId), buildActionButtons(userId)],
+    });
+
+    if (!interaction.isFromMessage()) {
+      await interaction.deleteReply().catch(() => null);
+    }
+
+    return true;
+  }
+
+  // ── Action buttons ───────────────────────────────────────────────────────
+  if (interaction.isButton()) {
+    const [action, userId] = interaction.customId.split(":");
+    if (!action?.startsWith("cfge_") || !userId) return false;
+    if (!["cfge_send", "cfge_cancel", "cfge_reset"].includes(action)) return false;
+
+    if (interaction.user.id !== userId) {
+      await interaction.reply({
+        embeds: [new EmbedBuilder().setColor(0xff2d6b).setDescription("❌ Este panel no es tuyo.")],
+        ephemeral: true,
+      });
+      return true;
+    }
+
+    const state = activeSessions.get(userId);
+    if (!state) {
+      await interaction.reply({
+        embeds: [new EmbedBuilder().setColor(0xff2d6b).setDescription("❌ La sesión expiró.")],
+        ephemeral: true,
+      });
+      return true;
+    }
+
+    if (action === "cfge_cancel") {
+      activeSessions.delete(userId);
+      await interaction.update({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xff2d6b)
+            .setAuthor({ name: "ZeroTwo · Constructor de Embeds", iconURL: botIcon })
+            .setDescription("❌ Constructor cancelado.")
+            .setTimestamp(),
+        ],
+        components: [],
+      });
+      return true;
+    }
+
+    if (action === "cfge_reset") {
+      const fresh = {
+        color: 0xec4899,
+        fields: [] as { name: string; value: string; inline: boolean }[],
+        targetChannelId: state.targetChannelId,
+        originalInteraction: state.originalInteraction,
+        botBannerURL: state.botBannerURL,
+        imageURL: state.botBannerURL ?? undefined,
+        expiresAt: Date.now() + 15 * 60 * 1000,
+      };
+      activeSessions.set(userId, fresh);
+      await interaction.update({
+        embeds: [buildPanelEmbed(fresh, botIcon), buildPreviewEmbed(fresh, botIcon)],
+        components: [buildSectionMenu(userId), buildActionButtons(userId)],
+      });
+      return true;
+    }
+
+    if (action === "cfge_send") {
+      const channel = interaction.guild?.channels.cache.get(state.targetChannelId);
+      if (!channel?.isTextBased()) {
+        await interaction.reply({
+          embeds: [new EmbedBuilder().setColor(0xff2d6b).setDescription("❌ No se pudo encontrar el canal de destino.")],
+          ephemeral: true,
+        });
+        return true;
+      }
+
+      await channel.send({ embeds: [buildPreviewEmbed(state, botIcon)] });
+      activeSessions.delete(userId);
+
+      await interaction.update({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0x00f5d4)
+            .setAuthor({ name: "ZeroTwo · Constructor de Embeds", iconURL: botIcon })
+            .setDescription(`✅ **Embed enviado** a <#${state.targetChannelId}>.`)
+            .setTimestamp(),
+        ],
+        components: [],
+      });
+      return true;
+    }
+
+    return false;
+  }
+
+  return false;
+}
+
 export default async function onInteractionCreate(interaction: Interaction) {
   // Handle blackjack components first
   if (await handleBlackjack(interaction)) return;
+
+  // Handle cfgembed builder
+  if (await handleCfgEmbed(interaction)) return;
 
   if (!interaction.isChatInputCommand()) return;
 

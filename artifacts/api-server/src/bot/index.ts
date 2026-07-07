@@ -39,6 +39,7 @@ import eightballCmd from "./commands/fun/8ball.js";
 import coinflipCmd from "./commands/fun/coinflip.js";
 import rollCmd from "./commands/fun/roll.js";
 import blackjackCmd from "./commands/fun/blackjack.js";
+import cfgembedCmd from "./commands/utility/cfgembed.js";
 
 const ALL_COMMANDS = [
   pingCmd,
@@ -65,6 +66,7 @@ const ALL_COMMANDS = [
   coinflipCmd,
   rollCmd,
   blackjackCmd,
+  cfgembedCmd,
 ];
 
 export async function startBot() {
