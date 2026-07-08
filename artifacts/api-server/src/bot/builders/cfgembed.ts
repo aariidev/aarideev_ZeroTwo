@@ -155,13 +155,13 @@ export function buildSectionMenu(
           label: "Eliminar último campo",
           description: "Quita el campo más reciente añadido",
           value: "removefield",
-          emoji: "🗑️",
+          emoji: "🗑",
         },
         {
           label: "Imagen de portada",
           description: "Imagen grande al pie del embed",
           value: "image",
-          emoji: "🖼️",
+          emoji: "🏞",
         },
       ]),
   );
@@ -184,8 +184,7 @@ export function buildActionButtons(
     new ButtonBuilder()
       .setCustomId(`cfge_cancel:${userId}`)
       .setLabel("Cancelar")
-      .setStyle(ButtonStyle.Danger)
-      .setEmoji("✕"),
+      .setStyle(ButtonStyle.Danger),
   );
 }
 
