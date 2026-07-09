@@ -44,6 +44,7 @@ import cfglogsCmd from "./commands/utility/cfglogs.js";
 import walletCmd from "./commands/fun/wallet.js";
 import shopCmd from "./commands/fun/shop.js";
 import inventoryCmd from "./commands/fun/inventory.js";
+import devCmd from "./commands/admin/dev.js";
 
 const ALL_COMMANDS = [
   pingCmd,
@@ -75,6 +76,7 @@ const ALL_COMMANDS = [
   walletCmd,
   shopCmd,
   inventoryCmd,
+  devCmd,
 ];
 
 export async function startBot() {
