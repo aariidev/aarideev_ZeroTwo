@@ -1,0 +1,2 @@
+- [Economy system](economy-system.md) — full BJ economy in interactionCreate; passive items consumed on bj_bet, payouts on every game-end path
+- [DB schema exports](db-exports.md) — lib/db/src/index.ts re-exports all from ./schema; economy tables in lib/db/src/schema/economy.ts

@@ -13,6 +13,7 @@ import {
   handValue,
   dealerPlay,
   GameState,
+  GameStatus,
 } from "../games/blackjack.js";
 import {
   activeSessions,
@@ -27,6 +28,34 @@ import {
   buildFieldModal,
   buildImageModal,
 } from "../builders/cfgembed.js";
+import {
+  deductBalance,
+  addBalance,
+  recordGame,
+  claimDaily,
+  hasItem,
+  useItem,
+  addItem,
+  calculateBlackjackPayout,
+  getBalance,
+} from "../lib/economy.js";
+import { SHOP_ITEMS, ITEM_REWARDS } from "../lib/shop.js";
+
+function buildNetLabel(status: string, state: GameState): string {
+  const { bet, multiplierActive, insuranceActive } = state;
+  if (status === "blackjack") {
+    const net = multiplierActive ? Math.floor(bet * 3) : Math.floor(bet * 1.5);
+    return `+**${net}** fichas${multiplierActive ? " (×2 Multiplicador)" : ""}`;
+  }
+  if (status === "push") return `±**0** fichas (apuesta devuelta)`;
+  if (status === "win" || status === "dealer_bust") {
+    const net = multiplierActive ? bet * 2 : bet;
+    return `+**${net}** fichas${multiplierActive ? " (×2 Multiplicador)" : ""}`;
+  }
+  return insuranceActive
+    ? `-**${Math.floor(bet * 0.5)}** fichas (🛡 Seguro recuperó 50%)`
+    : `-**${bet}** fichas`;
+}
 
 // ── Blackjack component handler ───────────────────────────────────────────────
 async function handleBlackjack(interaction: Interaction): Promise<boolean> {
@@ -49,24 +78,53 @@ async function handleBlackjack(interaction: Interaction): Promise<boolean> {
   // ── Bet selection ─────────────────────────────────────────────────────────
   if (action === "bj_bet" && interaction.isStringSelectMenu()) {
     const bet = parseInt(interaction.values[0]!);
+    const guildId = interaction.guild?.id ?? "";
+
+    if (bet <= 0) {
+      await interaction.reply({
+        embeds: [new EmbedBuilder().setColor(0xff2d6b).setDescription("❌ No tienes fichas suficientes. Reclama tu daily con `/wallet`.")],
+        ephemeral: true,
+      });
+      return true;
+    }
+
+    const { success, balance: balanceAfterBet } = await deductBalance(guildId, ownerId, bet);
+    if (!success) {
+      await interaction.reply({
+        embeds: [new EmbedBuilder().setColor(0xff2d6b).setDescription(`❌ Saldo insuficiente. Necesitas **${bet}** fichas pero tienes **${balanceAfterBet}**.\nReclama tu daily con \`/wallet\`.`)],
+        ephemeral: true,
+      });
+      return true;
+    }
+
+    const multiplierActive = await hasItem(guildId, ownerId, "multiplier");
+    const insuranceActive = await hasItem(guildId, ownerId, "insurance");
+    if (multiplierActive) await useItem(guildId, ownerId, "multiplier");
+    if (insuranceActive) await useItem(guildId, ownerId, "insurance");
+
     const deck = createDeck();
     const playerHand = [deck.pop()!, deck.pop()!];
     const dealerHand = [deck.pop()!, deck.pop()!];
 
     const state: GameState = {
-      playerHand,
-      dealerHand,
-      deck,
-      bet,
-      doubled: false,
+      playerHand, dealerHand, deck,
+      bet, originalBet: bet, doubled: false,
       username: interaction.user.username,
       avatarURL: interaction.user.displayAvatarURL(),
+      guildId, userId: ownerId,
+      startBalance: balanceAfterBet + bet,
+      multiplierActive, insuranceActive,
     };
     activeGames.set(ownerId, state);
 
     // Instant blackjack?
     if (handValue(playerHand) === 21) {
       activeGames.delete(ownerId);
+      const payout = calculateBlackjackPayout("blackjack", bet, multiplierActive, insuranceActive);
+      const newBalance = await addBalance(guildId, ownerId, payout);
+      await recordGame(guildId, ownerId, true, bet);
+      state.netLabel = buildNetLabel("blackjack", state);
+      state.finalBalance = newBalance;
       const embed = buildEmbed(state, "blackjack", botIcon);
       const row = buildGameButtons(ownerId, false, true);
       await interaction.update({ embeds: [embed], components: [row] });
@@ -96,8 +154,13 @@ async function handleBlackjack(interaction: Interaction): Promise<boolean> {
     const val = handValue(state.playerHand);
 
     if (val > 21) {
-      // Bust
       activeGames.delete(ownerId);
+      const payout = calculateBlackjackPayout("bust", state.bet, state.multiplierActive, state.insuranceActive);
+      if (payout > 0) await addBalance(state.guildId, state.userId, payout);
+      const newBalance = await getBalance(state.guildId, state.userId);
+      await recordGame(state.guildId, state.userId, false, state.originalBet);
+      state.netLabel = buildNetLabel("bust", state);
+      state.finalBalance = newBalance;
       const embed = buildEmbed(state, "bust", botIcon);
       const row = buildGameButtons(ownerId, false, true);
       await interaction.update({ embeds: [embed], components: [row] });
@@ -105,9 +168,15 @@ async function handleBlackjack(interaction: Interaction): Promise<boolean> {
     }
 
     if (val === 21) {
-      // Auto-stand
       const status = dealerPlay(state);
       activeGames.delete(ownerId);
+      const payout = calculateBlackjackPayout(status, state.bet, state.multiplierActive, state.insuranceActive);
+      if (payout > 0) await addBalance(state.guildId, state.userId, payout);
+      const newBalance = await getBalance(state.guildId, state.userId);
+      const won = ["win", "dealer_bust", "blackjack"].includes(status);
+      await recordGame(state.guildId, state.userId, won, state.originalBet);
+      state.netLabel = buildNetLabel(status, state);
+      state.finalBalance = newBalance;
       const embed = buildEmbed(state, status, botIcon);
       const row = buildGameButtons(ownerId, false, true);
       await interaction.update({ embeds: [embed], components: [row] });
@@ -124,6 +193,13 @@ async function handleBlackjack(interaction: Interaction): Promise<boolean> {
   if (action === "bj_stand") {
     const status = dealerPlay(state);
     activeGames.delete(ownerId);
+    const payout = calculateBlackjackPayout(status, state.bet, state.multiplierActive, state.insuranceActive);
+    if (payout > 0) await addBalance(state.guildId, state.userId, payout);
+    const newBalance = await getBalance(state.guildId, state.userId);
+    const won = ["win", "dealer_bust", "blackjack"].includes(status);
+    await recordGame(state.guildId, state.userId, won, state.originalBet);
+    state.netLabel = buildNetLabel(status, state);
+    state.finalBalance = newBalance;
     const embed = buildEmbed(state, status, botIcon);
     const row = buildGameButtons(ownerId, false, true);
     await interaction.update({ embeds: [embed], components: [row] });
@@ -131,19 +207,32 @@ async function handleBlackjack(interaction: Interaction): Promise<boolean> {
   }
 
   if (action === "bj_double") {
+    const extraBet = state.bet;
+    const { success: canDouble, balance: balAfterDouble } = await deductBalance(state.guildId, state.userId, extraBet);
+    if (!canDouble) {
+      await interaction.reply({
+        embeds: [new EmbedBuilder().setColor(0xff2d6b).setDescription(`❌ Saldo insuficiente para doblar. Necesitas **${extraBet}** fichas más (tienes **${balAfterDouble}**).`)],
+        ephemeral: true,
+      });
+      return true;
+    }
+
     state.bet *= 2;
     state.doubled = true;
     state.playerHand.push(state.deck.pop()!);
     const val = handValue(state.playerHand);
 
-    let status;
-    if (val > 21) {
-      status = "bust" as const;
-    } else {
-      status = dealerPlay(state);
-    }
+    let status: GameStatus;
+    if (val > 21) { status = "bust"; } else { status = dealerPlay(state); }
 
     activeGames.delete(ownerId);
+    const payout = calculateBlackjackPayout(status, state.bet, state.multiplierActive, state.insuranceActive);
+    if (payout > 0) await addBalance(state.guildId, state.userId, payout);
+    const newBalance = await getBalance(state.guildId, state.userId);
+    const won = ["win", "dealer_bust", "blackjack"].includes(status);
+    await recordGame(state.guildId, state.userId, won, state.originalBet);
+    state.netLabel = buildNetLabel(status, state);
+    state.finalBalance = newBalance;
     const embed = buildEmbed(state, status, botIcon);
     const row = buildGameButtons(ownerId, false, true);
     await interaction.update({ embeds: [embed], components: [row] });
@@ -151,6 +240,134 @@ async function handleBlackjack(interaction: Interaction): Promise<boolean> {
   }
 
   return false;
+}
+
+// ── Shop component handler ────────────────────────────────────────────────────
+async function handleShop(interaction: Interaction): Promise<boolean> {
+  if (!interaction.isButton()) return false;
+  const parts = interaction.customId.split(":");
+  const [action, userId, itemId] = parts;
+  if (action !== "shop_buy" || !userId || !itemId) return false;
+
+  if (interaction.user.id !== userId) {
+    await interaction.reply({ embeds: [new EmbedBuilder().setColor(0xff2d6b).setDescription("❌ Esta tienda no es tuya.")], ephemeral: true });
+    return true;
+  }
+
+  const item = SHOP_ITEMS[itemId];
+  if (!item) return false;
+
+  const guildId = interaction.guild?.id ?? "";
+  const { success, balance } = await deductBalance(guildId, userId, item.price);
+
+  if (!success) {
+    await interaction.reply({
+      embeds: [new EmbedBuilder().setColor(0xff2d6b).setDescription(`❌ Fondos insuficientes.\nNecesitas **${item.price}** fichas pero tienes **${balance}**.`)],
+      ephemeral: true,
+    });
+    return true;
+  }
+
+  await addItem(guildId, userId, itemId);
+  const botIcon = interaction.client.user?.displayAvatarURL();
+
+  await interaction.reply({
+    embeds: [
+      new EmbedBuilder()
+        .setColor(0x00ff9f)
+        .setAuthor({ name: "ZeroTwo Casino · Tienda", iconURL: botIcon })
+        .setTitle(`${item.emoji} ¡Compra exitosa!`)
+        .setDescription(`Adquiriste **${item.name}**.`)
+        .addFields(
+          { name: "💰 Pagado", value: `\`${item.price.toLocaleString()}\` fichas`, inline: true },
+          { name: "🏦 Saldo restante", value: `\`${balance.toLocaleString()}\` fichas`, inline: true },
+          { name: "⚡ Efecto", value: item.effect, inline: false },
+        )
+        .setFooter({ text: item.type === "passive" ? "Se activa automáticamente en tu próximo Blackjack" : "Úsalo desde /inventory", iconURL: botIcon })
+        .setTimestamp(),
+    ],
+    ephemeral: true,
+  });
+  return true;
+}
+
+// ── Inventory & Wallet component handler ─────────────────────────────────────
+async function handleInventory(interaction: Interaction): Promise<boolean> {
+  if (!interaction.isButton()) return false;
+  const parts = interaction.customId.split(":");
+  const [action, userId, itemId] = parts;
+
+  if (!action || !userId) return false;
+  const guildId = interaction.guild?.id ?? "";
+  const botIcon = interaction.client.user?.displayAvatarURL();
+
+  // Wallet daily claim
+  if (action === "wallet_daily") {
+    if (interaction.user.id !== userId) {
+      await interaction.reply({ embeds: [new EmbedBuilder().setColor(0xff2d6b).setDescription("❌ Esta wallet no es tuya.")], ephemeral: true });
+      return true;
+    }
+    const result = await claimDaily(guildId, userId);
+    if (!result.success) {
+      const h = Math.floor(result.msLeft / 3600000);
+      const m = Math.floor((result.msLeft % 3600000) / 60000);
+      await interaction.reply({ embeds: [new EmbedBuilder().setColor(0xff9900).setDescription(`⏳ Ya reclamaste hoy. Vuelve en **${h}h ${m}m**.`)], ephemeral: true });
+      return true;
+    }
+    await interaction.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0x00ff9f)
+          .setAuthor({ name: "ZeroTwo Casino · Daily", iconURL: botIcon })
+          .setTitle("🎁 ¡Recompensa Diaria Reclamada!")
+          .addFields(
+            { name: "💰 Fichas obtenidas", value: `\`+${result.coins}\``, inline: true },
+            { name: "🔥 Racha", value: `\`${result.streak} días\``, inline: true },
+          )
+          .setFooter({ text: "Vuelve mañana para tu siguiente recompensa", iconURL: botIcon })
+          .setTimestamp(),
+      ],
+      ephemeral: true,
+    });
+    return true;
+  }
+
+  // Inventory instant item use
+  if (action !== "inv_use" || !itemId) return false;
+  if (interaction.user.id !== userId) {
+    await interaction.reply({ embeds: [new EmbedBuilder().setColor(0xff2d6b).setDescription("❌ Este inventario no es tuyo.")], ephemeral: true });
+    return true;
+  }
+
+  const item = SHOP_ITEMS[itemId];
+  if (!item || item.type !== "instant") return false;
+
+  const [min, max] = ITEM_REWARDS[itemId] ?? [0, 0];
+  const used = await useItem(guildId, userId, itemId);
+  if (!used) {
+    await interaction.reply({ embeds: [new EmbedBuilder().setColor(0xff2d6b).setDescription("❌ No tienes ese ítem en tu inventario.")], ephemeral: true });
+    return true;
+  }
+
+  const reward = Math.floor(Math.random() * (max - min + 1)) + min;
+  const newBalance = await addBalance(guildId, userId, reward);
+
+  await interaction.reply({
+    embeds: [
+      new EmbedBuilder()
+        .setColor(0xffd700)
+        .setAuthor({ name: "ZeroTwo Casino · Inventario", iconURL: botIcon })
+        .setTitle(`${item.emoji} ¡${item.name} Abierto!`)
+        .setDescription(`Obtuviste **${reward} fichas** al azar.`)
+        .addFields(
+          { name: "🎲 Ganancia", value: `\`+${reward}\` fichas`, inline: true },
+          { name: "🏦 Saldo nuevo", value: `\`${newBalance.toLocaleString()}\` fichas`, inline: true },
+        )
+        .setTimestamp(),
+    ],
+    ephemeral: true,
+  });
+  return true;
 }
 
 // ── CfgEmbed component handler ────────────────────────────────────────────────
@@ -371,10 +588,9 @@ async function handleCfgEmbed(interaction: Interaction): Promise<boolean> {
 }
 
 export default async function onInteractionCreate(interaction: Interaction) {
-  // Handle blackjack components first
   if (await handleBlackjack(interaction)) return;
-
-  // Handle cfgembed builder
+  if (await handleShop(interaction)) return;
+  if (await handleInventory(interaction)) return;
   if (await handleCfgEmbed(interaction)) return;
 
   if (!interaction.isChatInputCommand()) return;
