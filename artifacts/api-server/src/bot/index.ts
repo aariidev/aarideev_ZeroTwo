@@ -41,6 +41,9 @@ import rollCmd from "./commands/fun/roll.js";
 import blackjackCmd from "./commands/fun/blackjack.js";
 import cfgembedCmd from "./commands/utility/cfgembed.js";
 import cfglogsCmd from "./commands/utility/cfglogs.js";
+import walletCmd from "./commands/fun/wallet.js";
+import shopCmd from "./commands/fun/shop.js";
+import inventoryCmd from "./commands/fun/inventory.js";
 
 const ALL_COMMANDS = [
   pingCmd,
@@ -69,6 +72,9 @@ const ALL_COMMANDS = [
   blackjackCmd,
   cfgembedCmd,
   cfglogsCmd,
+  walletCmd,
+  shopCmd,
+  inventoryCmd,
 ];
 
 export async function startBot() {
