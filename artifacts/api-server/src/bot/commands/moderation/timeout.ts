@@ -6,6 +6,7 @@ import {
 } from "discord.js";
 import { Command } from "../../types.js";
 import { logBotEvent } from "../../../lib/botLogger.js";
+import { sendModLog } from "../../lib/modlog.js";
 
 const DURATIONS: Record<string, number> = {
   "60s": 60_000,
@@ -159,6 +160,7 @@ const command: Command = {
         .setTimestamp();
 
       await interaction.reply({ embeds: [embed] });
+      await sendModLog(client, interaction.guild?.id ?? "", embed);
 
       await logBotEvent({
         level: "warn",
