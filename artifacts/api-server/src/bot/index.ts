@@ -44,7 +44,11 @@ import cfglogsCmd from "./commands/utility/cfglogs.js";
 import walletCmd from "./commands/fun/wallet.js";
 import shopCmd from "./commands/fun/shop.js";
 import inventoryCmd from "./commands/fun/inventory.js";
+import topCmd from "./commands/fun/top.js";
+import slotsCmd from "./commands/fun/slots.js";
+import payCmd from "./commands/fun/pay.js";
 import devCmd from "./commands/admin/dev.js";
+import { startGameCleanup } from "./lib/gameCleanup.js";
 
 const ALL_COMMANDS = [
   pingCmd,
@@ -76,6 +80,9 @@ const ALL_COMMANDS = [
   walletCmd,
   shopCmd,
   inventoryCmd,
+  topCmd,
+  slotsCmd,
+  payCmd,
   devCmd,
 ];
 
@@ -131,6 +138,7 @@ export async function startBot() {
       setBotClientForGuilds(client);
       setBotClientForDev(client);
 
+      startGameCleanup();
       logger.info("🔗 Pasarelas y rutas API vinculadas al cliente central.");
 
       const rows = await db.select().from(botConfigTable);

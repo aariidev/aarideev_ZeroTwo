@@ -1,5 +1,5 @@
 import { db, economyTable, inventoryTable, Economy, InventoryRow } from "@workspace/db";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, desc } from "drizzle-orm";
 import { logger } from "../../lib/logger.js";
 
 const DAILY_COOLDOWN_MS = 24 * 60 * 60 * 1000;

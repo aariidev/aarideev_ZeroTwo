@@ -34,8 +34,9 @@ export interface GameState {
   multiplierActive: boolean;
   insuranceActive: boolean;
   finalBalance?: number;
-  netResult?: number;       // positive = won, negative = lost
-  netLabel?: string;        // formatted result string
+  netResult?: number;
+  netLabel?: string;
+  startedAt: Date;
 }
 
 // ── Active games (in-memory) ──────────────────────────────────────────────────
