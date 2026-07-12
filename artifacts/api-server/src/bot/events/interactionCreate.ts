@@ -114,6 +114,7 @@ async function handleBlackjack(interaction: Interaction): Promise<boolean> {
       guildId, userId: ownerId,
       startBalance: balanceAfterBet + bet,
       multiplierActive, insuranceActive,
+      startedAt: new Date(),
     };
     activeGames.set(ownerId, state);
 
