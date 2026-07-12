@@ -10,135 +10,72 @@ import {
 } from "discord.js";
 import { BotClient, Command } from "../../types.js";
 
+const VERSION = "v2.3.0";
+
 const META: Record<
   string,
   { emoji: string; category: string; usage: string; permission?: string }
 > = {
-  ping: { emoji: "🏓", category: "Utilidad", usage: "/ping" },
-  avatar: { emoji: "🖼️", category: "Utilidad", usage: "/avatar [usuario]" },
+  // ── Utilidad ────────────────────────────────────────────────────────────────
+  ping:       { emoji: "🏓", category: "Utilidad", usage: "/ping" },
+  avatar:     { emoji: "🖼️", category: "Utilidad", usage: "/avatar [usuario]" },
   serverinfo: { emoji: "🏠", category: "Utilidad", usage: "/serverinfo" },
-  userinfo: { emoji: "👤", category: "Utilidad", usage: "/userinfo [usuario]" },
-  help: { emoji: "📋", category: "Utilidad", usage: "/help [comando]" },
-  ban: {
-    emoji: "🔨",
-    category: "Moderación",
-    usage: "/ban <usuario> [motivo] [días]",
-    permission: "Banear Miembros",
-  },
-  kick: {
-    emoji: "👢",
-    category: "Moderación",
-    usage: "/kick <usuario> [motivo]",
-    permission: "Expulsar Miembros",
-  },
-  mute: {
-    emoji: "🔇",
-    category: "Moderación",
-    usage: "/mute <usuario> <duración>",
-    permission: "Silenciar Miembros",
-  },
-  unmute: {
-    emoji: "🔊",
-    category: "Moderación",
-    usage: "/unmute <usuario>",
-    permission: "Silenciar Miembros",
-  },
-  timeout: {
-    emoji: "⏳",
-    category: "Moderación",
-    usage: "/timeout <usuario> <segundos>",
-    permission: "Silenciar Miembros",
-  },
-  untimeout: {
-    emoji: "✅",
-    category: "Moderación",
-    usage: "/untimeout <usuario>",
-    permission: "Silenciar Miembros",
-  },
-  unban: {
-    emoji: "🔓",
-    category: "Moderación",
-    usage: "/unban <id>",
-    permission: "Banear Miembros",
-  },
-  warn: {
-    emoji: "⚠️",
-    category: "Moderación",
-    usage: "/warn <usuario> <motivo>",
-    permission: "Silenciar Miembros",
-  },
-  warns: {
-    emoji: "📜",
-    category: "Moderación",
-    usage: "/warns <usuario>",
-    permission: "Silenciar Miembros",
-  },
-  clearwarns: {
-    emoji: "🧹",
-    category: "Moderación",
-    usage: "/clearwarns <usuario>",
-    permission: "Silenciar Miembros",
-  },
-  purge: {
-    emoji: "🗑️",
-    category: "Moderación",
-    usage: "/purge <cantidad>",
-    permission: "Gestionar Mensajes",
-  },
-  slowmode: {
-    emoji: "🐢",
-    category: "Moderación",
-    usage: "/slowmode <segundos>",
-    permission: "Gestionar Canales",
-  },
-  lock: {
-    emoji: "🔒",
-    category: "Moderación",
-    usage: "/lock [motivo]",
-    permission: "Gestionar Canales",
-  },
-  unlock: {
-    emoji: "🔓",
-    category: "Moderación",
-    usage: "/unlock",
-    permission: "Gestionar Canales",
-  },
-  logs: {
-    emoji: "📋",
-    category: "Moderación",
-    usage: "/logs <ver|buscar|borrar>",
-    permission: "Silenciar Miembros",
-  },
-  "8ball": { emoji: "🎱", category: "Diversión", usage: "/8ball <pregunta>" },
+  userinfo:   { emoji: "👤", category: "Utilidad", usage: "/userinfo [usuario]" },
+  help:       { emoji: "📋", category: "Utilidad", usage: "/help [comando]" },
+  cfgembed:   { emoji: "🎨", category: "Utilidad", usage: "/cfgembed [canal]", permission: "Gestionar Mensajes" },
+  cfglogs:    { emoji: "📋", category: "Utilidad", usage: "/cfglogs <set|disable|status>", permission: "Gestionar Servidor" },
+
+  // ── Moderación ──────────────────────────────────────────────────────────────
+  ban:        { emoji: "🔨", category: "Moderación", usage: "/ban <usuario> [motivo] [días]", permission: "Banear Miembros" },
+  kick:       { emoji: "👢", category: "Moderación", usage: "/kick <usuario> [motivo]", permission: "Expulsar Miembros" },
+  mute:       { emoji: "🔇", category: "Moderación", usage: "/mute <usuario> <duración>", permission: "Silenciar Miembros" },
+  unmute:     { emoji: "🔊", category: "Moderación", usage: "/unmute <usuario>", permission: "Silenciar Miembros" },
+  timeout:    { emoji: "⏳", category: "Moderación", usage: "/timeout <usuario> <segundos>", permission: "Silenciar Miembros" },
+  untimeout:  { emoji: "✅", category: "Moderación", usage: "/untimeout <usuario>", permission: "Silenciar Miembros" },
+  unban:      { emoji: "🔓", category: "Moderación", usage: "/unban <id>", permission: "Banear Miembros" },
+  warn:       { emoji: "⚠️", category: "Moderación", usage: "/warn <usuario> <motivo>", permission: "Silenciar Miembros" },
+  warns:      { emoji: "📜", category: "Moderación", usage: "/warns <usuario>", permission: "Silenciar Miembros" },
+  clearwarns: { emoji: "🧹", category: "Moderación", usage: "/clearwarns <usuario>", permission: "Silenciar Miembros" },
+  purge:      { emoji: "🗑️", category: "Moderación", usage: "/purge <cantidad>", permission: "Gestionar Mensajes" },
+  slowmode:   { emoji: "🐢", category: "Moderación", usage: "/slowmode <segundos>", permission: "Gestionar Canales" },
+  lock:       { emoji: "🔒", category: "Moderación", usage: "/lock [motivo]", permission: "Gestionar Canales" },
+  unlock:     { emoji: "🔓", category: "Moderación", usage: "/unlock", permission: "Gestionar Canales" },
+  logs:       { emoji: "📋", category: "Moderación", usage: "/logs <ver|buscar|borrar>", permission: "Silenciar Miembros" },
+
+  // ── Diversión ───────────────────────────────────────────────────────────────
+  "8ball":  { emoji: "🎱", category: "Diversión", usage: "/8ball <pregunta>" },
   coinflip: { emoji: "🪙", category: "Diversión", usage: "/coinflip" },
-  roll: { emoji: "🎲", category: "Diversión", usage: "/roll [caras]" },
-  blackjack: { emoji: "🃏", category: "Diversión", usage: "/blackjack" },
-  cfgembed: {
-    emoji: "🎨",
-    category: "Utilidad",
-    usage: "/cfgembed [canal]",
-    permission: "Gestionar Mensajes",
-  },
+  roll:     { emoji: "🎲", category: "Diversión", usage: "/roll [caras]" },
+
+  // ── Casino ──────────────────────────────────────────────────────────────────
+  blackjack: { emoji: "🃏", category: "Casino", usage: "/blackjack" },
+  slots:     { emoji: "🎰", category: "Casino", usage: "/slots <apuesta>" },
+  wallet:    { emoji: "💳", category: "Casino", usage: "/wallet [usuario]" },
+  shop:      { emoji: "🏪", category: "Casino", usage: "/shop" },
+  inventory: { emoji: "🎒", category: "Casino", usage: "/inventory" },
+  pay:       { emoji: "💸", category: "Casino", usage: "/pay <usuario> <cantidad>" },
+  top:       { emoji: "🏆", category: "Casino", usage: "/top [tipo]" },
 };
 
 const OPTION_TYPE_LABEL: Record<number, string> = {
-  [ApplicationCommandOptionType.String]: "texto",
-  [ApplicationCommandOptionType.Integer]: "número",
-  [ApplicationCommandOptionType.Number]: "decimal",
-  [ApplicationCommandOptionType.Boolean]: "sí/no",
-  [ApplicationCommandOptionType.User]: "usuario",
-  [ApplicationCommandOptionType.Channel]: "canal",
-  [ApplicationCommandOptionType.Role]: "rol",
+  [ApplicationCommandOptionType.String]:      "texto",
+  [ApplicationCommandOptionType.Integer]:     "número",
+  [ApplicationCommandOptionType.Number]:      "decimal",
+  [ApplicationCommandOptionType.Boolean]:     "sí/no",
+  [ApplicationCommandOptionType.User]:        "usuario",
+  [ApplicationCommandOptionType.Channel]:     "canal",
+  [ApplicationCommandOptionType.Role]:        "rol",
   [ApplicationCommandOptionType.Mentionable]: "mención",
-  [ApplicationCommandOptionType.Attachment]: "archivo",
-  [ApplicationCommandOptionType.Subcommand]: "subcomando",
+  [ApplicationCommandOptionType.Attachment]:  "archivo",
+  [ApplicationCommandOptionType.Subcommand]:  "subcomando",
 };
 
-const CATEGORY_ORDER = ["Utilidad", "Moderación", "Diversión"];
+const CATEGORY_ORDER = ["Utilidad", "Moderación", "Diversión", "Casino"];
 const CATEGORY_EMOJI: Record<string, string> = {
-  Utilidad: "🛠️",
+  Utilidad:   "🛠️",
   Moderación: "🛡️",
-  Diversión: "🎮",
+  Diversión:  "🎮",
+  Casino:     "🎰",
 };
 
 const command: Command = {
@@ -148,9 +85,7 @@ const command: Command = {
     .addStringOption((opt) =>
       opt
         .setName("comando")
-        .setDescription(
-          "Ver los detalles de calibración de un comando específico",
-        )
+        .setDescription("Ver los detalles de un comando específico")
         .setRequired(false)
         .addChoices(
           ...Object.entries(META).map(([name, m]) => ({
@@ -175,9 +110,7 @@ const command: Command = {
           embeds: [
             new EmbedBuilder()
               .setColor(0xff2d6b)
-              .setDescription(
-                `❌ La unidad central no reconoce el comando \`${commandName}\`.`,
-              ),
+              .setDescription(`❌ La unidad central no reconoce el comando \`${commandName}\`.`),
           ],
           ephemeral: true,
         });
@@ -189,7 +122,7 @@ const command: Command = {
       const embed = new EmbedBuilder()
         .setColor(0xff2d6b)
         .setAuthor({
-          name: `Calibración del Sistema // Zero Two v2.1.0`,
+          name: `Calibración del Sistema // Zero Two ${VERSION}`,
           iconURL: client.user?.displayAvatarURL(),
         })
         .setTitle(`${meta?.emoji ?? "📌"} Comando: /${commandName}`)
@@ -201,7 +134,7 @@ const command: Command = {
             inline: false,
           },
           {
-            name: "⏱️ Latencia de Cooldown",
+            name: "⏱️ Cooldown",
             value: `\`${cmd.cooldown ?? 3} segundos\``,
             inline: true,
           },
@@ -214,8 +147,8 @@ const command: Command = {
 
       if (meta?.permission) {
         embed.addFields({
-          name: "🔐 Nivel de Acceso",
-          value: `Requiere: \`${meta.permission}\``,
+          name: "🔐 Permiso requerido",
+          value: `\`${meta.permission}\``,
           inline: true,
         });
       }
@@ -225,10 +158,10 @@ const command: Command = {
         const optLines = opts.map((o: any) => {
           const typeLabel = OPTION_TYPE_LABEL[o.type] ?? "parámetro";
           const req = o.required ? "Requerido" : "Opcional";
-          return `• \`${o.name}\` *(Type: ${typeLabel} | ${req})*\n  └ *${o.description}*`;
+          return `• \`${o.name}\` *(${typeLabel} | ${req})*\n  └ *${o.description}*`;
         });
         embed.addFields({
-          name: "⚙️ Parámetros de Sincronización",
+          name: "⚙️ Parámetros",
           value: optLines.join("\n"),
         });
       }
@@ -236,13 +169,13 @@ const command: Command = {
       embed
         .setTimestamp()
         .setFooter({
-          text: `Módulo de diagnóstico general`,
+          text: `Zero Two ${VERSION} · Módulo de diagnóstico`,
           iconURL: client.user?.displayAvatarURL(),
         });
       return interaction.reply({ embeds: [embed] });
     }
 
-    // ── VISTA GENERAL (CON SELECT MENU) ──────────────────────────────────────
+    // ── VISTA GENERAL ────────────────────────────────────────────────────────
     const categories: Record<string, Array<any>> = {};
     for (const cat of CATEGORY_ORDER) categories[cat] = [];
 
@@ -256,27 +189,27 @@ const command: Command = {
       });
     }
 
-    const generateMainEmbed = () => {
-      return new EmbedBuilder()
+    const generateMainEmbed = () =>
+      new EmbedBuilder()
         .setColor(0xff2d6b)
         .setAuthor({
-          name: "Unidad de Control Central // Zero Two v2.1.0",
+          name: `Unidad de Control Central // Zero Two ${VERSION}`,
           iconURL: client.user?.displayAvatarURL(),
         })
         .setTitle("📋 Registro de Comandos de la Plantación")
         .setDescription(
           `Hola, cariño. Soy **Zero Two**, encargada de mantener el orden y la diversión en este escuadrón. 🌸\n\n` +
-            `> Selecciona una categoría en el menú desplegable inferior para desplegar sus funciones de parásito.\n\n` +
-            `• **Comandos Totales:** \`${totalCmds}\` de forma global.\n` +
-            `• **Uso Estructurado:** \`<obligatorio>\`  •  \`[opcional]\``,
+          `> Selecciona una categoría en el menú desplegable inferior.\n\n` +
+          `• **Comandos Totales:** \`${totalCmds}\`\n` +
+          `• **Módulos activos:** ${CATEGORY_ORDER.map((c) => `${CATEGORY_EMOJI[c]} ${c}`).join(" · ")}\n` +
+          `• **Uso:** \`<obligatorio>\` · \`[opcional]\``,
         )
         .setThumbnail(client.user?.displayAvatarURL() ?? null)
         .setTimestamp()
         .setFooter({
-          text: "The Garden · Sistema de Diagnóstico",
+          text: `Zero Two ${VERSION} · The Garden`,
           iconURL: client.user?.displayAvatarURL(),
         });
-    };
 
     const menu = new StringSelectMenuBuilder()
       .setCustomId("help_menu")
@@ -296,15 +229,12 @@ const command: Command = {
         })),
       );
 
-    const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-      menu,
-    );
+    const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu);
     const response = await interaction.reply({
       embeds: [generateMainEmbed()],
       components: [row],
     });
 
-    // Colector interactivo en memoria
     const collector = response.createMessageComponentCollector({
       componentType: ComponentType.StringSelect,
       time: 60_000,
@@ -324,7 +254,7 @@ const command: Command = {
         return i.update({ embeds: [generateMainEmbed()] });
       }
 
-      const cmds = categories[selected] || [];
+      const cmds = categories[selected] ?? [];
       const lines = cmds.map(
         (c) => `${c.emoji} \`/${c.name}\`\n  └ *${c.description}*`,
       );
@@ -332,7 +262,7 @@ const command: Command = {
       const catEmbed = new EmbedBuilder()
         .setColor(0xff2d6b)
         .setAuthor({
-          name: `Módulo: ${selected} // Zero Two`,
+          name: `Módulo: ${selected} // Zero Two ${VERSION}`,
           iconURL: client.user?.displayAvatarURL(),
         })
         .setTitle(`${CATEGORY_EMOJI[selected]} Funciones de ${selected}`)
