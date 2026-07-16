@@ -9,6 +9,7 @@ import Commands from "@/pages/commands";
 import Warns from "@/pages/warns";
 import DevPanel from "@/pages/dev";
 import Logs from "@/pages/logs";
+import SettingsPage from "@/pages/settings";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -23,6 +24,7 @@ function Router() {
         <Route path="/warns" component={Warns} />
         <Route path="/logs" component={Logs} />
         <Route path="/dev" component={DevPanel} />
+        <Route path="/settings" component={SettingsPage} />
         <Route component={NotFound} />
       </Switch>
     </AppLayout>

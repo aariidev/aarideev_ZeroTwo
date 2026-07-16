@@ -86,13 +86,12 @@ export function Sidebar() {
       </nav>
 
       {/* Settings at bottom */}
-      <div className="group relative flex items-center justify-center w-12 h-12 rounded-xl cursor-pointer transition-all duration-200 mt-auto">
-        <div className="absolute inset-0 rounded-xl border border-transparent group-hover:bg-white/5 group-hover:border-white/5 transition-all duration-200" />
-        <Settings className="relative z-10 w-5 h-5 text-slate-500 group-hover:text-slate-200 transition-colors duration-200" />
-        <div className="absolute left-[calc(100%+12px)] px-2 py-1 bg-[#0a0f1a] border border-[#ff2d6b]/20 text-slate-200 text-xs font-medium rounded opacity-0 -translate-x-1 pointer-events-none group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-150 whitespace-nowrap z-50">
-          Settings
-        </div>
-      </div>
+      <SidebarItem
+        icon={Settings}
+        label="Settings"
+        active={location === "/settings"}
+        href="/settings"
+      />
     </aside>
   );
 }
