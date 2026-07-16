@@ -1,0 +1,257 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Zero Two Dashboard — Theme packs
+   Applied via <html data-theme="…"> (and optional data-compact="true")
+   Brand vars used across dash UI; shadcn HSL tokens keep components in sync.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root,
+html[data-theme="cyberpunk"] {
+  --zt-pink: #ff2d6b;
+  --zt-cyan: #00f5d4;
+  --zt-amber: #f5c518;
+  --zt-green: #22c55e;
+  --zt-bg: #050810;
+  --zt-panel: #0a0f1a;
+  --zt-panel-2: #0d1220;
+  --zt-glow-pink: rgba(255, 45, 107, 0.25);
+  --zt-glow-cyan: rgba(0, 245, 212, 0.2);
+
+  --background: 222 47% 4%;
+  --foreground: 210 30% 92%;
+  --card: 222 47% 7%;
+  --card-foreground: 210 30% 92%;
+  --card-border: 220 60% 16%;
+  --border: 220 60% 16%;
+  --input: 220 60% 14%;
+  --ring: 340 95% 60%;
+  --primary: 340 95% 60%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 190 100% 40%;
+  --secondary-foreground: 222 47% 4%;
+  --muted: 222 47% 10%;
+  --muted-foreground: 215 20% 55%;
+  --accent: 190 100% 40%;
+  --accent-foreground: 222 47% 4%;
+  --destructive: 0 90% 58%;
+  --sidebar: 222 47% 3%;
+  --sidebar-foreground: 210 30% 92%;
+  --sidebar-border: 220 60% 12%;
+  --sidebar-primary: 340 95% 60%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 222 47% 8%;
+  --sidebar-accent-foreground: 210 30% 92%;
+  --sidebar-ring: 340 95% 60%;
+  --chart-1: 340 95% 60%;
+  --chart-2: 190 100% 40%;
+  --radius: 0.75rem;
+}
+
+/* Sakura — soft pink blossom on deep plum */
+html[data-theme="sakura"] {
+  --zt-pink: #ff6b9d;
+  --zt-cyan: #f9a8d4;
+  --zt-amber: #fbbf24;
+  --zt-green: #86efac;
+  --zt-bg: #140a12;
+  --zt-panel: #1c1018;
+  --zt-panel-2: #241420;
+  --zt-glow-pink: rgba(255, 107, 157, 0.28);
+  --zt-glow-cyan: rgba(249, 168, 212, 0.22);
+
+  --background: 330 35% 6%;
+  --foreground: 330 30% 95%;
+  --card: 330 28% 10%;
+  --card-foreground: 330 30% 95%;
+  --card-border: 330 25% 20%;
+  --border: 330 22% 22%;
+  --input: 330 22% 16%;
+  --ring: 335 90% 70%;
+  --primary: 335 90% 68%;
+  --primary-foreground: 330 40% 8%;
+  --secondary: 330 55% 78%;
+  --secondary-foreground: 330 40% 12%;
+  --muted: 330 20% 14%;
+  --muted-foreground: 330 15% 65%;
+  --accent: 330 55% 75%;
+  --accent-foreground: 330 40% 10%;
+  --destructive: 0 80% 60%;
+  --sidebar: 330 40% 5%;
+  --sidebar-foreground: 330 30% 95%;
+  --sidebar-border: 330 25% 16%;
+  --sidebar-primary: 335 90% 68%;
+  --sidebar-primary-foreground: 330 40% 8%;
+  --sidebar-accent: 330 25% 12%;
+  --sidebar-accent-foreground: 330 30% 95%;
+  --sidebar-ring: 335 90% 68%;
+  --chart-1: 335 90% 68%;
+  --chart-2: 330 55% 78%;
+  --radius: 1rem;
+}
+
+/* Phantom — violet / electric blue (edgerunners night) */
+html[data-theme="phantom"] {
+  --zt-pink: #c084fc;
+  --zt-cyan: #38bdf8;
+  --zt-amber: #fbbf24;
+  --zt-green: #4ade80;
+  --zt-bg: #07060f;
+  --zt-panel: #0e0c1a;
+  --zt-panel-2: #141228;
+  --zt-glow-pink: rgba(192, 132, 252, 0.28);
+  --zt-glow-cyan: rgba(56, 189, 248, 0.22);
+
+  --background: 255 40% 5%;
+  --foreground: 250 30% 94%;
+  --card: 255 35% 9%;
+  --card-foreground: 250 30% 94%;
+  --card-border: 255 30% 18%;
+  --border: 255 28% 20%;
+  --input: 255 28% 14%;
+  --ring: 270 90% 72%;
+  --primary: 270 90% 70%;
+  --primary-foreground: 255 40% 8%;
+  --secondary: 200 95% 55%;
+  --secondary-foreground: 255 40% 8%;
+  --muted: 255 25% 12%;
+  --muted-foreground: 250 15% 60%;
+  --accent: 200 95% 55%;
+  --accent-foreground: 255 40% 8%;
+  --destructive: 0 85% 58%;
+  --sidebar: 255 45% 4%;
+  --sidebar-foreground: 250 30% 94%;
+  --sidebar-border: 255 30% 14%;
+  --sidebar-primary: 270 90% 70%;
+  --sidebar-primary-foreground: 255 40% 8%;
+  --sidebar-accent: 255 30% 11%;
+  --sidebar-accent-foreground: 250 30% 94%;
+  --sidebar-ring: 270 90% 70%;
+  --chart-1: 270 90% 70%;
+  --chart-2: 200 95% 55%;
+  --radius: 0.65rem;
+}
+
+/* Midnight — clean blue / slate pro */
+html[data-theme="midnight"] {
+  --zt-pink: #60a5fa;
+  --zt-cyan: #22d3ee;
+  --zt-amber: #fbbf24;
+  --zt-green: #34d399;
+  --zt-bg: #060a12;
+  --zt-panel: #0b1220;
+  --zt-panel-2: #111827;
+  --zt-glow-pink: rgba(96, 165, 250, 0.22);
+  --zt-glow-cyan: rgba(34, 211, 238, 0.18);
+
+  --background: 220 40% 5%;
+  --foreground: 210 25% 94%;
+  --card: 220 35% 9%;
+  --card-foreground: 210 25% 94%;
+  --card-border: 215 25% 18%;
+  --border: 215 22% 20%;
+  --input: 215 22% 14%;
+  --ring: 213 94% 68%;
+  --primary: 213 94% 65%;
+  --primary-foreground: 220 40% 8%;
+  --secondary: 187 85% 48%;
+  --secondary-foreground: 220 40% 8%;
+  --muted: 220 25% 12%;
+  --muted-foreground: 215 15% 58%;
+  --accent: 187 85% 48%;
+  --accent-foreground: 220 40% 8%;
+  --destructive: 0 80% 58%;
+  --sidebar: 220 45% 4%;
+  --sidebar-foreground: 210 25% 94%;
+  --sidebar-border: 215 25% 14%;
+  --sidebar-primary: 213 94% 65%;
+  --sidebar-primary-foreground: 220 40% 8%;
+  --sidebar-accent: 220 30% 10%;
+  --sidebar-accent-foreground: 210 25% 94%;
+  --sidebar-ring: 213 94% 65%;
+  --chart-1: 213 94% 65%;
+  --chart-2: 187 85% 48%;
+  --radius: 0.6rem;
+}
+
+/* Matrix — terminal green */
+html[data-theme="matrix"] {
+  --zt-pink: #4ade80;
+  --zt-cyan: #86efac;
+  --zt-amber: #facc15;
+  --zt-green: #22c55e;
+  --zt-bg: #030805;
+  --zt-panel: #07140c;
+  --zt-panel-2: #0a1a10;
+  --zt-glow-pink: rgba(74, 222, 128, 0.25);
+  --zt-glow-cyan: rgba(134, 239, 172, 0.18);
+
+  --background: 150 40% 3%;
+  --foreground: 140 40% 90%;
+  --card: 150 35% 7%;
+  --card-foreground: 140 40% 90%;
+  --card-border: 145 30% 16%;
+  --border: 145 28% 18%;
+  --input: 145 28% 12%;
+  --ring: 142 70% 48%;
+  --primary: 142 70% 45%;
+  --primary-foreground: 150 40% 5%;
+  --secondary: 140 50% 70%;
+  --secondary-foreground: 150 40% 6%;
+  --muted: 150 25% 10%;
+  --muted-foreground: 140 15% 55%;
+  --accent: 140 50% 70%;
+  --accent-foreground: 150 40% 6%;
+  --destructive: 0 75% 50%;
+  --sidebar: 150 45% 3%;
+  --sidebar-foreground: 140 40% 90%;
+  --sidebar-border: 145 30% 12%;
+  --sidebar-primary: 142 70% 45%;
+  --sidebar-primary-foreground: 150 40% 5%;
+  --sidebar-accent: 150 30% 8%;
+  --sidebar-accent-foreground: 140 40% 90%;
+  --sidebar-ring: 142 70% 45%;
+  --chart-1: 142 70% 45%;
+  --chart-2: 140 50% 70%;
+  --radius: 0.35rem;
+}
+
+/* Compact density */
+html[data-compact="true"] {
+  --zt-density: 0.85;
+}
+
+html[data-compact="true"] .zt-compact-pad {
+  padding: 0.75rem !important;
+}
+
+/* Smooth theme transitions */
+html {
+  transition:
+    background-color 0.25s ease,
+    color 0.25s ease;
+}
+
+html[data-reduced-motion="true"] *,
+html[data-reduced-motion="true"] *::before,
+html[data-reduced-motion="true"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* Helpers for brand colors in components that use CSS vars */
+.zt-text-pink {
+  color: var(--zt-pink);
+}
+.zt-text-cyan {
+  color: var(--zt-cyan);
+}
+.zt-bg-panel {
+  background-color: var(--zt-panel);
+}
+.zt-border-pink {
+  border-color: color-mix(in srgb, var(--zt-pink) 40%, transparent);
+}
+.zt-glow-pink {
+  box-shadow: 0 0 20px var(--zt-glow-pink);
+}

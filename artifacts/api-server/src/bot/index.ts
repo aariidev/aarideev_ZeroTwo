@@ -101,8 +101,15 @@ export async function startBot() {
       GatewayIntentBits.GuildMessages,
       GatewayIntentBits.GuildModeration,
       GatewayIntentBits.MessageContent,
+      GatewayIntentBits.GuildVoiceStates,
+      GatewayIntentBits.GuildInvites,
     ],
-    partials: [Partials.Channel],
+    partials: [
+      Partials.Channel,
+      Partials.Message,
+      Partials.GuildMember,
+      Partials.User,
+    ],
   }) as BotClient;
 
   client.commands = new Collection();
@@ -129,8 +136,19 @@ export async function startBot() {
     "./events/interactionCreate.js"
   );
   const { default: onGuildCreate } = await import("./events/guildCreate.js");
+  const { registerServerLogs } = await import("./events/serverLogs.js");
 
-  client.once("ready", async () => {
+  // Server monitoring logs (ban, unban, delete, edit, join, leave/kick)
+  registerServerLogs(client);
+
+  // Re-run on each gateway ready (including after destroy()+login() restarts).
+  // Guard against double-fire of ready + clientReady in the same connect cycle.
+  let lastReadyAt = 0;
+  const handleReady = async () => {
+    const now = Date.now();
+    if (now - lastReadyAt < 2000) return;
+    lastReadyAt = now;
+
     try {
       await onReady(client);
 
@@ -159,7 +177,10 @@ export async function startBot() {
         "❌ Error crítico al restaurar las configuraciones en el bloque listo.",
       );
     }
-  });
+  };
+
+  client.on("clientReady", handleReady);
+  client.on("ready", handleReady);
 
   client.on("interactionCreate", async (interaction) => {
     try {

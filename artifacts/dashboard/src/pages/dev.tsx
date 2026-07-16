@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useLocation } from "wouter";
 import { Terminal, Shield, Megaphone, GitCommit, Trash2, Power, AlertTriangle, CheckCircle2, XCircle, Lock, Loader2, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth";
 
 const DEV_USER_ID = "819080793447333918";
 const TOKEN_KEY = "zt_dev_token";
@@ -27,6 +29,10 @@ interface DevStatus {
   maintenanceMessage: string;
   botOnline: boolean;
   guildsCount: number;
+  restartInProgress?: boolean;
+  systemUptime?: number;
+  ping?: number;
+  botName?: string | null;
 }
 
 async function devFetch(path: string, token: string, options?: RequestInit) {
@@ -49,6 +55,20 @@ const TYPE_CONFIG: Record<string, { label: string; color: string }> = {
 
 export default function DevPanel() {
   const { toast } = useToast();
+  const { isOwner, loading: authLoadingUser } = useAuth();
+  const [, setLocation] = useLocation();
+
+  // Only the developer (OWNER_IDS) can open the Dev Panel — no one else
+  useEffect(() => {
+    if (!authLoadingUser && !isOwner) {
+      toast({
+        title: "Acceso denegado",
+        description: "El Dev Panel es exclusivo de la developer del bot.",
+        variant: "destructive",
+      });
+      setLocation("/");
+    }
+  }, [authLoadingUser, isOwner, setLocation, toast]);
 
   const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY) ?? "");
   const [tokenInput, setTokenInput] = useState("");
@@ -80,8 +100,8 @@ export default function DevPanel() {
   const [clType, setClType] = useState<ChangelogType>("feature");
   const [clLoading, setClLoading] = useState(false);
 
-  const fetchData = useCallback(async (t: string) => {
-    setLoading(true);
+  const fetchData = useCallback(async (t: string, opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true);
     try {
       const [statusRes, logsRes] = await Promise.all([
         devFetch("/status", t),
@@ -92,23 +112,31 @@ export default function DevPanel() {
         localStorage.removeItem(TOKEN_KEY);
         setToken("");
         setAuthed(false);
-        setLoading(false);
+        if (!opts?.silent) setLoading(false);
         return;
       }
 
       if (statusRes.ok) {
-        const s = await statusRes.json();
+        const s: DevStatus = await statusRes.json();
         setStatus(s);
-        setMaintenanceMsg(s.maintenanceMessage);
+        // only seed message field when empty or first load
+        setMaintenanceMsg((prev) =>
+          prev && opts?.silent ? prev : (s.maintenanceMessage ?? prev),
+        );
       }
       if (logsRes.ok) {
         setChangelogs(await logsRes.json());
       }
       setAuthed(true);
     } catch {
-      // network error
+      // network error — mark offline so UI stays honest
+      setStatus((prev) =>
+        prev
+          ? { ...prev, botOnline: false, guildsCount: 0, ping: -1 }
+          : prev,
+      );
     } finally {
-      setLoading(false);
+      if (!opts?.silent) setLoading(false);
     }
   }, []);
 
@@ -118,6 +146,15 @@ export default function DevPanel() {
       fetchData(token);
     }
   }, [token, fetchData]);
+
+  // Keep bot online / guilds / maintenance in sync while the panel is open
+  useEffect(() => {
+    if (!token || !authed) return;
+    const id = window.setInterval(() => {
+      void fetchData(token, { silent: true });
+    }, 4000);
+    return () => window.clearInterval(id);
+  }, [token, authed, fetchData]);
 
   const handleLogin = async () => {
     if (!tokenInput.trim()) return;
@@ -221,32 +258,79 @@ export default function DevPanel() {
 
   const handleRestart = async () => {
     setRestartState("restarting");
-    setRestartCountdown(12);
+    setRestartCountdown(20);
+    setStatus((s) => (s ? { ...s, botOnline: false, restartInProgress: true } : s));
 
     try {
-      await devFetch("/restart", token, { method: "POST" });
+      const res = await devFetch("/restart", token, { method: "POST" });
+      // 202 accepted is success; network drop during reconnect is also fine
+      if (!res.ok && res.status !== 0) {
+        const body = await res.json().catch(() => null);
+        toast({
+          title: "No se pudo reiniciar",
+          description: body?.error ?? `HTTP ${res.status}`,
+          variant: "destructive",
+        });
+        setRestartState("idle");
+        void fetchData(token, { silent: true });
+        return;
+      }
     } catch {
-      // network error is expected as bot restarts
+      // expected if the process blips during reconnect
     }
 
-    // Countdown
-    restartTimerRef.current = setInterval(() => {
-      setRestartCountdown((c) => {
-        if (c <= 1) {
-          clearInterval(restartTimerRef.current!);
-          restartTimerRef.current = null;
+    // Poll until bot reports online again (or timeout)
+    if (restartTimerRef.current) clearInterval(restartTimerRef.current);
+    restartTimerRef.current = setInterval(async () => {
+      setRestartCountdown((c) => Math.max(0, c - 1));
+      try {
+        const res = await devFetch("/status", token);
+        if (!res.ok) return;
+        const s: DevStatus = await res.json();
+        setStatus(s);
+        if (s.botOnline && !s.restartInProgress) {
+          if (restartTimerRef.current) {
+            clearInterval(restartTimerRef.current);
+            restartTimerRef.current = null;
+          }
           setRestartState("done");
-          // Refresh status
-          setTimeout(() => {
-            fetchData(token);
-            setRestartState("idle");
-          }, 2000);
-          return 0;
+          toast({ title: "Bot reconectado", description: `${s.guildsCount} servidores · ping ${s.ping ?? "—"}ms` });
+          window.setTimeout(() => setRestartState("idle"), 2500);
         }
-        return c - 1;
-      });
+      } catch {
+        // still reconnecting
+      }
     }, 1000);
+
+    // Hard stop after ~25s even if status lags
+    window.setTimeout(() => {
+      if (restartTimerRef.current) {
+        clearInterval(restartTimerRef.current);
+        restartTimerRef.current = null;
+      }
+      setRestartState((st) => {
+        if (st === "restarting") {
+          void fetchData(token, { silent: true });
+          return "idle";
+        }
+        return st;
+      });
+    }, 25_000);
   };
+
+  useEffect(() => {
+    return () => {
+      if (restartTimerRef.current) clearInterval(restartTimerRef.current);
+    };
+  }, []);
+
+  if (authLoadingUser || !isOwner) {
+    return (
+      <div className="min-h-[50vh] flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   // ── Auth gate ──────────────────────────────────────────────────────────────
   if (!authed) {
@@ -314,6 +398,12 @@ export default function DevPanel() {
             }`}>
               <span className={`h-2 w-2 rounded-full ${status.botOnline ? "bg-cyan-500 animate-pulse" : "bg-red-500"}`} />
               BOT {status.botOnline ? "ONLINE" : "OFFLINE"}
+              {status.botOnline && typeof status.ping === "number" && status.ping >= 0 && (
+                <span className="text-cyan-500/70">· {status.ping}ms</span>
+              )}
+              {status.botOnline && (
+                <span className="text-cyan-500/70">· {status.guildsCount} guilds</span>
+              )}
             </div>
           )}
           <Button variant="ghost" size="sm" onClick={handleLogout} className="text-muted-foreground hover:text-foreground font-mono text-xs">
@@ -434,12 +524,14 @@ export default function DevPanel() {
             }`} />
             <span className="font-mono text-xs text-foreground">
               {restartState === "restarting"
-                ? `Reiniciando... esperando ${restartCountdown}s`
+                ? `Reiniciando… sincronizando (${restartCountdown}s)`
                 : restartState === "done"
                 ? "¡Bot reconectado!"
                 : status?.botOnline
-                ? `Bot online · ${status.guildsCount} servidores`
-                : "Bot offline"}
+                ? `Bot online · ${status.botName ?? "02"} · ${status.guildsCount} servidores${typeof status.ping === "number" && status.ping >= 0 ? ` · ${status.ping}ms` : ""}`
+                : status
+                ? "Bot offline (API responde, Discord no)"
+                : "Sin estado — comprueba la API"}
             </span>
           </div>
 
@@ -613,9 +705,18 @@ export default function DevPanel() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
               { label: "dev_user_id", value: DEV_USER_ID },
+              { label: "bot_name", value: status.botName ?? "—" },
               { label: "guilds_monitored", value: String(status.guildsCount) },
+              { label: "websocket_ping", value: typeof status.ping === "number" && status.ping >= 0 ? `${status.ping}ms` : "—" },
               { label: "maintenance_mode", value: status.maintenanceMode ? "true" : "false" },
               { label: "bot_status", value: status.botOnline ? "online" : "offline" },
+              {
+                label: "api_uptime",
+                value:
+                  typeof status.systemUptime === "number"
+                    ? `${Math.floor(status.systemUptime / 60)}m ${Math.floor(status.systemUptime % 60)}s`
+                    : "—",
+              },
             ].map(({ label, value }) => (
               <div key={label} className="border border-border bg-sidebar p-3">
                 <p className="text-xs text-muted-foreground font-mono mb-1">{label}</p>

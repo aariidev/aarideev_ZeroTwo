@@ -1,0 +1,270 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Zero Two Dashboard — Cyberpunk FX (optimized / lightweight)
+   Prefer transitions + short one-shots over infinite GPU-heavy loops.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@keyframes cp-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes cp-slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes cp-status-ring {
+  0% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(1.9);
+    opacity: 0;
+  }
+}
+
+@keyframes cp-sheen {
+  0% {
+    transform: translateX(-120%) skewX(-16deg);
+  }
+  100% {
+    transform: translateX(220%) skewX(-16deg);
+  }
+}
+
+@keyframes cp-border-once {
+  0% {
+    opacity: 0;
+  }
+  40% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.35;
+  }
+}
+
+/* Soft ambient — static layers only (no drifting grid) */
+.cp-ambient {
+  /* marker class for layout; motion lives in hover/page enter */
+}
+
+.cp-scanlines {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  /* Static CRT lines only — no sweeping gradient */
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 3px,
+    rgba(0, 0, 0, 0.035) 3px,
+    rgba(0, 0, 0, 0.035) 4px
+  );
+  opacity: 0.45;
+  mix-blend-mode: multiply;
+}
+
+.cp-vignette {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 39;
+  background: radial-gradient(
+    ellipse at center,
+    transparent 50%,
+    rgba(0, 0, 0, 0.28) 100%
+  );
+}
+
+/* Cards: transition on hover only */
+.cp-card {
+  position: relative;
+  overflow: hidden;
+  transition:
+    border-color 0.25s ease,
+    box-shadow 0.25s ease,
+    transform 0.25s ease;
+  will-change: auto;
+}
+
+.cp-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 45, 107, 0.3) !important;
+  box-shadow:
+    0 6px 20px rgba(0, 0, 0, 0.28),
+    0 0 16px rgba(255, 45, 107, 0.1);
+}
+
+.cp-card::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 35%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.035),
+    transparent
+  );
+  transform: translateX(-120%) skewX(-16deg);
+  pointer-events: none;
+  opacity: 0;
+}
+
+.cp-card:hover::after {
+  opacity: 1;
+  animation: cp-sheen 0.7s ease forwards;
+}
+
+.cp-rise {
+  animation: cp-rise 0.4s ease both;
+}
+
+.cp-rise-delay-1 {
+  animation-delay: 0.03s;
+}
+.cp-rise-delay-2 {
+  animation-delay: 0.06s;
+}
+.cp-rise-delay-3 {
+  animation-delay: 0.09s;
+}
+.cp-rise-delay-4 {
+  animation-delay: 0.12s;
+}
+.cp-rise-delay-5 {
+  animation-delay: 0.15s;
+}
+.cp-rise-delay-6 {
+  animation-delay: 0.18s;
+}
+.cp-rise-delay-7 {
+  animation-delay: 0.21s;
+}
+.cp-rise-delay-8 {
+  animation-delay: 0.24s;
+}
+
+.cp-slide-in {
+  animation: cp-slide-in-left 0.35s ease both;
+}
+
+/* Title glow — static, no glitch loop */
+.cp-glitch-title {
+  text-shadow: 0 0 10px rgba(255, 45, 107, 0.35);
+}
+
+.cp-neon-text {
+  color: #ff2d6b;
+  text-shadow:
+    0 0 6px rgba(255, 45, 107, 0.45),
+    0 0 14px rgba(255, 45, 107, 0.2);
+}
+
+.cp-neon-cyan {
+  color: #00f5d4;
+  text-shadow: 0 0 8px rgba(0, 245, 212, 0.4);
+}
+
+.cp-status-dot {
+  position: relative;
+}
+
+.cp-status-dot::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 9999px;
+  border: 1px solid currentColor;
+  animation: cp-status-ring 2.4s ease-out infinite;
+  will-change: transform, opacity;
+}
+
+.cp-panel {
+  position: relative;
+  overflow: hidden;
+}
+
+.cp-panel > .cp-panel-line {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #ff2d6b, #00f5d4, transparent 70%);
+  opacity: 0.65;
+  /* no infinite flow animation */
+}
+
+/* Active nav: soft static glow instead of pulsing box-shadow */
+.cp-sidebar-item-active {
+  box-shadow:
+    0 0 12px rgba(255, 45, 107, 0.18),
+    inset 0 0 12px rgba(255, 45, 107, 0.05);
+}
+
+/* Static logo rings (no spin) */
+.cp-logo-ring {
+  position: absolute;
+  inset: -4px;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 45, 107, 0.28);
+  pointer-events: none;
+}
+
+.cp-logo-ring-2 {
+  inset: -8px;
+  border-color: rgba(0, 245, 212, 0.16);
+}
+
+.cp-data-bg {
+  /* subtle static noise gradient — no scroll animation */
+  background-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(0, 245, 212, 0.02) 50%,
+    transparent 100%
+  );
+  background-size: 100% 48px;
+  opacity: 0.5;
+}
+
+.cp-page {
+  animation: cp-rise 0.35s ease both;
+}
+
+.cp-hud-label {
+  letter-spacing: 0.14em;
+  opacity: 0.75;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cp-rise,
+  .cp-slide-in,
+  .cp-page,
+  .cp-status-dot::after,
+  .cp-card:hover::after {
+    animation: none !important;
+  }
+
+  .cp-card:hover {
+    transform: none;
+  }
+}

@@ -76,8 +76,13 @@ export default defineConfig({
         target: "http://localhost:8080",
         changeOrigin: true,
         secure: false,
-        headers: {
-          "X-Dev-Token": "2412aariideevv",
+        // Forward cookies for Discord session auth
+        configure: (proxy) => {
+          proxy.on("proxyReq", (proxyReq, req) => {
+            if (req.headers.cookie) {
+              proxyReq.setHeader("cookie", req.headers.cookie);
+            }
+          });
         },
       },
     },

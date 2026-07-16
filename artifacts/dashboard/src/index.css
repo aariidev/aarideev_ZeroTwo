@@ -2,6 +2,9 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
+@import "./styles/cyberpunk-fx.css";
+@import "./styles/edgerunners-glitch.css";
+@import "./styles/themes.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -185,26 +188,20 @@
   body {
     @apply font-sans antialiased bg-background text-foreground;
     background-color: hsl(var(--background));
+    /* Static ambient only — no animated layers */
     background-image:
-      linear-gradient(rgba(0,245,212,0.03) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(0,245,212,0.03) 1px, transparent 1px);
-    background-size: 40px 40px;
+      radial-gradient(ellipse 80% 50% at 15% -5%, rgba(255, 45, 107, 0.06), transparent 55%),
+      radial-gradient(ellipse 55% 35% at 95% 5%, rgba(0, 245, 212, 0.04), transparent 50%),
+      linear-gradient(rgba(0, 245, 212, 0.028) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0, 245, 212, 0.028) 1px, transparent 1px);
+    background-size: auto, auto, 48px 48px, 48px 48px;
   }
+}
 
-  body::after {
-    content: '';
-    position: fixed;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background: repeating-linear-gradient(
-      0deg,
-      transparent,
-      transparent 2px,
-      rgba(0,0,0,0.03) 2px,
-      rgba(0,0,0,0.03) 4px
-    );
-    pointer-events: none;
-    z-index: 9999;
-  }
+.glow-text {
+  text-shadow:
+    0 0 8px rgba(255, 45, 107, 0.45),
+    0 0 24px rgba(255, 45, 107, 0.2);
 }
 
 .glow-primary {

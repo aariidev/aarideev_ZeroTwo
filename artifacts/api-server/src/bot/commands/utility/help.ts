@@ -10,7 +10,7 @@ import {
 } from "discord.js";
 import { BotClient, Command } from "../../types.js";
 
-const VERSION = "v2.3.0";
+import { BOT_VERSION as VERSION } from "../../lib/version.js";
 
 const META: Record<
   string,
