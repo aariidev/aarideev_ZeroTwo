@@ -41,18 +41,18 @@ export default function Commands() {
   const totalUses = stats?.reduce((acc, s) => acc + s.count, 0) || 0;
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-start justify-between">
+    <div className="space-y-6 sm:space-y-8">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-primary font-display flex items-center gap-2 glow-text">
-            <Terminal className="h-8 w-8 text-primary" />
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-primary font-display flex items-center gap-2 glow-text">
+            <Terminal className="h-6 w-6 sm:h-8 sm:w-8 text-primary" />
             COMMAND_DB
           </h1>
           <p className="text-muted-foreground mt-1 font-mono-custom text-sm">Command execution statistics and usage frequency.</p>
         </div>
         {!isLoading && stats && (
           <div className="text-right">
-            <div className="text-2xl font-bold text-foreground font-mono-custom">{formatNumber(totalUses)}</div>
+            <div className="text-xl sm:text-2xl font-bold text-foreground font-mono-custom">{formatNumber(totalUses)}</div>
             <div className="text-xs text-primary font-mono-custom">total_executions</div>
           </div>
         )}
@@ -60,19 +60,19 @@ export default function Commands() {
 
       <Card className="border-card-border bg-card rounded-none corner-bracket glow-cyan">
         <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2 font-display text-[#00f5d4]">
+          <CardTitle className="text-base sm:text-lg flex items-center gap-2 font-display text-[#00f5d4]">
             <BarChart2 className="h-5 w-5" />
             Top 10 Commands
           </CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <Skeleton className="h-[300px] w-full rounded-none" />
+            <Skeleton className="h-[240px] sm:h-[300px] w-full rounded-none" />
           ) : stats && stats.length > 0 ? (
-            <div className="h-[300px] w-full">
+            <div className="h-[240px] sm:h-[300px] w-full">
               <ChartContainer config={chartConfig} className="h-full w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 20 }}>
+                  <BarChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 20 }}>
                     <defs>
                       <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="hsl(340 95% 60%)" stopOpacity={1}/>
@@ -80,8 +80,8 @@ export default function Commands() {
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                    <XAxis dataKey="command" tickLine={false} axisLine={false} tick={{ fill: "hsl(var(--primary))", fontFamily: "var(--app-font-mono)" }} />
-                    <YAxis tickLine={false} axisLine={false} tick={{ fill: "hsl(var(--primary))", fontFamily: "var(--app-font-mono)" }} />
+                    <XAxis dataKey="command" tickLine={false} axisLine={false} tick={{ fill: "hsl(var(--primary))", fontFamily: "var(--app-font-mono)", fontSize: 11 }} />
+                    <YAxis tickLine={false} axisLine={false} tick={{ fill: "hsl(var(--primary))", fontFamily: "var(--app-font-mono)", fontSize: 11 }} />
                     <ChartTooltip content={<ChartTooltipContent />} />
                     <Bar dataKey="count" fill="url(#colorCount)" radius={[0, 0, 0, 0]} maxBarSize={60} />
                   </BarChart>
@@ -89,19 +89,19 @@ export default function Commands() {
               </ChartContainer>
             </div>
           ) : (
-            <div className="h-[300px] flex items-center justify-center text-muted-foreground font-mono-custom">No command data available</div>
+            <div className="h-[240px] sm:h-[300px] flex items-center justify-center text-muted-foreground font-mono-custom">No command data available</div>
           )}
         </CardContent>
       </Card>
 
       <Card className="border-card-border bg-card rounded-none corner-bracket glow-primary">
         <CardHeader>
-          <div className="flex items-center justify-between gap-4">
-            <CardTitle className="text-lg flex items-center gap-2 font-display text-primary">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <CardTitle className="text-base sm:text-lg flex items-center gap-2 font-display text-primary">
               <Terminal className="h-5 w-5" />
               All Commands
             </CardTitle>
-            <div className="relative w-64">
+            <div className="relative w-full sm:w-64 sm:ml-auto">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-primary" />
               <Input
                 placeholder="Filter commands..."
@@ -119,8 +119,8 @@ export default function Commands() {
               {Array(5).fill(0).map((_, i) => <Skeleton key={i} className="h-10 w-full rounded-none" />)}
             </div>
           ) : filtered.length > 0 ? (
-            <div className="rounded-none border border-primary/30 overflow-hidden bg-[#050505]">
-              <Table>
+            <div className="rounded-none border border-primary/30 overflow-x-auto bg-[#050505]">
+              <Table className="min-w-[540px]">
                 <TableHeader className="bg-sidebar border-b border-primary/30">
                   <TableRow className="border-none hover:bg-transparent">
                     <TableHead className="w-10 text-primary font-mono-custom">#</TableHead>
@@ -143,7 +143,7 @@ export default function Commands() {
                           </span>
                         </TableCell>
                         <TableCell className="text-right font-mono-custom text-foreground">{formatNumber(stat.count)}</TableCell>
-                        <TableCell className="text-right text-zinc-400 text-xs font-mono-custom">
+                        <TableCell className="text-right text-zinc-400 text-xs font-mono-custom whitespace-nowrap">
                           {formatDistanceToNow(new Date(stat.lastUsed), { addSuffix: true })}
                         </TableCell>
                       </TableRow>

@@ -39,7 +39,7 @@ export default function Guilds() {
     <Button
       variant="ghost"
       size="sm"
-      className={`h-8 text-xs gap-1 font-mono-custom rounded-none ${sortKey === k ? "text-[#00f5d4] border-b border-[#00f5d4]" : "text-muted-foreground hover:text-primary"}`}
+      className={`h-8 text-xs gap-1 font-mono-custom rounded-none px-2 ${sortKey === k ? "text-[#00f5d4] border-b border-[#00f5d4]" : "text-muted-foreground hover:text-primary"}`}
       onClick={() => handleSort(k)}
     >
       {label}
@@ -48,25 +48,25 @@ export default function Guilds() {
   );
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between">
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-primary font-display flex items-center gap-2 glow-text">
-            <Server className="h-8 w-8 text-primary" />
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-primary font-display flex items-center gap-2 glow-text">
+            <Server className="h-6 w-6 sm:h-8 sm:w-8 text-primary" />
             NETWORK_NODES
           </h1>
           <p className="text-muted-foreground mt-1 font-mono-custom text-sm">All Discord servers the bot is currently monitoring.</p>
         </div>
         {!isLoading && guilds && (
           <div className="text-right">
-            <div className="text-2xl font-bold text-foreground font-mono-custom">{guilds.length}</div>
+            <div className="text-xl sm:text-2xl font-bold text-foreground font-mono-custom">{guilds.length}</div>
             <div className="text-xs text-[#00f5d4] font-mono-custom">active_nodes</div>
           </div>
         )}
       </div>
 
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-[200px] max-w-sm">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="relative flex-1 min-w-0 max-w-full sm:max-w-sm">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-[#00f5d4]" />
           <Input
             placeholder="Search nodes..."
@@ -77,22 +77,22 @@ export default function Guilds() {
           />
           <span className="absolute right-3 top-2 text-[#00f5d4] animate-pulse font-mono-custom">_</span>
         </div>
-        <div className="flex items-center gap-1 text-xs text-muted-foreground font-mono-custom">
-          SORT_BY:
+        <div className="flex items-center gap-0.5 text-xs text-muted-foreground font-mono-custom flex-wrap">
+          <span className="mr-1">SORT:</span>
           <SortButton label="NAME" k="name" />
           <SortButton label="MEMBERS" k="members" />
           <SortButton label="JOINED" k="joined" />
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <div className="grid gap-3 sm:gap-4 grid-cols-1 xs:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {isLoading ? (
           Array(8).fill(0).map((_, i) => (
             <Card key={i} className="border-card-border bg-card rounded-none">
-              <CardContent className="p-6">
+              <CardContent className="p-4 sm:p-6">
                 <div className="flex items-center gap-4">
-                  <Skeleton className="h-12 w-12 rounded-none" />
-                  <div className="space-y-2 flex-1">
+                  <Skeleton className="h-11 w-11 rounded-none flex-shrink-0" />
+                  <div className="space-y-2 flex-1 min-w-0">
                     <Skeleton className="h-4 w-3/4 rounded-none" />
                     <Skeleton className="h-3 w-1/2 rounded-none" />
                   </div>
@@ -103,9 +103,9 @@ export default function Guilds() {
         ) : filtered.length > 0 ? (
           filtered.map((guild) => (
             <Card key={guild.id} className="border-card-border bg-card hover:bg-sidebar transition-colors cursor-default rounded-none corner-bracket hover:glow-primary hover:border-primary/50 group">
-              <CardContent className="p-5">
+              <CardContent className="p-4 sm:p-5">
                 <div className="flex items-start gap-3">
-                  <Avatar className="h-11 w-11 border border-card-border flex-shrink-0 rounded-none group-hover:border-primary/50 transition-colors">
+                  <Avatar className="h-10 w-10 sm:h-11 sm:w-11 border border-card-border flex-shrink-0 rounded-none group-hover:border-primary/50 transition-colors">
                     <AvatarImage src={guild.iconUrl || ""} alt={guild.name} className="rounded-none" />
                     <AvatarFallback className="bg-primary/10 text-primary text-sm font-bold font-display rounded-none">
                       {guild.name.substring(0, 2).toUpperCase()}
