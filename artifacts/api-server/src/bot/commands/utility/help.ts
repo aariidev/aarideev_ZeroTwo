@@ -88,7 +88,7 @@ const command: Command = {
         .setDescription("Ver los detalles de un comando específico")
         .setRequired(false)
         .addChoices(
-          ...Object.entries(META).map(([name, m]) => ({
+          ...Object.entries(META).slice(0, 25).map(([name, m]) => ({
             name: `${m.emoji} ${name}`,
             value: name,
           })),
