@@ -1,7 +1,7 @@
 import { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { Sidebar } from "./sidebar";
-import { Activity, Server, Terminal, AlertTriangle, FileText, Shield } from "lucide-react";
+import { Activity, Server, Terminal, AlertTriangle, FileText, Shield, Settings } from "lucide-react";
 
 const NAV_LINKS = [
   { href: "/",         label: "Home",     icon: Activity,      exact: true },
@@ -10,6 +10,7 @@ const NAV_LINKS = [
   { href: "/warns",    label: "Warnings", icon: AlertTriangle },
   { href: "/logs",     label: "Logs",     icon: FileText },
   { href: "/dev",      label: "Dev",      icon: Shield },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 function BottomNav() {
