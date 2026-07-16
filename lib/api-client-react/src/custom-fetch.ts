@@ -360,7 +360,13 @@ export async function customFetch<T = unknown>(
 
   const requestInfo = { method, url: resolveUrl(input) };
 
-  const response = await fetch(input, { ...init, method, headers });
+  const response = await fetch(input, {
+    ...init,
+    method,
+    headers,
+    // Session cookie auth for dashboard ↔ API
+    credentials: init.credentials ?? "include",
+  });
 
   if (!response.ok) {
     const errorData = await parseErrorBody(response, method);

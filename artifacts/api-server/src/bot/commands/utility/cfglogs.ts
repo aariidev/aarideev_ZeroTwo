@@ -8,9 +8,12 @@ import {
 } from "discord.js";
 import { Command } from "../../types.js";
 import {
+  getGuildLogSettings,
   getLogChannelId,
-  setLogChannelId,
+  LOG_CATEGORIES,
+  LOG_EVENT_META,
   removeLogChannel,
+  setLogChannelId,
 } from "../../lib/modlog.js";
 
 const command: Command = {
@@ -38,7 +41,7 @@ const command: Command = {
     .addSubcommand((sub) =>
       sub
         .setName("status")
-        .setDescription("Muestra el canal de logs actualmente configurado"),
+        .setDescription("Muestra el estado de la configuración de logs"),
     ) as SlashCommandBuilder,
 
   cooldown: 5,
@@ -62,7 +65,8 @@ const command: Command = {
             })
             .setTitle("📡 Canal de Logs Configurado")
             .setDescription(
-              `Los registros de moderación ahora se enviarán a <#${channel.id}>.`,
+              `Los registros de moderación ahora se enviarán a <#${channel.id}>.\n\n` +
+                `Para activar/desactivar eventos, filtros y alertas usa el **dashboard** → Servidores.`,
             )
             .addFields(
               { name: "📌 Canal", value: `<#${channel.id}>`, inline: true },
@@ -74,7 +78,7 @@ const command: Command = {
               },
             )
             .setFooter({
-              text: "Eventos: ban · kick · warn · timeout · unban",
+              text: "Eventos, bots, webhooks y más → dashboard",
               iconURL: client.user?.displayAvatarURL(),
             })
             .setTimestamp(),
@@ -122,9 +126,9 @@ const command: Command = {
     }
 
     if (sub === "status") {
-      const channelId = await getLogChannelId(guildId);
+      const settings = await getGuildLogSettings(guildId);
 
-      if (!channelId) {
+      if (!settings.channelId) {
         await interaction.reply({
           embeds: [
             new EmbedBuilder()
@@ -136,7 +140,7 @@ const command: Command = {
               .setTitle("📡 Estado del Canal de Logs")
               .setDescription(
                 "⚠️ **Sin canal configurado.**\n" +
-                  "Usa `/cfglogs set` para asignar un canal de destino.",
+                  "Usa `/cfglogs set` o el dashboard para asignar un canal.",
               )
               .setTimestamp(),
           ],
@@ -145,8 +149,27 @@ const command: Command = {
         return;
       }
 
-      const channel = interaction.guild?.channels.cache.get(channelId);
-      const channelMention = channel ? `<#${channelId}>` : `\`${channelId}\` *(no encontrado)*`;
+      const channel = interaction.guild?.channels.cache.get(settings.channelId);
+      const channelMention = channel
+        ? `<#${settings.channelId}>`
+        : `\`${settings.channelId}\` *(no encontrado)*`;
+
+      const eventLines = LOG_CATEGORIES.map((cat) => {
+        const active = cat.events.filter((k) => settings.events.includes(k));
+        const labels = active
+          .map((k) => LOG_EVENT_META[k].label)
+          .join(", ");
+        return `**${cat.label}** (${active.length}/${cat.events.length}): ${
+          labels || "—"
+        }`;
+      }).join("\n");
+
+      const ping =
+        settings.pingRoleId && interaction.guild?.roles.cache.has(settings.pingRoleId)
+          ? `<@&${settings.pingRoleId}>`
+          : settings.pingRoleId
+            ? `\`${settings.pingRoleId}\``
+            : "Ninguno";
 
       await interaction.reply({
         embeds: [
@@ -156,13 +179,42 @@ const command: Command = {
               name: "Central de Logs // Zero Two",
               iconURL: client.user?.displayAvatarURL(),
             })
-            .setTitle("📡 Estado del Canal de Logs")
+            .setTitle("📡 Estado de Logs del Servidor")
             .addFields(
-              { name: "✅ Canal Activo", value: channelMention, inline: true },
-              { name: "🆔 ID", value: `\`${channelId}\``, inline: true },
+              { name: "✅ Canal", value: channelMention, inline: true },
+              {
+                name: "📊 Eventos",
+                value: `\`${settings.events.length}\` activos`,
+                inline: true,
+              },
+              {
+                name: "🔔 Ping",
+                value: ping,
+                inline: true,
+              },
+              {
+                name: "🤖 Filtros",
+                value: [
+                  `Bots: ${settings.ignoreBots ? "ignorados" : "incluidos"}`,
+                  `Webhooks: ${settings.ignoreWebhooks ? "ignorados" : "incluidos"}`,
+                  `Adjuntos: ${settings.includeAttachments ? "sí" : "no"}`,
+                  `Alerta cuenta nueva: ${
+                    settings.joinAlertDays > 0
+                      ? `${settings.joinAlertDays}d`
+                      : "off"
+                  }`,
+                  `Canales ignorados: ${settings.ignoreChannels.length}`,
+                ].join("\n"),
+                inline: false,
+              },
+              {
+                name: "📋 Eventos por categoría",
+                value: eventLines.slice(0, 1024) || "—",
+                inline: false,
+              },
             )
             .setFooter({
-              text: "Eventos registrados: ban · kick · warn · timeout · unban",
+              text: "Ajusta eventos y filtros en el dashboard → Servidores",
               iconURL: client.user?.displayAvatarURL(),
             })
             .setTimestamp(),

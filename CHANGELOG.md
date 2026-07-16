@@ -1,0 +1,80 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [2.4.0] - 2026-07-17
+
+### Added
+- **Sistema de logs de servidor ampliado** (20 eventos en 5 categorías)
+  - Moderación: ban, unban, kick, timeout, untimeout
+  - Mensajes: delete, edit, bulk delete
+  - Miembros: join, leave, cambio de roles, nickname
+  - Servidor: canal/rol create-delete, invites create-delete
+  - Voz: join, leave, move
+- **Configuración avanzada de logs por guild** (`GuildLogSettings`)
+  - Ignorar bots / webhooks
+  - Canales ignorados (no loguear delete/edit)
+  - Alerta de cuenta nueva (N días)
+  - Incluir adjuntos en mensajes borrados
+  - Rol a mencionar en cada log
+- **Dashboard → Servidores**: panel “Configurar logs” para dueños/admins
+  - Eventos agrupados por categoría (todos / ninguno / por cat.)
+  - Filtros y opciones avanzadas
+  - Listado de canales y roles del servidor
+- OAuth Discord con scope `guilds` para permisos reales de gestión
+- API `GET/PATCH /api/guilds/:id/settings` con settings completos
+- Intents `GuildVoiceStates` + `GuildInvites` para logs de voz e invites
+- Rich Presence: `/help - v2.3.0` (versión centralizada)
+- Separación de páginas **Cuenta** vs **Ajustes** en el dashboard
+- Dev Panel restringido a `OWNER_IDS`
+- Temas del dashboard (selector de apariencia)
+
+### Changed
+- Migración unificada de config de logs a `log_settings:{guildId}` (compat. con keys antiguas)
+- `/cfglogs status` muestra filtros, ping y eventos por categoría
+- Embebidos de log unificados (`baseLogEmbed`, audit log helper)
+
+### Fixed
+- Redirects OAuth / state cookie (maxAge en ms)
+- Activity endpoint 404 y forma de respuesta del Dev Panel
+- Dependencias nativas Windows (esbuild, lightningcss, tailwind oxide)
+- Utilidades Tailwind vacías por exclusiones de platform
+
+## [3.0.0] - 2026-06-12
+
+### Added
+- **Edgerunners Theme Overhaul**: Full cyberpunk Edgerunners aesthetic
+  - Neon pink (#ff2e63) + cyan (#00e5ff) color palette
+  - Glitch animations, scanlines, holographic borders
+  - Night City slang in all bot responses and dashboard
+- **3 New Edgerunners Fun Commands** (complete):
+  - `/gig` — Random fixer gig generator with eddies and risk
+  - `/chrome` — Random cyberware info & upgrade simulator
+  - `/psycho` — Cyberpsychosis test with random outcomes
+- New dashboard styles: `edgerunners-glitch.css` with neon-text, holo-border, glitch effects
+- Updated presence rotation with Edgerunners flavor text
+- Updated README + new CHANGELOG.md
+
+### Changed
+- Major version bump from 2.2.0 to 3.0.0
+- All embeds and messages now use choom/preem/delta/gonk slang
+- Dashboard HUD more immersive with glitch and neon
+
+### Fixed
+- Code reviewed and cleaned for v3 (no comments in new code, well ordered)
+
+### Cyber-dev notes
+- Reinforced input validation and rate limiting
+- All new code follows secure Discord.js patterns
+
+## [2.2.0] - 2026-06-12
+
+### Added
+- Blackjack game with betting
+- Stability improvements
+
+[2.4.0]: https://github.com/aariidev/aarideev_ZeroTwo/releases/tag/v2.4.0
+[3.0.0]: https://github.com/aariidev/aarideev_ZeroTwo/releases/tag/v3.0.0

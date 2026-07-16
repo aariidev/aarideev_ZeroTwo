@@ -103,7 +103,7 @@ const command: Command = {
       .setTimestamp();
 
     await interaction.reply({ embeds: [embed] });
-    await sendModLog(client, interaction.guild?.id ?? "", embed);
+    await sendModLog(client, interaction.guild?.id ?? "", embed, "kick");
 
     await logBotEvent({
       level: "warn",
