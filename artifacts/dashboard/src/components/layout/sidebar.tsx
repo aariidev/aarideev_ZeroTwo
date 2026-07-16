@@ -1,102 +1,98 @@
 import { Link, useLocation } from "wouter";
-import { Activity, Server, Terminal, AlertTriangle, Shield, FileText } from "lucide-react";
+import { Activity, Server, Terminal, AlertTriangle, FileText, Shield, Settings } from "lucide-react";
 import { useGetBotStats, getGetBotStatsQueryKey } from "@workspace/api-client-react";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Skeleton } from "@/components/ui/skeleton";
+
+const links = [
+  { href: "/",        label: "Dashboard", icon: Activity,      exact: true },
+  { href: "/guilds",  label: "Servers",   icon: Server },
+  { href: "/commands",label: "Commands",  icon: Terminal },
+  { href: "/warns",   label: "Warnings",  icon: AlertTriangle },
+  { href: "/logs",    label: "Logs",      icon: FileText },
+  { href: "/dev",     label: "Dev Panel", icon: Shield },
+];
+
+function SidebarItem({
+  icon: Icon,
+  label,
+  active,
+  href,
+}: {
+  icon: React.ElementType;
+  label: string;
+  active: boolean;
+  href: string;
+}) {
+  return (
+    <Link href={href}>
+      <div className="group relative flex items-center justify-center w-12 h-12 rounded-xl mb-1 cursor-pointer transition-all duration-200">
+        <div
+          className={`absolute inset-0 rounded-xl transition-all duration-200 border ${
+            active
+              ? "bg-[#ff2d6b]/10 border-[#ff2d6b]/30 shadow-[0_0_12px_rgba(255,45,107,0.15)]"
+              : "border-transparent group-hover:bg-white/5 group-hover:border-white/5"
+          }`}
+        />
+        <Icon
+          className={`relative z-10 w-5 h-5 transition-colors duration-200 ${
+            active ? "text-[#ff2d6b]" : "text-slate-400 group-hover:text-slate-200"
+          }`}
+        />
+        {/* Tooltip */}
+        <div className="absolute left-[calc(100%+12px)] px-2 py-1 bg-[#0a0f1a] border border-[#ff2d6b]/20 text-slate-200 text-xs font-medium rounded opacity-0 -translate-x-1 pointer-events-none group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-150 whitespace-nowrap z-50">
+          {label}
+        </div>
+      </div>
+    </Link>
+  );
+}
 
 export function Sidebar() {
   const [location] = useLocation();
 
-  const { data: stats, isLoading } = useGetBotStats({
-    query: {
-      queryKey: getGetBotStatsQueryKey(),
-      refetchInterval: 15000,
-    }
+  const { data: stats } = useGetBotStats({
+    query: { queryKey: getGetBotStatsQueryKey(), refetchInterval: 15000 },
   });
 
   const isOnline = stats !== undefined && stats.ping >= 0;
 
-  const links = [
-    { href: "/", label: "Dashboard", icon: Activity, exact: true },
-    { href: "/guilds", label: "Servers", icon: Server },
-    { href: "/commands", label: "Commands", icon: Terminal },
-    { href: "/warns", label: "Warnings", icon: AlertTriangle },
-    { href: "/logs", label: "Logs", icon: FileText },
-    { href: "/dev", label: "Dev Panel", icon: Shield, dev: true },
-  ];
-
   return (
-    <div className="flex h-screen w-64 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
-      <div className="p-6">
-        <div className="flex items-center gap-3">
-          {isLoading ? (
-            <Skeleton className="h-10 w-10 rounded-full" />
-          ) : (
-            <div className="relative">
-              <Avatar className="h-10 w-10 border border-sidebar-border corner-bracket rounded-none glow-primary">
-                <AvatarImage src={stats?.botAvatar || ""} alt={stats?.botName || "Bot"} className="rounded-none" />
-                <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground rounded-none font-display">
-                  {stats?.botName?.substring(0, 2).toUpperCase() || "ZT"}
-                </AvatarFallback>
-              </Avatar>
-              <span
-                className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-none border border-sidebar ${isOnline ? "bg-green-500 glow-cyan animate-pulse" : "bg-zinc-500"}`}
-                title={isOnline ? "Online" : "Offline"}
-              />
-            </div>
-          )}
-          <div className="flex flex-col overflow-hidden">
-            {isLoading ? (
-              <>
-                <Skeleton className="h-5 w-24 mb-1" />
-                <Skeleton className="h-3 w-16" />
-              </>
-            ) : (
-              <>
-                <span className="truncate font-bold tracking-tight text-lg text-sidebar-primary font-display">
-                  {stats?.botName || "ZeroTwo"}
-                </span>
-                <span className={`text-[10px] font-mono-custom tracking-widest ${isOnline ? "text-[#00f5d4] animate-pulse" : "text-zinc-400"}`}>
-                  {isOnline ? "SISTEMA ACTIVO" : "SISTEMA CAIDO"}
-                </span>
-              </>
-            )}
-          </div>
+    <aside className="w-[72px] bg-[#03050a] border-r border-[#ff2d6b]/20 flex flex-col items-center py-6 z-20 shadow-[4px_0_24px_rgba(0,0,0,0.5)] flex-shrink-0 h-screen">
+      {/* Bot logo */}
+      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#ff2d6b] to-[#00f5d4] p-[2px] mb-8 shadow-[0_0_20px_rgba(255,45,107,0.3)] relative">
+        <div className="w-full h-full bg-[#050810] rounded-full flex items-center justify-center">
+          <span className="font-bold text-xs text-white font-mono">02</span>
         </div>
+        <span
+          className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-[#03050a] ${
+            isOnline ? "bg-green-500 shadow-[0_0_6px_#22c55e]" : "bg-zinc-500"
+          }`}
+        />
       </div>
-      
-      <div className="h-px bg-gradient-to-r from-transparent via-primary to-transparent mx-4 mb-4" />
 
-      <nav className="flex-1 space-y-1 px-4 py-4">
+      {/* Nav */}
+      <nav className="flex-1 w-full flex flex-col items-center">
         {links.map((link) => {
-          const Icon = link.icon;
           const isActive = link.exact ? location === link.href : location.startsWith(link.href);
-
           return (
-            <Link
+            <SidebarItem
               key={link.href}
+              icon={link.icon}
+              label={link.label}
+              active={isActive}
               href={link.href}
-              className={`flex items-center gap-3 rounded-none px-3 py-2.5 text-sm font-medium transition-colors font-mono-custom border border-transparent ${
-                isActive
-                  ? "bg-sidebar-primary/10 text-sidebar-primary border-l-sidebar-primary glow-primary"
-                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:border-sidebar-accent-foreground/20"
-              }`}
-              data-testid={`link-sidebar-${link.label.toLowerCase()}`}
-            >
-              <Icon className={`h-4 w-4 ${isActive ? "text-sidebar-primary" : "text-sidebar-foreground/50"}`} />
-              {isActive ? `> ${link.label}` : link.label}
-            </Link>
+            />
           );
         })}
       </nav>
 
-      <div className="h-px bg-gradient-to-r from-transparent via-sidebar-border to-transparent mx-4 mb-4" />
-
-      <div className="px-4 pb-6">
-        <div className="rounded-none border border-sidebar-border bg-sidebar-accent/30 px-3 py-2 text-xs text-sidebar-foreground/50 font-mono-custom text-center">
-          [ ZeroTwo OS v2.1.0 ]
+      {/* Settings at bottom */}
+      <div className="group relative flex items-center justify-center w-12 h-12 rounded-xl cursor-pointer transition-all duration-200 mt-auto">
+        <div className="absolute inset-0 rounded-xl border border-transparent group-hover:bg-white/5 group-hover:border-white/5 transition-all duration-200" />
+        <Settings className="relative z-10 w-5 h-5 text-slate-500 group-hover:text-slate-200 transition-colors duration-200" />
+        <div className="absolute left-[calc(100%+12px)] px-2 py-1 bg-[#0a0f1a] border border-[#ff2d6b]/20 text-slate-200 text-xs font-medium rounded opacity-0 -translate-x-1 pointer-events-none group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-150 whitespace-nowrap z-50">
+          Settings
         </div>
       </div>
-    </div>
+    </aside>
   );
 }
