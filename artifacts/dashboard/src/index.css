@@ -225,3 +225,9 @@
 }
 .corner-bracket::before { top: 0; left: 0; border-top: 2px solid hsl(var(--primary)); border-left: 2px solid hsl(var(--primary)); }
 .corner-bracket::after { bottom: 0; right: 0; border-bottom: 2px solid hsl(var(--primary)); border-right: 2px solid hsl(var(--primary)); }
+
+/* Sakura scrollbar */
+.sakura-scrollbar::-webkit-scrollbar { width: 4px; }
+.sakura-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.sakura-scrollbar::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 4px; }
+.sakura-scrollbar:hover::-webkit-scrollbar-thumb { background: #334155; }
