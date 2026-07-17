@@ -1,16 +1,12 @@
 import { Router, type Request, type Response } from "express";
 import {
   ChannelType,
-  PermissionFlagsBits,
   type Client,
   type Guild as DjsGuild,
-  type TextChannel,
 } from "discord.js";
+import { db, guildLogSettingsTable } from "@workspace/db";
 import {
-  defaultGuildLogSettings,
   getGuildLogSettings,
-  getLogChannelId,
-  getLogEvents,
   LOG_CATEGORIES,
   LOG_EVENT_KEYS,
   LOG_EVENT_META,
@@ -18,6 +14,10 @@ import {
   type GuildLogSettings,
   type LogEventKey,
 } from "../bot/lib/modlog.js";
+import {
+  assertGuildManage,
+  resolveGuildAccess,
+} from "../lib/guildAccess.js";
 import { logger } from "../lib/logger.js";
 
 const router = Router();
@@ -27,78 +27,8 @@ export function setBotClient(client: Client) {
   botClient = client;
 }
 
-interface DiscordUserGuild {
-  id: string;
-  name: string;
-  icon: string | null;
-  owner: boolean;
-  permissions: string;
-}
-
-const MANAGE_GUILD = BigInt(PermissionFlagsBits.ManageGuild);
-const ADMINISTRATOR = BigInt(PermissionFlagsBits.Administrator);
-
-function canManageUserGuild(g: DiscordUserGuild): boolean {
-  if (g.owner) return true;
-  try {
-    const perms = BigInt(g.permissions);
-    return (
-      (perms & ADMINISTRATOR) === ADMINISTRATOR ||
-      (perms & MANAGE_GUILD) === MANAGE_GUILD
-    );
-  } catch {
-    return false;
-  }
-}
-
-function isBotDeveloper(userId: string | undefined): boolean {
-  if (!userId) return false;
-  return (process.env.OWNER_IDS ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .includes(userId);
-}
-
-async function fetchUserGuilds(
-  accessToken: string,
-): Promise<DiscordUserGuild[]> {
-  const res = await fetch("https://discord.com/api/users/@me/guilds", {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    logger.warn({ status: res.status, text }, "Failed to fetch user guilds");
-    return [];
-  }
-  return (await res.json()) as DiscordUserGuild[];
-}
-
-async function assertCanConfigure(
-  req: Request,
-  guildId: string,
-): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
-  if (isBotDeveloper(req.sessionUser?.id)) return { ok: true };
-
-  if (!req.accessToken) {
-    return {
-      ok: false,
-      status: 401,
-      error: "Reconecta Discord (scope guilds) para gestionar servidores.",
-    };
-  }
-
-  const userGuilds = await fetchUserGuilds(req.accessToken);
-  const ug = userGuilds.find((g) => g.id === guildId);
-  if (!ug || !canManageUserGuild(ug)) {
-    return {
-      ok: false,
-      status: 403,
-      error: "Solo el dueño o un admin del servidor puede editar esta config.",
-    };
-  }
-  return { ok: true };
-}
+const MAX_CHANNELS = 250;
+const MAX_ROLES = 200;
 
 function listTextChannels(guild: DjsGuild) {
   return guild.channels.cache
@@ -112,7 +42,8 @@ function listTextChannels(guild: DjsGuild) {
       name: ch.name,
       type: ch.type === ChannelType.GuildAnnouncement ? "announcement" : "text",
     }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .slice(0, MAX_CHANNELS);
 }
 
 function listRoles(guild: DjsGuild) {
@@ -124,7 +55,8 @@ function listRoles(guild: DjsGuild) {
       color: r.hexColor,
       position: r.position,
     }))
-    .sort((a, b) => b.position - a.position);
+    .sort((a, b) => b.position - a.position)
+    .slice(0, MAX_ROLES);
 }
 
 function eventCatalog() {
@@ -153,20 +85,17 @@ function mergeSettingsPatch(
   body: Record<string, unknown>,
   guild: DjsGuild,
 ): { ok: true; settings: GuildLogSettings } | { ok: false; error: string } {
+  const src = body.settings
+    ? (body.settings as Record<string, unknown>)
+    : body;
   const next: GuildLogSettings = { ...current };
 
-  // Support both flat legacy fields and nested `settings` object
-  const src =
-    body.settings && typeof body.settings === "object"
-      ? (body.settings as Record<string, unknown>)
-      : body;
-
   if ("logChannelId" in src || "channelId" in src) {
-    const chId = (src.logChannelId ?? src.channelId) as string | null;
-    if (chId === null || chId === "" || chId === "none") {
+    const id = (src.logChannelId ?? src.channelId) as string | null;
+    if (id === null || id === "" || id === "none") {
       next.channelId = null;
-    } else if (typeof chId === "string") {
-      const ch = guild.channels.cache.get(chId);
+    } else if (typeof id === "string") {
+      const ch = guild.channels.cache.get(id);
       if (
         !ch ||
         (ch.type !== ChannelType.GuildText &&
@@ -174,30 +103,17 @@ function mergeSettingsPatch(
       ) {
         return { ok: false, error: "Canal de logs inválido" };
       }
-      const me = guild.members.me;
-      if (me && ch.isTextBased()) {
-        const perms = (ch as TextChannel).permissionsFor(me);
-        if (perms && !perms.has(["SendMessages", "EmbedLinks"])) {
-          logger.warn(
-            { guildId: guild.id, chId },
-            "Bot may lack SendMessages/EmbedLinks in log channel",
-          );
-        }
-      }
-      next.channelId = chId;
+      next.channelId = id;
     }
   }
 
   if ("logEvents" in src || "events" in src) {
-    const raw = (src.logEvents ?? src.events) as unknown;
-    if (Array.isArray(raw)) {
+    const ev = (src.logEvents ?? src.events) as unknown;
+    if (Array.isArray(ev)) {
       const allowed = new Set<string>(LOG_EVENT_KEYS);
-      const events = raw.filter(
+      next.events = ev.filter(
         (k): k is LogEventKey => typeof k === "string" && allowed.has(k),
       );
-      next.events = events.length
-        ? events
-        : defaultGuildLogSettings().events;
     }
   }
 
@@ -240,6 +156,8 @@ function mergeSettingsPatch(
 }
 
 // ── GET /guilds ──────────────────────────────────────────────────────────────
+// Per-user: only servers where bot is present AND user is a member.
+// Owners see every bot guild.
 
 router.get("/", async (req: Request, res: Response) => {
   try {
@@ -247,27 +165,47 @@ router.get("/", async (req: Request, res: Response) => {
       return res.status(200).json([]);
     }
 
-    let manageable = new Set<string>();
-    if (req.accessToken) {
-      try {
-        const userGuilds = await fetchUserGuilds(req.accessToken);
-        manageable = new Set(
-          userGuilds.filter(canManageUserGuild).map((g) => g.id),
-        );
-      } catch (err) {
-        logger.warn({ err }, "Could not resolve user guild permissions");
-      }
+    const access = await resolveGuildAccess(req, botClient);
+
+    // Non-owners: only their memberships. Never leak the full bot list.
+    const visibleIds = access.isOwner
+      ? access.botGuildIds
+      : access.memberGuildIds;
+
+    let settingsMap = new Map<
+      string,
+      { channelId: string | null; events: string }
+    >();
+    try {
+      const rows = await db.select().from(guildLogSettingsTable);
+      settingsMap = new Map(
+        rows
+          .filter((r) => visibleIds.has(r.guildId))
+          .map((r) => [
+            r.guildId,
+            { channelId: r.channelId, events: r.events },
+          ]),
+      );
+    } catch (err) {
+      logger.warn({ err }, "Could not batch-load guild_log_settings");
     }
 
-    if (isBotDeveloper(req.sessionUser?.id)) {
-      manageable = new Set(botClient.guilds.cache.map((g) => g.id));
-    }
-
-    const guilds = await Promise.all(
-      botClient.guilds.cache.map(async (guild) => {
-        const canManage = manageable.has(guild.id);
-        const logChannelId = await getLogChannelId(guild.id);
-        const logEvents = await getLogEvents(guild.id);
+    const guilds = [...visibleIds]
+      .map((id) => botClient!.guilds.cache.get(id))
+      .filter((g): g is NonNullable<typeof g> => Boolean(g))
+      .map((guild) => {
+        const canManage = access.manageGuildIds.has(guild.id);
+        const row = settingsMap.get(guild.id);
+        let logChannelId: string | null = row?.channelId ?? null;
+        let logEvents: string[] = [];
+        if (row?.events) {
+          try {
+            const parsed = JSON.parse(row.events);
+            if (Array.isArray(parsed)) logEvents = parsed.map(String);
+          } catch {
+            logEvents = [];
+          }
+        }
         return {
           id: guild.id,
           name: guild.name,
@@ -278,8 +216,13 @@ router.get("/", async (req: Request, res: Response) => {
           logChannelId,
           logEvents,
         };
-      }),
-    );
+      });
+
+    // Sort: manageable first, then by name
+    guilds.sort((a, b) => {
+      if (a.canManage !== b.canManage) return a.canManage ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
 
     res.status(200).json(guilds);
   } catch (err) {
@@ -300,6 +243,7 @@ router.get("/log-event-types", (_req: Request, res: Response) => {
 // ── GET /guilds/:id/settings ─────────────────────────────────────────────────
 
 router.get("/:id/settings", async (req: Request, res: Response) => {
+  const started = Date.now();
   try {
     const guildId = req.params.id;
     if (!botClient) {
@@ -310,7 +254,8 @@ router.get("/:id/settings", async (req: Request, res: Response) => {
       return res.status(404).json({ error: "Bot no está en ese servidor" });
     }
 
-    const gate = await assertCanConfigure(req, guildId);
+    const access = await resolveGuildAccess(req, botClient);
+    const gate = assertGuildManage(access, guildId);
     if (!gate.ok) {
       return res.status(gate.status).json({ error: gate.error });
     }
@@ -323,9 +268,7 @@ router.get("/:id/settings", async (req: Request, res: Response) => {
       guildId,
       name: guild.name,
       iconUrl: guild.iconURL({ size: 128 }) ?? null,
-      // Full settings object
       settings,
-      // Legacy flat fields (dashboard / older clients)
       logChannelId: settings.channelId,
       logEvents: settings.events,
       ignoreBots: settings.ignoreBots,
@@ -338,6 +281,7 @@ router.get("/:id/settings", async (req: Request, res: Response) => {
       roles,
       availableEvents: eventCatalog(),
       categories: categoryCatalog(),
+      _ms: Date.now() - started,
     });
   } catch (err) {
     req.log?.error({ err }, "GET guild settings failed");
@@ -358,7 +302,8 @@ router.patch("/:id/settings", async (req: Request, res: Response) => {
       return res.status(404).json({ error: "Bot no está en ese servidor" });
     }
 
-    const gate = await assertCanConfigure(req, guildId);
+    const access = await resolveGuildAccess(req, botClient);
+    const gate = assertGuildManage(access, guildId);
     if (!gate.ok) {
       return res.status(gate.status).json({ error: gate.error });
     }

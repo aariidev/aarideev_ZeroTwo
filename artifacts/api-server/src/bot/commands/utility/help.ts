@@ -11,6 +11,7 @@ import {
 import { BotClient, Command } from "../../types.js";
 
 import { BOT_VERSION as VERSION } from "../../lib/version.js";
+import { helpImageFor } from "../../lib/helpAssets.js";
 
 const META: Record<
   string,
@@ -22,8 +23,10 @@ const META: Record<
   serverinfo: { emoji: "🏠", category: "Utilidad", usage: "/serverinfo" },
   userinfo:   { emoji: "👤", category: "Utilidad", usage: "/userinfo [usuario]" },
   help:       { emoji: "📋", category: "Utilidad", usage: "/help [comando]" },
+  zerotwoinf: { emoji: "⚙️", category: "Utilidad", usage: "/zerotwoinf" },
   cfgembed:   { emoji: "🎨", category: "Utilidad", usage: "/cfgembed [canal]", permission: "Gestionar Mensajes" },
   cfglogs:    { emoji: "📋", category: "Utilidad", usage: "/cfglogs <set|disable|status>", permission: "Gestionar Servidor" },
+  ticket:     { emoji: "🎫", category: "Utilidad", usage: "/ticket <setup|panel|close|claim|add|remove|status>", permission: "Ver subcomandos" },
 
   // ── Moderación ──────────────────────────────────────────────────────────────
   ban:        { emoji: "🔨", category: "Moderación", usage: "/ban <usuario> [motivo] [días]", permission: "Banear Miembros" },
@@ -36,7 +39,8 @@ const META: Record<
   warn:       { emoji: "⚠️", category: "Moderación", usage: "/warn <usuario> <motivo>", permission: "Silenciar Miembros" },
   warns:      { emoji: "📜", category: "Moderación", usage: "/warns <usuario>", permission: "Silenciar Miembros" },
   clearwarns: { emoji: "🧹", category: "Moderación", usage: "/clearwarns <usuario>", permission: "Silenciar Miembros" },
-  purge:      { emoji: "🗑️", category: "Moderación", usage: "/purge <cantidad>", permission: "Gestionar Mensajes" },
+  delwarn:    { emoji: "🗑️", category: "Moderación", usage: "/delwarn id:<folio>", permission: "Silenciar Miembros" },
+  purge:      { emoji: "🧼", category: "Moderación", usage: "/purge <cantidad>", permission: "Gestionar Mensajes" },
   slowmode:   { emoji: "🐢", category: "Moderación", usage: "/slowmode <segundos>", permission: "Gestionar Canales" },
   lock:       { emoji: "🔒", category: "Moderación", usage: "/lock [motivo]", permission: "Gestionar Canales" },
   unlock:     { emoji: "🔓", category: "Moderación", usage: "/unlock", permission: "Gestionar Canales" },
@@ -55,6 +59,18 @@ const META: Record<
   inventory: { emoji: "🎒", category: "Casino", usage: "/inventory" },
   pay:       { emoji: "💸", category: "Casino", usage: "/pay <usuario> <cantidad>" },
   top:       { emoji: "🏆", category: "Casino", usage: "/top [tipo]" },
+
+  // ── Música (estilo Jockie) ──────────────────────────────────────────────────
+  play:        { emoji: "▶️", category: "Música", usage: "/play <query|url>" },
+  skip:        { emoji: "⏭️", category: "Música", usage: "/skip" },
+  stop:        { emoji: "⏹️", category: "Música", usage: "/stop" },
+  pause:       { emoji: "⏸️", category: "Música", usage: "/pause" },
+  queue:       { emoji: "📋", category: "Música", usage: "/queue [pagina]" },
+  nowplaying:  { emoji: "🎵", category: "Música", usage: "/nowplaying" },
+  volume:      { emoji: "🔊", category: "Música", usage: "/volume <0-150>" },
+  loop:        { emoji: "🔁", category: "Música", usage: "/loop" },
+  shuffle:     { emoji: "🔀", category: "Música", usage: "/shuffle" },
+  leave:       { emoji: "🚪", category: "Música", usage: "/leave" },
 };
 
 const OPTION_TYPE_LABEL: Record<number, string> = {
@@ -70,12 +86,13 @@ const OPTION_TYPE_LABEL: Record<number, string> = {
   [ApplicationCommandOptionType.Subcommand]:  "subcomando",
 };
 
-const CATEGORY_ORDER = ["Utilidad", "Moderación", "Diversión", "Casino"];
+const CATEGORY_ORDER = ["Utilidad", "Moderación", "Diversión", "Casino", "Música"];
 const CATEGORY_EMOJI: Record<string, string> = {
   Utilidad:   "🛠️",
   Moderación: "🛡️",
   Diversión:  "🎮",
   Casino:     "🎰",
+  Música:     "🎵",
 };
 
 const command: Command = {
@@ -189,8 +206,9 @@ const command: Command = {
       });
     }
 
-    const generateMainEmbed = () =>
-      new EmbedBuilder()
+    const generateMainEmbed = () => {
+      const img = helpImageFor("main");
+      const emb = new EmbedBuilder()
         .setColor(0xff2d6b)
         .setAuthor({
           name: `Unidad de Control Central // Zero Two ${VERSION}`,
@@ -199,10 +217,10 @@ const command: Command = {
         .setTitle("📋 Registro de Comandos de la Plantación")
         .setDescription(
           `Hola, cariño. Soy **Zero Two**, encargada de mantener el orden y la diversión en este escuadrón. 🌸\n\n` +
-          `> Selecciona una categoría en el menú desplegable inferior.\n\n` +
-          `• **Comandos Totales:** \`${totalCmds}\`\n` +
-          `• **Módulos activos:** ${CATEGORY_ORDER.map((c) => `${CATEGORY_EMOJI[c]} ${c}`).join(" · ")}\n` +
-          `• **Uso:** \`<obligatorio>\` · \`[opcional]\``,
+            `> Selecciona una categoría en el menú desplegable inferior.\n\n` +
+            `• **Comandos Totales:** \`${totalCmds}\`\n` +
+            `• **Módulos activos:** ${CATEGORY_ORDER.map((c) => `${CATEGORY_EMOJI[c]} ${c}`).join(" · ")}\n` +
+            `• **Uso:** \`<obligatorio>\` · \`[opcional]\``,
         )
         .setThumbnail(client.user?.displayAvatarURL() ?? null)
         .setTimestamp()
@@ -210,6 +228,36 @@ const command: Command = {
           text: `Zero Two ${VERSION} · The Garden`,
           iconURL: client.user?.displayAvatarURL(),
         });
+      if (img.url) emb.setImage(img.url);
+      return { embed: emb, file: img.file };
+    };
+
+    const generateCatEmbed = (selected: string) => {
+      const cmds = categories[selected] ?? [];
+      const lines = cmds.map(
+        (c) => `${c.emoji} \`/${c.name}\`\n  └ *${c.description}*`,
+      );
+      const img = helpImageFor(selected);
+      const emb = new EmbedBuilder()
+        .setColor(0xff2d6b)
+        .setAuthor({
+          name: `Módulo: ${selected} // Zero Two ${VERSION}`,
+          iconURL: client.user?.displayAvatarURL(),
+        })
+        .setTitle(`${CATEGORY_EMOJI[selected]} Funciones de ${selected}`)
+        .setDescription(
+          lines.length > 0
+            ? lines.join("\n\n")
+            : "*No hay comandos registrados en esta sección.*",
+        )
+        .setTimestamp()
+        .setFooter({
+          text: `${cmds.length} comandos activos en este sector`,
+          iconURL: client.user?.displayAvatarURL(),
+        });
+      if (img.url) emb.setImage(img.url);
+      return { embed: emb, file: img.file };
+    };
 
     const menu = new StringSelectMenuBuilder()
       .setCustomId("help_menu")
@@ -230,8 +278,10 @@ const command: Command = {
       );
 
     const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu);
+    const main = generateMainEmbed();
     const response = await interaction.reply({
-      embeds: [generateMainEmbed()],
+      embeds: [main.embed],
+      files: main.file ? [main.file] : [],
       components: [row],
     });
 
@@ -251,33 +301,18 @@ const command: Command = {
       const selected = i.values[0]!;
 
       if (selected === "main") {
-        return i.update({ embeds: [generateMainEmbed()] });
+        const m = generateMainEmbed();
+        return i.update({
+          embeds: [m.embed],
+          files: m.file ? [m.file] : [],
+        });
       }
 
-      const cmds = categories[selected] ?? [];
-      const lines = cmds.map(
-        (c) => `${c.emoji} \`/${c.name}\`\n  └ *${c.description}*`,
-      );
-
-      const catEmbed = new EmbedBuilder()
-        .setColor(0xff2d6b)
-        .setAuthor({
-          name: `Módulo: ${selected} // Zero Two ${VERSION}`,
-          iconURL: client.user?.displayAvatarURL(),
-        })
-        .setTitle(`${CATEGORY_EMOJI[selected]} Funciones de ${selected}`)
-        .setDescription(
-          lines.length > 0
-            ? lines.join("\n\n")
-            : "*No hay comandos registrados en esta sección.*",
-        )
-        .setTimestamp()
-        .setFooter({
-          text: `${cmds.length} comandos activos en este sector`,
-          iconURL: client.user?.displayAvatarURL(),
-        });
-
-      await i.update({ embeds: [catEmbed] });
+      const cat = generateCatEmbed(selected);
+      await i.update({
+        embeds: [cat.embed],
+        files: cat.file ? [cat.file] : [],
+      });
     });
 
     collector.on("end", () => {

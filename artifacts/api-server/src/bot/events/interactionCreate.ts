@@ -6,12 +6,20 @@ import { sql } from "drizzle-orm";
 import { devState } from "../../lib/devState.js";
 import {
   activeGames,
+  lastBets,
   buildEmbed,
   buildGameButtons,
+  buildEndButtons,
   buildBetMenu,
+  buildLobbyEmbed,
+  buildLobbyButtons,
+  buildCustomBetModal,
   createDeck,
   handValue,
   dealerPlay,
+  parseCustomBet,
+  clampBet,
+  BJ_MIN_BET,
   GameState,
   GameStatus,
 } from "../games/blackjack.js";
@@ -57,94 +65,306 @@ function buildNetLabel(status: string, state: GameState): string {
     : `-**${bet}** fichas`;
 }
 
+type BjMsgInteraction =
+  | import("discord.js").ButtonInteraction
+  | import("discord.js").StringSelectMenuInteraction
+  | import("discord.js").ModalSubmitInteraction;
+
+async function finishBlackjackRound(
+  interaction: BjMsgInteraction,
+  ownerId: string,
+  state: GameState,
+  status: GameStatus,
+  botIcon?: string,
+) {
+  activeGames.delete(ownerId);
+  lastBets.set(ownerId, state.originalBet);
+
+  const payout = calculateBlackjackPayout(
+    status,
+    state.bet,
+    state.multiplierActive,
+    state.insuranceActive,
+  );
+  if (payout > 0) await addBalance(state.guildId, state.userId, payout);
+  const newBalance = await getBalance(state.guildId, state.userId);
+  const won = ["win", "dealer_bust", "blackjack"].includes(status);
+  await recordGame(state.guildId, state.userId, won, state.originalBet);
+  state.netLabel = buildNetLabel(status, state);
+  state.finalBalance = newBalance;
+
+  const embed = buildEmbed(state, status, botIcon);
+  const rows = buildEndButtons(ownerId, state.originalBet, newBalance);
+
+  if (interaction.isModalSubmit()) {
+    // Modal can't update the game message — reply with a new board
+    await interaction.reply({ embeds: [embed], components: rows });
+  } else {
+    await interaction.update({ embeds: [embed], components: rows });
+  }
+}
+
+async function startBlackjackRound(
+  interaction: BjMsgInteraction,
+  ownerId: string,
+  bet: number,
+  botIcon?: string,
+): Promise<void> {
+  const guildId = interaction.guild?.id ?? "";
+
+  if (activeGames.has(ownerId)) {
+    const msg = {
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0xff2d6b)
+          .setDescription("❌ Ya tienes una partida activa."),
+      ],
+      ephemeral: true,
+    };
+    if (interaction.deferred || interaction.replied) {
+      await interaction.followUp(msg);
+    } else if (interaction.isModalSubmit()) {
+      await interaction.reply(msg);
+    } else {
+      await interaction.reply(msg);
+    }
+    return;
+  }
+
+  const balance = await getBalance(guildId, ownerId);
+  const check = clampBet(bet, balance);
+  if (!check.ok) {
+    const msg = {
+      embeds: [new EmbedBuilder().setColor(0xff2d6b).setDescription(`❌ ${check.error}`)],
+      ephemeral: true,
+    };
+    if (interaction.isModalSubmit()) await interaction.reply(msg);
+    else await interaction.reply(msg);
+    return;
+  }
+  const finalBet = check.bet;
+
+  const { success, balance: balanceAfterBet } = await deductBalance(
+    guildId,
+    ownerId,
+    finalBet,
+  );
+  if (!success) {
+    const msg = {
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0xff2d6b)
+          .setDescription(
+            `❌ Saldo insuficiente. Necesitas **${finalBet.toLocaleString()}** fichas pero tienes **${balanceAfterBet.toLocaleString()}**.\nReclama tu daily con \`/wallet\`.`,
+          ),
+      ],
+      ephemeral: true,
+    };
+    if (interaction.isModalSubmit()) await interaction.reply(msg);
+    else await interaction.reply(msg);
+    return;
+  }
+
+  const multiplierActive = await hasItem(guildId, ownerId, "multiplier");
+  const insuranceActive = await hasItem(guildId, ownerId, "insurance");
+  if (multiplierActive) await useItem(guildId, ownerId, "multiplier");
+  if (insuranceActive) await useItem(guildId, ownerId, "insurance");
+
+  const deck = createDeck();
+  const playerHand = [deck.pop()!, deck.pop()!];
+  const dealerHand = [deck.pop()!, deck.pop()!];
+
+  const state: GameState = {
+    playerHand,
+    dealerHand,
+    deck,
+    bet: finalBet,
+    originalBet: finalBet,
+    doubled: false,
+    username: interaction.user.username,
+    avatarURL: interaction.user.displayAvatarURL(),
+    guildId,
+    userId: ownerId,
+    startBalance: balanceAfterBet + finalBet,
+    multiplierActive,
+    insuranceActive,
+    startedAt: new Date(),
+  };
+  activeGames.set(ownerId, state);
+  lastBets.set(ownerId, finalBet);
+
+  if (handValue(playerHand) === 21) {
+    await finishBlackjackRound(interaction, ownerId, state, "blackjack", botIcon);
+    return;
+  }
+
+  const embed = buildEmbed(state, "playing", botIcon);
+  const row = buildGameButtons(ownerId, true);
+
+  if (interaction.isModalSubmit()) {
+    await interaction.reply({ embeds: [embed], components: [row] });
+  } else {
+    await interaction.update({ embeds: [embed], components: [row] });
+  }
+}
+
 // ── Blackjack component handler ───────────────────────────────────────────────
 async function handleBlackjack(interaction: Interaction): Promise<boolean> {
-  if (!interaction.isStringSelectMenu() && !interaction.isButton()) return false;
+  const isSelect = interaction.isStringSelectMenu();
+  const isBtn = interaction.isButton();
+  const isModal = interaction.isModalSubmit();
+  if (!isSelect && !isBtn && !isModal) return false;
 
-  const [action, ownerId] = interaction.customId.split(":");
+  const [action, ownerId, extra] = interaction.customId.split(":");
   if (!action?.startsWith("bj_") || !ownerId) return false;
 
-  // Only the original player can interact
   if (interaction.user.id !== ownerId) {
     await interaction.reply({
-      embeds: [new EmbedBuilder().setColor(0xff2d6b).setDescription("❌ Esta partida no es tuya.")],
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0xff2d6b)
+          .setDescription("❌ Esta partida no es tuya."),
+      ],
       ephemeral: true,
     });
     return true;
   }
 
   const botIcon = interaction.client.user?.displayAvatarURL();
+  const guildId = interaction.guild?.id ?? "";
 
-  // ── Bet selection ─────────────────────────────────────────────────────────
-  if (action === "bj_bet" && interaction.isStringSelectMenu()) {
-    const bet = parseInt(interaction.values[0]!);
-    const guildId = interaction.guild?.id ?? "";
-
-    if (bet <= 0) {
+  // ── Custom bet modal submit ───────────────────────────────────────────────
+  if (action === "bj_custom_modal" && isModal) {
+    const raw = interaction.fields.getTextInputValue("bet_amount");
+    const parsed = parseCustomBet(raw);
+    if (parsed == null) {
       await interaction.reply({
-        embeds: [new EmbedBuilder().setColor(0xff2d6b).setDescription("❌ No tienes fichas suficientes. Reclama tu daily con `/wallet`.")],
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xff2d6b)
+            .setDescription(
+              `❌ Cantidad inválida. Usa un número (ej. \`75\`, \`1500\`, \`2k\`). Mínimo **${BJ_MIN_BET}**.`,
+            ),
+        ],
         ephemeral: true,
       });
       return true;
     }
-
-    const { success, balance: balanceAfterBet } = await deductBalance(guildId, ownerId, bet);
-    if (!success) {
-      await interaction.reply({
-        embeds: [new EmbedBuilder().setColor(0xff2d6b).setDescription(`❌ Saldo insuficiente. Necesitas **${bet}** fichas pero tienes **${balanceAfterBet}**.\nReclama tu daily con \`/wallet\`.`)],
-        ephemeral: true,
-      });
-      return true;
-    }
-
-    const multiplierActive = await hasItem(guildId, ownerId, "multiplier");
-    const insuranceActive = await hasItem(guildId, ownerId, "insurance");
-    if (multiplierActive) await useItem(guildId, ownerId, "multiplier");
-    if (insuranceActive) await useItem(guildId, ownerId, "insurance");
-
-    const deck = createDeck();
-    const playerHand = [deck.pop()!, deck.pop()!];
-    const dealerHand = [deck.pop()!, deck.pop()!];
-
-    const state: GameState = {
-      playerHand, dealerHand, deck,
-      bet, originalBet: bet, doubled: false,
-      username: interaction.user.username,
-      avatarURL: interaction.user.displayAvatarURL(),
-      guildId, userId: ownerId,
-      startBalance: balanceAfterBet + bet,
-      multiplierActive, insuranceActive,
-      startedAt: new Date(),
-    };
-    activeGames.set(ownerId, state);
-
-    // Instant blackjack?
-    if (handValue(playerHand) === 21) {
-      activeGames.delete(ownerId);
-      const payout = calculateBlackjackPayout("blackjack", bet, multiplierActive, insuranceActive);
-      const newBalance = await addBalance(guildId, ownerId, payout);
-      await recordGame(guildId, ownerId, true, bet);
-      state.netLabel = buildNetLabel("blackjack", state);
-      state.finalBalance = newBalance;
-      const embed = buildEmbed(state, "blackjack", botIcon);
-      const row = buildGameButtons(ownerId, false, true);
-      await interaction.update({ embeds: [embed], components: [row] });
-      return true;
-    }
-
-    const embed = buildEmbed(state, "playing", botIcon);
-    const row = buildGameButtons(ownerId, true);
-    await interaction.update({ embeds: [embed], components: [row] });
+    await startBlackjackRound(interaction, ownerId, parsed, botIcon);
     return true;
   }
 
-  // ── Game buttons ──────────────────────────────────────────────────────────
-  if (!interaction.isButton()) return false;
+  // ── Open custom bet modal ─────────────────────────────────────────────────
+  if (action === "bj_custom" && isBtn) {
+    const balance = await getBalance(guildId, ownerId);
+    if (balance < BJ_MIN_BET) {
+      await interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xff2d6b)
+            .setDescription(
+              `❌ Necesitas al menos **${BJ_MIN_BET}** fichas. Usa \`/wallet\`.`,
+            ),
+        ],
+        ephemeral: true,
+      });
+      return true;
+    }
+    await interaction.showModal(buildCustomBetModal(ownerId, balance));
+    return true;
+  }
+
+  // ── Volver a jugar → lobby con menú de apuestas ───────────────────────────
+  if (action === "bj_again" && isBtn) {
+    if (activeGames.has(ownerId)) {
+      await interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xff2d6b)
+            .setDescription("❌ Ya tienes una partida activa."),
+        ],
+        ephemeral: true,
+      });
+      return true;
+    }
+    const balance = await getBalance(guildId, ownerId);
+    const last = lastBets.get(ownerId);
+    const embed = buildLobbyEmbed(
+      interaction.user.username,
+      interaction.user.displayAvatarURL(),
+      balance,
+      botIcon,
+    );
+    await interaction.update({
+      embeds: [embed],
+      components: [
+        buildBetMenu(ownerId, balance),
+        buildLobbyButtons(ownerId, balance, last),
+      ],
+    });
+    return true;
+  }
+
+  // ── Misma apuesta (rematch) ───────────────────────────────────────────────
+  if (action === "bj_rematch" && isBtn) {
+    const bet = parseInt(extra ?? "0", 10) || lastBets.get(ownerId) || 0;
+    if (bet <= 0) {
+      await interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xff2d6b)
+            .setDescription(
+              "❌ No hay apuesta anterior. Elige una del menú o usa **Personalizada**.",
+            ),
+        ],
+        ephemeral: true,
+      });
+      return true;
+    }
+    await startBlackjackRound(interaction, ownerId, bet, botIcon);
+    return true;
+  }
+
+  // ── Bet selection (presets + custom option) ───────────────────────────────
+  if (action === "bj_bet" && isSelect) {
+    const value = interaction.values[0]!;
+    if (value === "custom") {
+      const balance = await getBalance(guildId, ownerId);
+      await interaction.showModal(buildCustomBetModal(ownerId, balance));
+      return true;
+    }
+    const bet = parseInt(value, 10);
+    if (!Number.isFinite(bet) || bet <= 0) {
+      await interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xff2d6b)
+            .setDescription(
+              "❌ No tienes fichas suficientes. Reclama tu daily con `/wallet`.",
+            ),
+        ],
+        ephemeral: true,
+      });
+      return true;
+    }
+    await startBlackjackRound(interaction, ownerId, bet, botIcon);
+    return true;
+  }
+
+  // ── In-game buttons ───────────────────────────────────────────────────────
+  if (!isBtn) return false;
 
   const state = activeGames.get(ownerId);
   if (!state) {
+    // End-screen buttons already handled above; leftover hit/stand
     await interaction.reply({
-      embeds: [new EmbedBuilder().setColor(0xff2d6b).setDescription("❌ No hay partida activa. Usa `/blackjack` para empezar.")],
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0xff2d6b)
+          .setDescription(
+            "❌ No hay partida activa. Usa `/blackjack` o **Volver a jugar**.",
+          ),
+      ],
       ephemeral: true,
     });
     return true;
@@ -155,64 +375,44 @@ async function handleBlackjack(interaction: Interaction): Promise<boolean> {
     const val = handValue(state.playerHand);
 
     if (val > 21) {
-      activeGames.delete(ownerId);
-      const payout = calculateBlackjackPayout("bust", state.bet, state.multiplierActive, state.insuranceActive);
-      if (payout > 0) await addBalance(state.guildId, state.userId, payout);
-      const newBalance = await getBalance(state.guildId, state.userId);
-      await recordGame(state.guildId, state.userId, false, state.originalBet);
-      state.netLabel = buildNetLabel("bust", state);
-      state.finalBalance = newBalance;
-      const embed = buildEmbed(state, "bust", botIcon);
-      const row = buildGameButtons(ownerId, false, true);
-      await interaction.update({ embeds: [embed], components: [row] });
+      await finishBlackjackRound(interaction, ownerId, state, "bust", botIcon);
       return true;
     }
 
     if (val === 21) {
       const status = dealerPlay(state);
-      activeGames.delete(ownerId);
-      const payout = calculateBlackjackPayout(status, state.bet, state.multiplierActive, state.insuranceActive);
-      if (payout > 0) await addBalance(state.guildId, state.userId, payout);
-      const newBalance = await getBalance(state.guildId, state.userId);
-      const won = ["win", "dealer_bust", "blackjack"].includes(status);
-      await recordGame(state.guildId, state.userId, won, state.originalBet);
-      state.netLabel = buildNetLabel(status, state);
-      state.finalBalance = newBalance;
-      const embed = buildEmbed(state, status, botIcon);
-      const row = buildGameButtons(ownerId, false, true);
-      await interaction.update({ embeds: [embed], components: [row] });
+      await finishBlackjackRound(interaction, ownerId, state, status, botIcon);
       return true;
     }
 
-    // Still playing — remove double option after first hit
     const embed = buildEmbed(state, "playing", botIcon);
-    const row = buildGameButtons(ownerId, false); // can't double after hitting
+    const row = buildGameButtons(ownerId, false);
     await interaction.update({ embeds: [embed], components: [row] });
     return true;
   }
 
   if (action === "bj_stand") {
     const status = dealerPlay(state);
-    activeGames.delete(ownerId);
-    const payout = calculateBlackjackPayout(status, state.bet, state.multiplierActive, state.insuranceActive);
-    if (payout > 0) await addBalance(state.guildId, state.userId, payout);
-    const newBalance = await getBalance(state.guildId, state.userId);
-    const won = ["win", "dealer_bust", "blackjack"].includes(status);
-    await recordGame(state.guildId, state.userId, won, state.originalBet);
-    state.netLabel = buildNetLabel(status, state);
-    state.finalBalance = newBalance;
-    const embed = buildEmbed(state, status, botIcon);
-    const row = buildGameButtons(ownerId, false, true);
-    await interaction.update({ embeds: [embed], components: [row] });
+    await finishBlackjackRound(interaction, ownerId, state, status, botIcon);
     return true;
   }
 
   if (action === "bj_double") {
     const extraBet = state.bet;
-    const { success: canDouble, balance: balAfterDouble } = await deductBalance(state.guildId, state.userId, extraBet);
+    const { success: canDouble, balance: balAfterDouble } = await deductBalance(
+      state.guildId,
+      state.userId,
+      extraBet,
+    );
     if (!canDouble) {
       await interaction.reply({
-        embeds: [new EmbedBuilder().setColor(0xff2d6b).setDescription(`❌ Saldo insuficiente para doblar. Necesitas **${extraBet}** fichas más (tienes **${balAfterDouble}**).`)],
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xff2d6b)
+            .setDescription(
+              `❌ Saldo insuficiente para doblar. Necesitas **${extraBet.toLocaleString()}** fichas más (tienes **${balAfterDouble.toLocaleString()}**).`,
+            ),
+        ],
         ephemeral: true,
       });
       return true;
@@ -223,20 +423,10 @@ async function handleBlackjack(interaction: Interaction): Promise<boolean> {
     state.playerHand.push(state.deck.pop()!);
     const val = handValue(state.playerHand);
 
-    let status: GameStatus;
-    if (val > 21) { status = "bust"; } else { status = dealerPlay(state); }
+    const status: GameStatus =
+      val > 21 ? "bust" : dealerPlay(state);
 
-    activeGames.delete(ownerId);
-    const payout = calculateBlackjackPayout(status, state.bet, state.multiplierActive, state.insuranceActive);
-    if (payout > 0) await addBalance(state.guildId, state.userId, payout);
-    const newBalance = await getBalance(state.guildId, state.userId);
-    const won = ["win", "dealer_bust", "blackjack"].includes(status);
-    await recordGame(state.guildId, state.userId, won, state.originalBet);
-    state.netLabel = buildNetLabel(status, state);
-    state.finalBalance = newBalance;
-    const embed = buildEmbed(state, status, botIcon);
-    const row = buildGameButtons(ownerId, false, true);
-    await interaction.update({ embeds: [embed], components: [row] });
+    await finishBlackjackRound(interaction, ownerId, state, status, botIcon);
     return true;
   }
 
@@ -594,6 +784,12 @@ export default async function onInteractionCreate(interaction: Interaction) {
   if (await handleInventory(interaction)) return;
   if (await handleCfgEmbed(interaction)) return;
 
+  const { handleMusicButtons } = await import("../music/buttons.js");
+  if (await handleMusicButtons(interaction)) return;
+
+  const { handleTicketInteraction } = await import("./ticketInteractions.js");
+  if (await handleTicketInteraction(interaction)) return;
+
   if (!interaction.isChatInputCommand()) return;
 
   const client = interaction.client as BotClient;
@@ -661,6 +857,17 @@ export default async function onInteractionCreate(interaction: Interaction) {
       `Error ejecutando comando: ${commandName}`,
     );
 
+    // Dev error log channel (rich embed + traceback)
+    try {
+      const { reportDevError, contextFromInteraction } = await import(
+        "../lib/devErrorLog.js"
+      );
+      const ctx = contextFromInteraction(interaction);
+      await reportDevError(client, err, ctx);
+    } catch (logErr) {
+      logger.error({ logErr }, "No se pudo reportar error a DEV_LOG_CHANNEL");
+    }
+
     const errorEmbed = new EmbedBuilder()
       .setColor(0xff0000)
       .setTitle("🚨 Error de Sincronización")
@@ -669,14 +876,29 @@ export default async function onInteractionCreate(interaction: Interaction) {
       )
       .setTimestamp();
 
-    if (interaction.replied || interaction.deferred) {
-      await interaction
-        .followUp({ embeds: [errorEmbed], ephemeral: true })
-        .catch(() => null);
-    } else {
-      await interaction
-        .reply({ embeds: [errorEmbed], ephemeral: true })
-        .catch(() => null);
+    // Ignore expired interactions (10062) — ban/kick already applied
+    const isUnknown =
+      err &&
+      typeof err === "object" &&
+      "code" in err &&
+      (err as { code: number }).code === 10062;
+
+    if (!isUnknown) {
+      if (interaction.replied || interaction.deferred) {
+        await interaction
+          .followUp({
+            embeds: [errorEmbed],
+            flags: 64, // MessageFlags.Ephemeral
+          })
+          .catch(() => null);
+      } else {
+        await interaction
+          .reply({
+            embeds: [errorEmbed],
+            flags: 64,
+          })
+          .catch(() => null);
+      }
     }
   }
 
@@ -697,8 +919,7 @@ export default async function onInteractionCreate(interaction: Interaction) {
           count: 1,
           lastUsed: new Date(),
         })
-        .onConflictDoUpdate({
-          target: commandStatsTable.command,
+        .onDuplicateKeyUpdate({
           set: {
             count: sql`${commandStatsTable.count} + 1`,
             lastUsed: new Date(),

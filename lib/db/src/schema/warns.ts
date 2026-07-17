@@ -1,84 +1,100 @@
-import { pgTable, serial, text, timestamp, boolean, integer } from "drizzle-orm/pg-core";
+import {
+  mysqlTable,
+  int,
+  varchar,
+  text,
+  timestamp,
+  boolean,
+} from "drizzle-orm/mysql-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
-export const warnsTable = pgTable("warns", {
-  id: serial("id").primaryKey(),
-  guildId: text("guild_id").notNull(),
-  userId: text("user_id").notNull(),
-  username: text("username").notNull(),
-  moderatorId: text("moderator_id").notNull(),
-  moderatorName: text("moderator_name").notNull(),
+export const warnsTable = mysqlTable("warns", {
+  id: int("id").autoincrement().primaryKey(),
+  guildId: varchar("guild_id", { length: 32 }).notNull(),
+  userId: varchar("user_id", { length: 32 }).notNull(),
+  username: varchar("username", { length: 100 }).notNull(),
+  moderatorId: varchar("moderator_id", { length: 32 }).notNull(),
+  moderatorName: varchar("moderator_name", { length: 100 }).notNull(),
   reason: text("reason").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+  // Always write createdAt from app to avoid MySQL/timezone edge cases
+  createdAt: timestamp("created_at").notNull(),
 });
 
-export const insertWarnSchema = createInsertSchema(warnsTable).omit({ id: true, createdAt: true });
+export const insertWarnSchema = createInsertSchema(warnsTable).omit({
+  id: true,
+  createdAt: true,
+});
 export type InsertWarn = z.infer<typeof insertWarnSchema>;
 export type Warn = typeof warnsTable.$inferSelect;
 
-export const activityTable = pgTable("activity", {
-  id: serial("id").primaryKey(),
-  command: text("command").notNull(),
-  userId: text("user_id").notNull(),
-  username: text("username").notNull(),
-  guildId: text("guild_id").notNull(),
-  guildName: text("guild_name").notNull(),
+export const activityTable = mysqlTable("activity", {
+  id: int("id").autoincrement().primaryKey(),
+  command: varchar("command", { length: 64 }).notNull(),
+  userId: varchar("user_id", { length: 32 }).notNull(),
+  username: varchar("username", { length: 100 }).notNull(),
+  guildId: varchar("guild_id", { length: 32 }).notNull(),
+  guildName: varchar("guild_name", { length: 150 }).notNull(),
   executedAt: timestamp("executed_at").defaultNow().notNull(),
   success: boolean("success").notNull().default(true),
 });
 
-export const insertActivitySchema = createInsertSchema(activityTable).omit({ id: true, executedAt: true });
+export const insertActivitySchema = createInsertSchema(activityTable).omit({
+  id: true,
+  executedAt: true,
+});
 export type InsertActivity = z.infer<typeof insertActivitySchema>;
 export type Activity = typeof activityTable.$inferSelect;
 
-export const commandStatsTable = pgTable("command_stats", {
-  id: serial("id").primaryKey(),
-  command: text("command").notNull().unique(),
-  count: integer("count").notNull().default(0),
+export const commandStatsTable = mysqlTable("command_stats", {
+  id: int("id").autoincrement().primaryKey(),
+  command: varchar("command", { length: 64 }).notNull().unique(),
+  count: int("count").notNull().default(0),
   lastUsed: timestamp("last_used").defaultNow().notNull(),
 });
 
-export const insertCommandStatSchema = createInsertSchema(commandStatsTable).omit({ id: true });
+export const insertCommandStatSchema = createInsertSchema(
+  commandStatsTable,
+).omit({ id: true });
 export type InsertCommandStat = z.infer<typeof insertCommandStatSchema>;
 export type CommandStat = typeof commandStatsTable.$inferSelect;
 
-// Dev config: key-value store for bot settings
-export const botConfigTable = pgTable("bot_config", {
-  key: text("key").primaryKey(),
+export const botConfigTable = mysqlTable("bot_config", {
+  key: varchar("key", { length: 191 }).primaryKey(),
   value: text("value").notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
 });
 
 export type BotConfig = typeof botConfigTable.$inferSelect;
 
-// System logs: all moderation actions and bot events
-export const logsTable = pgTable("bot_logs", {
-  id: serial("id").primaryKey(),
-  level: text("level").notNull().default("info"),
-  event: text("event").notNull(),
-  details: text("details").notNull().default("{}"),
-  guildId: text("guild_id"),
-  guildName: text("guild_name"),
-  userId: text("user_id"),
-  username: text("username"),
-  moderatorId: text("moderator_id"),
-  moderatorName: text("moderator_name"),
+export const logsTable = mysqlTable("bot_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  level: varchar("level", { length: 16 }).notNull().default("info"),
+  event: varchar("event", { length: 64 }).notNull(),
+  details: text("details").notNull(),
+  guildId: varchar("guild_id", { length: 32 }),
+  guildName: varchar("guild_name", { length: 150 }),
+  userId: varchar("user_id", { length: 32 }),
+  username: varchar("username", { length: 100 }),
+  moderatorId: varchar("moderator_id", { length: 32 }),
+  moderatorName: varchar("moderator_name", { length: 100 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export type Log = typeof logsTable.$inferSelect;
 
-// Dev changelogs: update history posted from the dashboard
-export const changelogsTable = pgTable("changelogs", {
-  id: serial("id").primaryKey(),
-  version: text("version").notNull(),
-  title: text("title").notNull(),
+export const changelogsTable = mysqlTable("changelogs", {
+  id: int("id").autoincrement().primaryKey(),
+  version: varchar("version", { length: 32 }).notNull(),
+  title: varchar("title", { length: 200 }).notNull(),
   description: text("description").notNull(),
-  type: text("type").notNull().default("feature"),
+  type: varchar("type", { length: 32 }).notNull().default("feature"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const insertChangelogSchema = createInsertSchema(changelogsTable).omit({ id: true, createdAt: true });
+export const insertChangelogSchema = createInsertSchema(changelogsTable).omit({
+  id: true,
+  createdAt: true,
+});
 export type InsertChangelog = z.infer<typeof insertChangelogSchema>;
 export type Changelog = typeof changelogsTable.$inferSelect;

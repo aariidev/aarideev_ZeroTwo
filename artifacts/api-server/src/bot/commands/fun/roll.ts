@@ -5,6 +5,7 @@ import {
   Client,
 } from "discord.js";
 import { Command } from "../../types.js";
+import { assetImage } from "../../lib/helpAssets.js";
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -52,6 +53,7 @@ const command: Command = {
       comment = "Buen trabajo, estás demostrando de qué madera estás hecho.";
     }
 
+    const img = assetImage("fun");
     const embed = new EmbedBuilder()
       .setColor(color)
       .setAuthor({
@@ -63,9 +65,15 @@ const command: Command = {
         `\`\`\`md\n* Dado Lanzado :: d${sides}\n* Valor Base    :: ${rawResult}\n* Modificador   :: ${modifier >= 0 ? `+${modifier}` : modifier}\n* Total Neto    :: ${finalResult}\n\`\`\``,
       )
       .addFields({ name: "💬 Comentario de 02", value: `*"${comment}"*` })
+      .setThumbnail(client.user?.displayAvatarURL({ size: 128 }) ?? null)
       .setTimestamp();
 
-    await interaction.reply({ embeds: [embed] });
+    if (img.url) embed.setImage(img.url);
+
+    await interaction.reply({
+      embeds: [embed],
+      files: img.file ? [img.file] : undefined,
+    });
   },
 };
 

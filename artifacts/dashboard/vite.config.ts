@@ -67,21 +67,61 @@ export default defineConfig({
     port,
     strictPort: true,
     host: "0.0.0.0",
+    // Allow VS Code / Dev Tunnels hosts (*.devtunnels.ms, etc.)
     allowedHosts: true,
+    // HMR over public HTTPS tunnel (optional)
+    ...(process.env.TUNNEL_HOST
+      ? {
+          hmr: {
+            protocol: "wss",
+            host: process.env.TUNNEL_HOST.replace(/^https?:\/\//, "").replace(
+              /\/+$/,
+              "",
+            ),
+            clientPort: 443,
+          },
+        }
+      : {}),
     fs: {
       strict: true,
     },
     proxy: {
       "/api": {
-        target: "http://localhost:8080",
+        target: process.env.API_PROXY_TARGET ?? "http://localhost:8080",
         changeOrigin: true,
         secure: false,
-        // Forward cookies for Discord session auth
+        // Dev Tunnels default ~60s; keep headroom for Discord rate-limits
+        timeout: 120_000,
+        proxyTimeout: 120_000,
+        // Keep Set-Cookie host as the public tunnel host (no Domain rewrite issues)
+        cookieDomainRewrite: "",
         configure: (proxy) => {
           proxy.on("proxyReq", (proxyReq, req) => {
             if (req.headers.cookie) {
               proxyReq.setHeader("cookie", req.headers.cookie);
             }
+            // Only mark HTTPS when the browser actually used the tunnel
+            const host = String(req.headers.host ?? "");
+            const isTunnel =
+              host.includes("devtunnels.ms") ||
+              host.includes("loca.lt") ||
+              host.includes("ngrok");
+            if (isTunnel || req.headers["x-forwarded-proto"] === "https") {
+              proxyReq.setHeader("x-forwarded-proto", "https");
+            }
+            if (host) proxyReq.setHeader("x-forwarded-host", host);
+          });
+          proxy.on("error", (err, _req, res) => {
+            const r = res as { writeHead?: Function; end?: Function; headersSent?: boolean };
+            if (r && !r.headersSent && typeof r.writeHead === "function") {
+              r.writeHead(502, { "Content-Type": "application/json" });
+              r.end?.(
+                JSON.stringify({
+                  error: "API no disponible (proxy). ¿Está el bot en :8080?",
+                }),
+              );
+            }
+            console.error("[vite proxy /api]", err.message);
           });
         },
       },

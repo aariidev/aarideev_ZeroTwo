@@ -3,6 +3,7 @@ import {
   EmbedBuilder,
   ChatInputCommandInteraction,
   Client,
+  MessageFlags,
 } from "discord.js";
 import { Command } from "../../types.js";
 import { logBotEvent } from "../../../lib/botLogger.js";
@@ -39,15 +40,20 @@ const command: Command = {
       "Incompatibilidad crítica con el sistema.";
     const days = interaction.options.getInteger("dias") ?? 0;
 
-    const member = interaction.guild?.members.cache.get(target.id);
-    if (member) {
-      if (!member.bannable)
-        return interaction.reply({
-          content:
-            "❌ Jerarquía de privilegios insuficiente para purgar a este sujeto.",
-          ephemeral: true,
-        });
+    const member =
+      interaction.guild?.members.cache.get(target.id) ??
+      (await interaction.guild?.members.fetch(target.id).catch(() => null));
+
+    if (member && !member.bannable) {
+      return interaction.reply({
+        content:
+          "❌ Jerarquía de privilegios insuficiente para purgar a este sujeto.",
+        flags: MessageFlags.Ephemeral,
+      });
     }
+
+    // DM + ban API can exceed the 3s interaction window → defer first
+    await interaction.deferReply();
 
     let dmSent = false;
     try {
@@ -67,10 +73,19 @@ const command: Command = {
       dmSent = false;
     }
 
-    await interaction.guild?.members.ban(target.id, {
-      reason: `${reason} | Por: ${interaction.user.tag}`,
-      deleteMessageSeconds: days * 24 * 60 * 60,
-    });
+    try {
+      await interaction.guild?.members.ban(target.id, {
+        reason: `${reason} | Por: ${interaction.user.tag}`,
+        deleteMessageSeconds: days * 24 * 60 * 60,
+      });
+    } catch (banErr) {
+      await interaction.editReply({
+        content: `❌ No se pudo banear a ${target.tag}: ${
+          banErr instanceof Error ? banErr.message : "error desconocido"
+        }`,
+      });
+      throw banErr;
+    }
 
     const embed = new EmbedBuilder()
       .setColor(0xff2d6b)
@@ -111,7 +126,7 @@ const command: Command = {
       )
       .setTimestamp();
 
-    await interaction.reply({ embeds: [embed] });
+    await interaction.editReply({ embeds: [embed] });
     await sendModLog(client, interaction.guild?.id ?? "", embed, "ban");
 
     await logBotEvent({

@@ -4,6 +4,7 @@ import { BotClient } from "./types.js";
 import { setBotClient as setBotClientForBot } from "../routes/bot.js";
 import { setBotClient as setBotClientForGuilds } from "../routes/guilds.js";
 import { setBotClientForDev } from "../routes/dev.js";
+import { setBotClientForTickets } from "../routes/tickets.js";
 import { devState } from "../lib/devState.js";
 import { db } from "@workspace/db";
 import { botConfigTable } from "@workspace/db";
@@ -16,6 +17,7 @@ import avatarCmd from "./commands/utility/avatar.js";
 import serverinfoCmd from "./commands/utility/serverinfo.js";
 import userinfoCmd from "./commands/utility/userinfo.js";
 import helpCmd from "./commands/utility/help.js";
+import botinfoCmd from "./commands/utility/botinfo.js";
 
 // Moderation
 import banCmd from "./commands/moderation/ban.js";
@@ -25,6 +27,7 @@ import unmuteCmd from "./commands/moderation/unmute.js";
 import warnCmd from "./commands/moderation/warn.js";
 import warnsCmd from "./commands/moderation/warns.js";
 import clearwarnsCmd from "./commands/moderation/clearwarns.js";
+import delwarnCmd from "./commands/moderation/delwarn.js";
 import purgeCmd from "./commands/moderation/purge.js";
 import timeoutCmd from "./commands/moderation/timeout.js";
 import untimeoutCmd from "./commands/moderation/untimeout.js";
@@ -41,6 +44,7 @@ import rollCmd from "./commands/fun/roll.js";
 import blackjackCmd from "./commands/fun/blackjack.js";
 import cfgembedCmd from "./commands/utility/cfgembed.js";
 import cfglogsCmd from "./commands/utility/cfglogs.js";
+import ticketCmd from "./commands/utility/ticket.js";
 import walletCmd from "./commands/fun/wallet.js";
 import shopCmd from "./commands/fun/shop.js";
 import inventoryCmd from "./commands/fun/inventory.js";
@@ -48,6 +52,17 @@ import topCmd from "./commands/fun/top.js";
 import slotsCmd from "./commands/fun/slots.js";
 import payCmd from "./commands/fun/pay.js";
 import devCmd from "./commands/admin/dev.js";
+// Music (Jockie-style)
+import playCmd from "./commands/music/play.js";
+import skipCmd from "./commands/music/skip.js";
+import stopCmd from "./commands/music/stop.js";
+import pauseCmd from "./commands/music/pause.js";
+import queueCmd from "./commands/music/queue.js";
+import nowplayingCmd from "./commands/music/nowplaying.js";
+import volumeCmd from "./commands/music/volume.js";
+import loopCmd from "./commands/music/loop.js";
+import shuffleCmd from "./commands/music/shuffle.js";
+import leaveCmd from "./commands/music/leave.js";
 import { startGameCleanup } from "./lib/gameCleanup.js";
 
 const ALL_COMMANDS = [
@@ -56,6 +71,7 @@ const ALL_COMMANDS = [
   serverinfoCmd,
   userinfoCmd,
   helpCmd,
+  botinfoCmd,
   banCmd,
   kickCmd,
   muteCmd,
@@ -63,6 +79,7 @@ const ALL_COMMANDS = [
   warnCmd,
   warnsCmd,
   clearwarnsCmd,
+  delwarnCmd,
   purgeCmd,
   timeoutCmd,
   untimeoutCmd,
@@ -77,6 +94,7 @@ const ALL_COMMANDS = [
   blackjackCmd,
   cfgembedCmd,
   cfglogsCmd,
+  ticketCmd,
   walletCmd,
   shopCmd,
   inventoryCmd,
@@ -84,6 +102,16 @@ const ALL_COMMANDS = [
   slotsCmd,
   payCmd,
   devCmd,
+  playCmd,
+  skipCmd,
+  stopCmd,
+  pauseCmd,
+  queueCmd,
+  nowplayingCmd,
+  volumeCmd,
+  loopCmd,
+  shuffleCmd,
+  leaveCmd,
 ];
 
 export async function startBot() {
@@ -103,9 +131,11 @@ export async function startBot() {
       GatewayIntentBits.MessageContent,
       GatewayIntentBits.GuildVoiceStates,
       GatewayIntentBits.GuildInvites,
+      // Private messages → Gemini chat
+      GatewayIntentBits.DirectMessages,
     ],
     partials: [
-      Partials.Channel,
+      Partials.Channel, // required to receive DMs
       Partials.Message,
       Partials.GuildMember,
       Partials.User,
@@ -129,6 +159,22 @@ export async function startBot() {
     `🌸 [NÚCLEO] Sincronización exitosa: ${client.commands.size} comandos listos en la terminal.`,
   );
 
+  // Music providers (YouTube cookies + Spotify API)
+  try {
+    const { initMusicProviders } = await import("./music/config.js");
+    const musicStatus = await initMusicProviders();
+    logger.info(
+      {
+        youtubeCookies: musicStatus.youtubeCookies,
+        spotify: musicStatus.spotify,
+        cookiesPath: musicStatus.cookiesPath,
+      },
+      "🎵 Zero Two Music · providers listos",
+    );
+  } catch (err) {
+    logger.warn({ err }, "🎵 No se pudieron inicializar providers de música");
+  }
+
   // ── PRE-CARGA ESTRATÉGICA DE ENRUTADORES DE EVENTOS ──────────────────────────
 
   const { default: onReady } = await import("./events/ready.js");
@@ -137,9 +183,12 @@ export async function startBot() {
   );
   const { default: onGuildCreate } = await import("./events/guildCreate.js");
   const { registerServerLogs } = await import("./events/serverLogs.js");
+  const { registerDmChat } = await import("./events/dmChat.js");
 
   // Server monitoring logs (ban, unban, delete, edit, join, leave/kick)
   registerServerLogs(client);
+  // Private DMs answered by Gemini (Zero Two)
+  registerDmChat(client);
 
   // Re-run on each gateway ready (including after destroy()+login() restarts).
   // Guard against double-fire of ready + clientReady in the same connect cycle.
@@ -155,6 +204,7 @@ export async function startBot() {
       setBotClientForBot(client);
       setBotClientForGuilds(client);
       setBotClientForDev(client);
+      setBotClientForTickets(client);
 
       startGameCleanup();
       logger.info("🔗 Pasarelas y rutas API vinculadas al cliente central.");
@@ -190,7 +240,61 @@ export async function startBot() {
         { err },
         `❌ Colapso en el hilo de comandos al procesar interacción.`,
       );
+      try {
+        const { reportDevError, contextFromInteraction } = await import(
+          "./lib/devErrorLog.js"
+        );
+        await reportDevError(client, err, contextFromInteraction(interaction));
+      } catch {
+        /* ignore secondary log failures */
+      }
     }
+  });
+
+  // Uncaught errors in async bot work
+  process.on("unhandledRejection", (reason) => {
+    const msg =
+      reason instanceof Error
+        ? reason.message
+        : typeof reason === "object" && reason && "message" in reason
+          ? String((reason as { message: unknown }).message)
+          : String(reason);
+    // yt-dlp/ffmpeg pipe closes on skip/stop — expected, not fatal
+    if (/EPIPE|ECONNRESET|PREMATURE_CLOSE/i.test(msg)) {
+      logger.warn({ msg }, "unhandledRejection (pipe, ignored)");
+      return;
+    }
+    logger.error({ err: reason }, "unhandledRejection");
+    void import("./lib/devErrorLog.js")
+      .then(({ reportDevError }) =>
+        reportDevError(client, reason, {
+          context: "process.unhandledRejection",
+          guildId: null,
+          guildName: null,
+        }),
+      )
+      .catch(() => null);
+  });
+
+  process.on("uncaughtException", (err) => {
+    // EPIPE on music pipes used to kill the whole bot process
+    if (
+      err &&
+      typeof err === "object" &&
+      ("code" in err
+        ? ["EPIPE", "ECONNRESET", "ERR_STREAM_PREMATURE_CLOSE"].includes(
+            String((err as { code?: string }).code),
+          )
+        : /EPIPE|ECONNRESET|PREMATURE_CLOSE/i.test(err.message))
+    ) {
+      logger.warn(
+        { code: (err as { code?: string }).code, msg: err.message },
+        "uncaughtException pipe (ignored — music skip/stop)",
+      );
+      return;
+    }
+    logger.fatal({ err }, "uncaughtException");
+    process.exit(1);
   });
 
   client.on("guildCreate", async (guild) => {

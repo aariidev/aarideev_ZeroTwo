@@ -73,6 +73,12 @@ onlyBuiltDependencies:
   - esbuild
   - msw
   - unrs-resolver
+  # Optional: allow genai/protobuf postinstall if needed (not required for basic use)
+  - '@google/genai'
+  - protobufjs
+
+# Packages whose scripts we skip without failing the workspace
+ignoredBuiltDependencies: []
 
 overrides:
   # replit uses linux-x64 only, we can exclude all other platforms
@@ -160,4 +166,7 @@ overrides:
   esbuild: "0.27.3"
 
 allowBuilds:
+  '@google/genai': set this to true or false
   esbuild: true
+  protobufjs: set this to true or false
+  youtube-dl-exec: set this to true or false
