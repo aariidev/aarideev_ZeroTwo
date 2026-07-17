@@ -19,13 +19,34 @@ export async function getEconomy(guildId: string, userId: string): Promise<Econo
 
   if (rows[0]) return rows[0];
 
-  // Create starting account
+  // Create starting account (MySQL upsert no-op on conflict)
   await db
     .insert(economyTable)
     .values({ guildId, userId, balance: STARTING_BALANCE })
-    .onConflictDoNothing();
+    .onDuplicateKeyUpdate({
+      set: { guildId: sql`${economyTable.guildId}` },
+    });
 
-  return { guildId, userId, balance: STARTING_BALANCE, totalEarned: 0, totalLost: 0, gamesPlayed: 0, gamesWon: 0, streak: 0, lastDaily: null, createdAt: new Date() };
+  const created = await db
+    .select()
+    .from(economyTable)
+    .where(and(eq(economyTable.guildId, guildId), eq(economyTable.userId, userId)))
+    .limit(1);
+
+  return (
+    created[0] ?? {
+      guildId,
+      userId,
+      balance: STARTING_BALANCE,
+      totalEarned: 0,
+      totalLost: 0,
+      gamesPlayed: 0,
+      gamesWon: 0,
+      streak: 0,
+      lastDaily: null,
+      createdAt: new Date(),
+    }
+  );
 }
 
 export async function getBalance(guildId: string, userId: string): Promise<number> {
@@ -35,14 +56,19 @@ export async function getBalance(guildId: string, userId: string): Promise<numbe
 
 export async function addBalance(guildId: string, userId: string, amount: number): Promise<number> {
   await ensureAccount(guildId, userId);
-  const rows = await db
+  await db
     .update(economyTable)
     .set({
       balance: sql`${economyTable.balance} + ${amount}`,
       totalEarned: sql`${economyTable.totalEarned} + ${amount}`,
     })
+    .where(and(eq(economyTable.guildId, guildId), eq(economyTable.userId, userId)));
+
+  const rows = await db
+    .select({ balance: economyTable.balance })
+    .from(economyTable)
     .where(and(eq(economyTable.guildId, guildId), eq(economyTable.userId, userId)))
-    .returning({ balance: economyTable.balance });
+    .limit(1);
   return rows[0]?.balance ?? 0;
 }
 
@@ -54,14 +80,19 @@ export async function deductBalance(
   const eco = await getEconomy(guildId, userId);
   if (eco.balance < amount) return { success: false, balance: eco.balance };
 
-  const rows = await db
+  await db
     .update(economyTable)
     .set({
       balance: sql`${economyTable.balance} - ${amount}`,
       totalLost: sql`${economyTable.totalLost} + ${amount}`,
     })
+    .where(and(eq(economyTable.guildId, guildId), eq(economyTable.userId, userId)));
+
+  const rows = await db
+    .select({ balance: economyTable.balance })
+    .from(economyTable)
     .where(and(eq(economyTable.guildId, guildId), eq(economyTable.userId, userId)))
-    .returning({ balance: economyTable.balance });
+    .limit(1);
 
   return { success: true, balance: rows[0]?.balance ?? 0 };
 }
@@ -134,8 +165,7 @@ export async function addItem(
   await db
     .insert(inventoryTable)
     .values({ guildId, userId, itemId, quantity: qty })
-    .onConflictDoUpdate({
-      target: [inventoryTable.guildId, inventoryTable.userId, inventoryTable.itemId],
+    .onDuplicateKeyUpdate({
       set: { quantity: sql`${inventoryTable.quantity} + ${qty}` },
     });
 }
@@ -205,7 +235,9 @@ async function ensureAccount(guildId: string, userId: string): Promise<void> {
   await db
     .insert(economyTable)
     .values({ guildId, userId, balance: STARTING_BALANCE })
-    .onConflictDoNothing();
+    .onDuplicateKeyUpdate({
+      set: { guildId: sql`${economyTable.guildId}` },
+    });
 }
 
 export function calculateBlackjackPayout(

@@ -81,16 +81,56 @@ export function createSessionPayload(
   };
 }
 
+type CookieReqLike = {
+  secure?: boolean;
+  protocol?: string;
+  headers?: Record<string, string | string[] | undefined>;
+  get?: (name: string) => string | undefined;
+};
+
 /**
  * Cookie options for Express `res.cookie`.
  * NOTE: Express `maxAge` is in **milliseconds** (not seconds).
+ *
+ * Secure is true when the *request* is HTTPS (incl. Dev Tunnel via
+ * X-Forwarded-Proto), or COOKIE_SECURE=true. Localhost HTTP stays non-secure
+ * so both local and tunnel work with the same server.
  */
-export function sessionCookieOptions(maxAgeMs: number = MAX_AGE_MS) {
+export function sessionCookieOptions(
+  maxAgeMs: number = MAX_AGE_MS,
+  req?: CookieReqLike,
+) {
   const isProd = process.env.NODE_ENV === "production";
+  const flag = (process.env.COOKIE_SECURE ?? "").toLowerCase();
+  const forceSecure = flag === "true" || flag === "1";
+  const forceInsecure = flag === "false" || flag === "0";
+
+  let requestHttps = false;
+  if (req) {
+    const xf = req.headers?.["x-forwarded-proto"];
+    const proto = Array.isArray(xf) ? xf[0] : xf;
+    requestHttps =
+      Boolean(req.secure) ||
+      proto === "https" ||
+      req.protocol === "https" ||
+      (typeof req.get === "function" &&
+        (req.get("x-forwarded-proto") ?? "").split(",")[0]?.trim() === "https");
+  }
+
+  const secure = forceInsecure
+    ? false
+    : forceSecure || isProd || requestHttps;
+
+  // SameSite=None requires Secure (cross-site API). Tunnel same-origin uses Lax.
+  const crossSite =
+    (process.env.COOKIE_SAMESITE ?? "").toLowerCase() === "none";
+  const sameSite =
+    crossSite && secure ? ("none" as const) : ("lax" as const);
+
   return {
     httpOnly: true,
-    secure: isProd,
-    sameSite: "lax" as const,
+    secure,
+    sameSite,
     path: "/",
     maxAge: maxAgeMs,
   };

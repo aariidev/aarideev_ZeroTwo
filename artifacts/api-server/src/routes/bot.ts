@@ -1,8 +1,12 @@
 import { Router, type Request, type Response } from "express";
 import { db } from "@workspace/db";
 import { activityTable } from "@workspace/db";
-import { count, desc } from "drizzle-orm";
+import { count, desc, inArray } from "drizzle-orm";
 import type { Client } from "discord.js";
+import {
+  dataScopeGuildIds,
+  resolveGuildAccess,
+} from "../lib/guildAccess.js";
 
 const router = Router();
 
@@ -40,12 +44,33 @@ export function incrementCommands() {
 
 router.get("/stats", async (req: Request, res: Response) => {
   try {
-    const [cmdCountResult] = await db
-      .select({ total: count() })
-      .from(activityTable);
+    const access = await resolveGuildAccess(req, botClient);
+    const scope = dataScopeGuildIds(access);
 
-    const guildCount = botClient?.guilds.cache.size ?? 0;
-    const userCount = botClient?.users.cache.size ?? 0;
+    const [cmdCountResult] = access.isOwner
+      ? await db.select({ total: count() }).from(activityTable)
+      : scope.size > 0
+        ? await db
+            .select({ total: count() })
+            .from(activityTable)
+            .where(inArray(activityTable.guildId, [...scope]))
+        : [{ total: 0 }];
+
+    // Non-owners: only count of their manageable guilds (not global bot footprint)
+    const guildCount = access.isOwner
+      ? (botClient?.guilds.cache.size ?? 0)
+      : access.memberGuildIds.size;
+
+    let userCount = 0;
+    if (access.isOwner) {
+      userCount = botClient?.users.cache.size ?? 0;
+    } else if (botClient) {
+      for (const id of access.memberGuildIds) {
+        const g = botClient.guilds.cache.get(id);
+        if (g) userCount += g.memberCount ?? 0;
+      }
+    }
+
     const uptime = (Date.now() - botStartTime) / 1000;
     const ping = botClient?.ws.ping ?? -1;
     const botName = botClient?.user?.username ?? "ZeroTwo";
@@ -55,16 +80,15 @@ router.get("/stats", async (req: Request, res: Response) => {
     res.status(200).json({
       guildCount,
       userCount,
-      commandsExecuted: Number(cmdCountResult?.total ?? totalCommandsExecuted),
+      commandsExecuted: Number(cmdCountResult?.total ?? (access.isOwner ? totalCommandsExecuted : 0)),
       uptime,
-      // When WS is still connecting, discord.js can report -1 even if process is up.
-      // Prefer a non-negative sentinel once the client is ready so the dashboard stays in sync.
       ping: ready && ping < 0 ? 0 : ping,
       botName,
       botAvatar,
       botTag: botClient?.user?.tag ?? null,
       online: ready,
       version: "2.3.0",
+      scoped: !access.isOwner,
     });
   } catch (err) {
     req.log?.error({ err }, "❌ Error crítico obteniendo estadísticas del bot");
@@ -79,11 +103,25 @@ router.get("/activity", async (req: Request, res: Response) => {
       ? Math.min(Math.max(Math.trunc(rawLimit), 1), 100)
       : 40;
 
-    const rows = await db
+    const access = await resolveGuildAccess(req, botClient);
+    const scope = dataScopeGuildIds(access);
+
+    if (!access.isOwner && scope.size === 0) {
+      return res.status(200).json([]);
+    }
+
+    let q = db
       .select()
       .from(activityTable)
       .orderBy(desc(activityTable.executedAt))
-      .limit(limit);
+      .limit(limit)
+      .$dynamic();
+
+    if (!access.isOwner) {
+      q = q.where(inArray(activityTable.guildId, [...scope]));
+    }
+
+    const rows = await q;
 
     res.status(200).json(
       rows.map((row) => ({

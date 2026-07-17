@@ -123,10 +123,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback(() => {
-    const api =
-      (import.meta as { env?: Record<string, string> }).env?.VITE_API_URL ??
-      "http://localhost:8080";
-    window.location.href = `${api.replace(/\/+$/, "")}/api/auth/discord`;
+    // Same-origin by default (works with Vite proxy + Dev Tunnels).
+    // Optional override: VITE_API_URL=https://your-api-tunnel
+    const envApi = (import.meta as { env?: Record<string, string> }).env
+      ?.VITE_API_URL;
+    const origin = envApi?.replace(/\/+$/, "") || BASE || "";
+    window.location.href = `${origin}/api/auth/discord`;
   }, []);
 
   const logout = useCallback(async () => {

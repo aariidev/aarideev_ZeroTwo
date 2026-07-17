@@ -12,6 +12,7 @@ import Commands from "@/pages/commands";
 import Warns from "@/pages/warns";
 import DevPanel from "@/pages/dev";
 import Logs from "@/pages/logs";
+import TicketsPage from "@/pages/tickets";
 import SettingsPage from "@/pages/settings";
 import AccountPage from "@/pages/account";
 import LoginPage from "@/pages/login";
@@ -39,6 +40,7 @@ function ProtectedRouter() {
           <Route path="/guilds" component={Guilds} />
           <Route path="/commands" component={Commands} />
           <Route path="/warns" component={Warns} />
+          <Route path="/tickets" component={TicketsPage} />
           <Route path="/logs" component={Logs} />
           <Route path="/dev" component={DevPanel} />
           <Route path="/account" component={AccountPage} />

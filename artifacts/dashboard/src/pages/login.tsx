@@ -13,10 +13,14 @@ function DiscordIcon({ className }: { className?: string }) {
 
 const ERRORS: Record<string, string> = {
   missing_code: "Discord no devolvió un código de autorización.",
-  invalid_state: "Sesión OAuth inválida. Inténtalo de nuevo.",
-  token_exchange: "No se pudo intercambiar el token con Discord.",
+  invalid_state:
+    "Sesión OAuth inválida o cookie bloqueada. Prueba otra vez (o desactiva bloqueo de cookies de terceros).",
+  token_exchange:
+    "Discord rechazó el intercambio de token (revisa Redirect URI en el Developer Portal y CLIENT_SECRET).",
   user_fetch: "No se pudo obtener tu perfil de Discord.",
-  not_allowed: "Tu cuenta no tiene permiso para acceder a este dashboard.",
+  not_allowed:
+    "Tu cuenta no está en la lista de acceso (DASHBOARD_ALLOWED_IDS). Pide al owner que te añada o vacíe la lista.",
+  discord: "Discord canceló o rechazó la autorización.",
   server: "Error interno del servidor durante el login.",
 };
 
@@ -30,7 +34,12 @@ export default function LoginPage() {
       ? new URLSearchParams(window.location.search)
       : null;
   const errorKey = params?.get("error") ?? "";
-  const errorMsg = errorKey ? (ERRORS[errorKey] ?? "Error de autenticación.") : "";
+  const errorDetail = params?.get("detail") ?? "";
+  const errorMsg = errorKey
+    ? `${ERRORS[errorKey] ?? "Error de autenticación."}${
+        errorDetail ? ` (${errorDetail})` : ""
+      }`
+    : "";
 
   useEffect(() => {
     if (!loading && user) setLocation("/");
@@ -164,7 +173,7 @@ export default function LoginPage() {
             Scopes: identidad + lista de servidores (para configurar los tuyos).
             <br />
             <span className="text-slate-500">
-              Acceso restringido a cuentas autorizadas.
+              Cualquier cuenta de Discord puede iniciar sesión.
             </span>
           </p>
         </div>

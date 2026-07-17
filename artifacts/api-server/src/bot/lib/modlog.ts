@@ -7,7 +7,7 @@ import {
   type GuildAuditLogsEntry,
   type User,
 } from "discord.js";
-import { db, botConfigTable } from "@workspace/db";
+import { db, botConfigTable, guildLogSettingsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "../../lib/logger.js";
 
@@ -306,26 +306,54 @@ async function getConfigValue(key: string): Promise<string | null> {
   }
 }
 
-async function setConfigValue(key: string, value: string): Promise<void> {
-  await db
-    .insert(botConfigTable)
-    .values({ key, value, updatedAt: new Date() })
-    .onConflictDoUpdate({
-      target: botConfigTable.key,
-      set: { value, updatedAt: new Date() },
-    });
+function rowToSettings(row: typeof guildLogSettingsTable.$inferSelect): GuildLogSettings {
+  let events: unknown = defaultLogEvents();
+  let ignoreChannels: unknown = [];
+  try {
+    events = JSON.parse(row.events);
+  } catch {
+    /* default */
+  }
+  try {
+    ignoreChannels = JSON.parse(row.ignoreChannels);
+  } catch {
+    /* default */
+  }
+  return sanitizeSettings({
+    channelId: row.channelId,
+    events: events as LogEventKey[],
+    ignoreBots: row.ignoreBots,
+    ignoreWebhooks: row.ignoreWebhooks,
+    ignoreChannels: ignoreChannels as string[],
+    joinAlertDays: row.joinAlertDays,
+    includeAttachments: row.includeAttachments,
+    pingRoleId: row.pingRoleId,
+  });
 }
 
 export async function getGuildLogSettings(
   guildId: string,
 ): Promise<GuildLogSettings> {
   try {
+    // Primary: dedicated table (HeidiSQL-friendly columns)
+    const rows = await db
+      .select()
+      .from(guildLogSettingsTable)
+      .where(eq(guildLogSettingsTable.guildId, guildId))
+      .limit(1);
+    if (rows[0]) return rowToSettings(rows[0]);
+
+    // Read-only legacy fallback from bot_config.
+    // Do NOT write on GET — migrations on read caused hangs / 504 under pool pressure.
     const raw = await getConfigValue(SETTINGS_KEY(guildId));
     if (raw) {
-      return sanitizeSettings(JSON.parse(raw) as Partial<GuildLogSettings>);
+      try {
+        return sanitizeSettings(JSON.parse(raw) as Partial<GuildLogSettings>);
+      } catch {
+        /* fall through */
+      }
     }
 
-    // Back-compat: migrate old keys
     const channelId = await getConfigValue(LOG_KEY(guildId));
     const eventsRaw = await getConfigValue(EVENTS_KEY(guildId));
     let events = defaultLogEvents();
@@ -336,14 +364,9 @@ export async function getGuildLogSettings(
         /* keep default */
       }
     }
-    const migrated = sanitizeSettings({
-      channelId,
-      events,
-    });
-    // Persist migration so future reads are fast
-    await setGuildLogSettings(guildId, migrated);
-    return migrated;
-  } catch {
+    return sanitizeSettings({ channelId, events });
+  } catch (err) {
+    logger.warn({ err, guildId }, "getGuildLogSettings fallback");
     return defaultGuildLogSettings();
   }
 }
@@ -353,16 +376,33 @@ export async function setGuildLogSettings(
   settings: GuildLogSettings,
 ): Promise<GuildLogSettings> {
   const clean = sanitizeSettings(settings);
-  await setConfigValue(SETTINGS_KEY(guildId), JSON.stringify(clean));
-  // Keep legacy keys in sync for older code paths
-  if (clean.channelId) {
-    await setConfigValue(LOG_KEY(guildId), clean.channelId);
-  } else {
-    await db
-      .delete(botConfigTable)
-      .where(eq(botConfigTable.key, LOG_KEY(guildId)));
-  }
-  await setConfigValue(EVENTS_KEY(guildId), JSON.stringify(clean.events));
+  await db
+    .insert(guildLogSettingsTable)
+    .values({
+      guildId,
+      channelId: clean.channelId,
+      events: JSON.stringify(clean.events),
+      ignoreBots: clean.ignoreBots,
+      ignoreWebhooks: clean.ignoreWebhooks,
+      ignoreChannels: JSON.stringify(clean.ignoreChannels),
+      joinAlertDays: clean.joinAlertDays,
+      includeAttachments: clean.includeAttachments,
+      pingRoleId: clean.pingRoleId,
+      updatedAt: new Date(),
+    })
+    .onDuplicateKeyUpdate({
+      set: {
+        channelId: clean.channelId,
+        events: JSON.stringify(clean.events),
+        ignoreBots: clean.ignoreBots,
+        ignoreWebhooks: clean.ignoreWebhooks,
+        ignoreChannels: JSON.stringify(clean.ignoreChannels),
+        joinAlertDays: clean.joinAlertDays,
+        includeAttachments: clean.includeAttachments,
+        pingRoleId: clean.pingRoleId,
+        updatedAt: new Date(),
+      },
+    });
   return clean;
 }
 
@@ -476,8 +516,9 @@ export function baseLogEmbed(
   client: Client,
   title: string,
   color: number,
+  opts?: { description?: string; guildName?: string },
 ): EmbedBuilder {
-  return new EmbedBuilder()
+  const emb = new EmbedBuilder()
     .setColor(color)
     .setAuthor({
       name: "Central de Logs // Zero Two",
@@ -486,13 +527,17 @@ export function baseLogEmbed(
     .setTitle(title)
     .setTimestamp()
     .setFooter({
-      text: "Sistema de Logs · Zero Two",
+      text: opts?.guildName
+        ? `${opts.guildName} · Zero Two Logs`
+        : "Sistema de Logs · Zero Two",
       iconURL: client.user?.displayAvatarURL() ?? undefined,
     });
+  if (opts?.description) emb.setDescription(opts.description);
+  return emb;
 }
 
 export function userField(
-  user: User | { id: string; tag?: string; username?: string },
+  user: User | { id: string; tag?: string; username?: string; bot?: boolean },
 ) {
   const tag =
     "tag" in user && user.tag
@@ -500,23 +545,235 @@ export function userField(
       : "username" in user && user.username
         ? user.username
         : user.id;
-  return `<@${user.id}> (\`${tag}\` · \`${user.id}\`)`;
+  const bot = "bot" in user && user.bot ? " · 🤖 bot" : "";
+  return `<@${user.id}>\n\`${tag}\` · \`${user.id}\`${bot}`;
+}
+
+export function codeBlock(text: string, max = 900): string {
+  const clean = (text || "").replace(/```/g, "'''").trim() || "—";
+  const body = clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
+  return `\`\`\`\n${body}\n\`\`\``;
+}
+
+export function quoteBlock(text: string, max = 900): string {
+  const clean = (text || "").trim();
+  if (!clean) return "*(vacío)*";
+  const body = clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
+  return body
+    .split("\n")
+    .map((l) => `> ${l || "\u200b"}`)
+    .join("\n");
+}
+
+/** Track audit-log message-delete counts so rapid deletes map correctly */
+const msgDeleteAuditUsed = new Map<string, { used: number; expires: number }>();
+
+function pruneMsgDeleteTracker() {
+  const now = Date.now();
+  for (const [k, v] of msgDeleteAuditUsed) {
+    if (v.expires < now) msgDeleteAuditUsed.delete(k);
+  }
+}
+
+export type MessageDeleteActor = {
+  /** mod | self | bot | unknown */
+  kind: "mod" | "self" | "bot" | "unknown";
+  executor: User | null;
+  reason: string | null;
+  label: string;
+};
+
+/**
+ * Resolve who deleted a message.
+ * Discord MessageDelete audit: target = author of deleted msg, extra.channel = channel.
+ * Self-deletes usually produce NO audit entry.
+ */
+export async function findMessageDeleteActor(
+  guild: Guild,
+  opts: {
+    authorId?: string | null;
+    channelId: string;
+    isBotAuthor?: boolean;
+  },
+): Promise<MessageDeleteActor> {
+  pruneMsgDeleteTracker();
+  try {
+    // Audit logs lag a bit after the gateway event
+    await new Promise((r) => setTimeout(r, 950));
+
+    const logs = await guild.fetchAuditLogs({
+      type: AuditLogEvent.MessageDelete,
+      limit: 10,
+    });
+    const now = Date.now();
+
+    type Extra = { channel?: { id?: string }; count?: number };
+    let best: GuildAuditLogsEntry | null = null;
+    let bestScore = -1;
+
+    for (const entry of logs.entries.values()) {
+      if (now - entry.createdTimestamp > 15_000) continue;
+      const extra = entry.extra as Extra | undefined;
+      const channelId = extra?.channel?.id;
+      if (channelId && channelId !== opts.channelId) continue;
+
+      // targetId = author of the deleted message(s)
+      if (
+        opts.authorId &&
+        entry.targetId &&
+        entry.targetId !== opts.authorId
+      ) {
+        continue;
+      }
+
+      const total = Math.max(1, Number(extra?.count ?? 1));
+      const key = `${guild.id}:${entry.id}`;
+      const prev = msgDeleteAuditUsed.get(key);
+      const used = prev && prev.expires > now ? prev.used : 0;
+      if (used >= total) continue;
+
+      // Prefer exact author match + channel + fresher entries
+      let score = 10;
+      if (opts.authorId && entry.targetId === opts.authorId) score += 50;
+      if (channelId === opts.channelId) score += 30;
+      score += Math.max(0, 15 - Math.floor((now - entry.createdTimestamp) / 1000));
+      if (entry.executor) score += 5;
+
+      if (score > bestScore) {
+        bestScore = score;
+        best = entry;
+      }
+    }
+
+    if (best?.executor) {
+      const extra = best.extra as Extra | undefined;
+      const total = Math.max(1, Number(extra?.count ?? 1));
+      const key = `${guild.id}:${best.id}`;
+      const prev = msgDeleteAuditUsed.get(key);
+      const used = prev && prev.expires > now ? prev.used : 0;
+      msgDeleteAuditUsed.set(key, {
+        used: used + 1,
+        expires: now + 30_000,
+      });
+
+      const ex = best.executor;
+      // Same person as author → self (or bot self)
+      if (opts.authorId && ex.id === opts.authorId) {
+        return {
+          kind: opts.isBotAuthor ? "bot" : "self",
+          executor: ex,
+          reason: best.reason,
+          label: opts.isBotAuthor
+            ? "🤖 El bot autor borró su propio mensaje"
+            : "↩️ El autor borró su propio mensaje",
+        };
+      }
+
+      return {
+        kind: ex.bot ? "bot" : "mod",
+        executor: ex,
+        reason: best.reason,
+        label: ex.bot
+          ? "🤖 Borrado por un bot (moderación / automod)"
+          : "🛡️ Borrado por un moderador",
+      };
+    }
+
+    // No matching audit → almost always self-delete
+    if (opts.authorId) {
+      return {
+        kind: opts.isBotAuthor ? "bot" : "self",
+        executor: null,
+        reason: null,
+        label: opts.isBotAuthor
+          ? "🤖 Posible auto-borrado del bot (sin audit log)"
+          : "↩️ Probablemente el autor (Discord no genera audit al auto-borrar)",
+      };
+    }
+
+    return {
+      kind: "unknown",
+      executor: null,
+      reason: null,
+      label: "❓ No se pudo determinar (mensaje no estaba en caché)",
+    };
+  } catch {
+    return {
+      kind: "unknown",
+      executor: null,
+      reason: null,
+      label: "❓ Sin permiso View Audit Log o error al leer audit",
+    };
+  }
+}
+
+export async function findBulkDeleteActor(
+  guild: Guild,
+  channelId: string,
+  count: number,
+): Promise<MessageDeleteActor> {
+  try {
+    await new Promise((r) => setTimeout(r, 900));
+    const logs = await guild.fetchAuditLogs({
+      type: AuditLogEvent.MessageBulkDelete,
+      limit: 6,
+    });
+    const now = Date.now();
+    const entry =
+      [...logs.entries.values()].find((e) => {
+        if (now - e.createdTimestamp > 12_000) return false;
+        const extra = e.extra as { channel?: { id?: string }; count?: number };
+        if (extra?.channel?.id && extra.channel.id !== channelId) return false;
+        // count may match bulk size
+        if (
+          typeof extra?.count === "number" &&
+          Math.abs(extra.count - count) > 2
+        ) {
+          return false;
+        }
+        return Boolean(e.executor);
+      }) ?? null;
+
+    if (entry?.executor) {
+      return {
+        kind: entry.executor.bot ? "bot" : "mod",
+        executor: entry.executor,
+        reason: entry.reason,
+        label: entry.executor.bot
+          ? "🤖 Borrado masivo por un bot"
+          : "🛡️ Borrado masivo por un moderador",
+      };
+    }
+    return {
+      kind: "unknown",
+      executor: null,
+      reason: null,
+      label: "❓ Autor del purge desconocido",
+    };
+  } catch {
+    return {
+      kind: "unknown",
+      executor: null,
+      reason: null,
+      label: "❓ Sin acceso a audit log",
+    };
+  }
 }
 
 export async function findAuditExecutor(
   guild: Guild,
   type: AuditLogEvent,
   targetId?: string,
-  maxAgeMs = 8_000,
+  maxAgeMs = 10_000,
 ): Promise<{
   executor: User | null;
   reason: string | null;
   entry: GuildAuditLogsEntry | null;
 }> {
   try {
-    await new Promise((r) => setTimeout(r, 700));
+    await new Promise((r) => setTimeout(r, 750));
 
-    const logs = await guild.fetchAuditLogs({ type, limit: 6 });
+    const logs = await guild.fetchAuditLogs({ type, limit: 8 });
     const now = Date.now();
     const entry =
       logs.entries.find((e) => {
@@ -541,4 +798,12 @@ export function truncate(text: string, max = 900): string {
   const clean = text.replace(/\s+/g, " ").trim();
   if (clean.length <= max) return clean;
   return `${clean.slice(0, max - 1)}…`;
+}
+
+export function messageJumpLink(
+  guildId: string,
+  channelId: string,
+  messageId: string,
+): string {
+  return `https://discord.com/channels/${guildId}/${channelId}/${messageId}`;
 }

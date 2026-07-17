@@ -54,3 +54,17 @@ Thumbs.db
 # Environment
 .env
 .env.local
+.env.*.local
+
+# Secrets / local runtime
+cookies.txt
+**/cookies.txt
+bin/
+.config/
+scratch/
+**/test_tokens.js
+**/test_tokens.ts
+
+# Temp / OS noise
+pnpm-workspace.yaml.*
+*.tmp

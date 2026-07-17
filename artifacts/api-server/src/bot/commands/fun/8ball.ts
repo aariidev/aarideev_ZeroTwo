@@ -3,8 +3,10 @@ import {
   EmbedBuilder,
   ChatInputCommandInteraction,
   Client,
+  MessageFlags,
 } from "discord.js";
 import { Command } from "../../types.js";
+import { assetImage } from "../../lib/helpAssets.js";
 
 const RESPONSES = {
   positive: [
@@ -45,7 +47,7 @@ const command: Command = {
       return interaction.reply({
         content:
           "❌ Tu pregunta es demasiado corta y carece de firma psíquica. Formula algo con más sustancia, parásito.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
@@ -56,6 +58,7 @@ const command: Command = {
     const pool = RESPONSES[randomCategory];
     const finalAnswer = pool[Math.floor(Math.random() * pool.length)]!;
 
+    const img = assetImage("fun");
     const embed = new EmbedBuilder()
       .setColor(0xff2d6b)
       .setAuthor({
@@ -85,10 +88,15 @@ const command: Command = {
           inline: true,
         },
       )
-      .setThumbnail("https://i.imgur.com/vH6w88v.png")
+      .setThumbnail(client.user?.displayAvatarURL({ size: 128 }) ?? null)
       .setTimestamp();
 
-    await interaction.reply({ embeds: [embed] });
+    if (img.url) embed.setImage(img.url);
+
+    await interaction.reply({
+      embeds: [embed],
+      files: img.file ? [img.file] : undefined,
+    });
   },
 };
 

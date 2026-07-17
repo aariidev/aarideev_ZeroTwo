@@ -3,10 +3,11 @@ import {
   EmbedBuilder,
   ChatInputCommandInteraction,
   Client,
+  MessageFlags,
+  PermissionFlagsBits,
 } from "discord.js";
 import { Command } from "../../types.js";
-import { db, warnsTable } from "@workspace/db";
-import { and, eq, desc } from "drizzle-orm";
+import { formatWarnTimestamp, listWarns } from "../../lib/warns.js";
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -19,43 +20,51 @@ const command: Command = {
         .setName("usuario")
         .setDescription("Sujeto de consulta")
         .setRequired(true),
-    ),
+    )
+    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
   cooldown: 5,
 
   async execute(interaction: ChatInputCommandInteraction, client: Client) {
     const target = interaction.options.getUser("usuario", true);
     const guildId = interaction.guild?.id ?? "";
 
-    const userWarns = await db
-      .select()
-      .from(warnsTable)
-      .where(
-        and(eq(warnsTable.userId, target.id), eq(warnsTable.guildId, guildId)),
-      )
-      .orderBy(desc(warnsTable.createdAt));
+    if (!guildId) {
+      return interaction.reply({
+        content: "❌ Solo en servidores.",
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+
+    await interaction.deferReply();
+
+    const userWarns = await listWarns(guildId, target.id);
 
     if (userWarns.length === 0) {
-      return interaction.reply({
+      return interaction.editReply({
         embeds: [
           new EmbedBuilder()
             .setColor(0xff2d6b)
             .setDescription(
-              `📂 **Expediente Impecable:** \`${target.username}\` no cuenta con infracciones en la base de datos central.`,
+              `📂 **Expediente limpio:** \`${target.username}\` no tiene advertencias guardadas en **zerotwo** para este servidor.`,
             ),
         ],
-        ephemeral: true,
       });
     }
 
     const warnsText = userWarns
-      .slice(0, 10)
+      .slice(0, 15)
       .map(
         (w, i) =>
-          `\`#${w.id}\` **Infracción ${i + 1}** • <t:${Math.floor(w.createdAt!.getTime() / 1000)}:R>\n` +
-          `└ **Causa:** \`${w.reason}\`\n` +
+          `\`#${w.id}\` **#${i + 1}** • ${formatWarnTimestamp(w.createdAt)}\n` +
+          `└ **Causa:** \`${w.reason.slice(0, 200)}\`\n` +
           `└ **Operador:** <@${w.moderatorId}>`,
       )
       .join("\n\n");
+
+    const more =
+      userWarns.length > 15
+        ? `\n\n_…y ${userWarns.length - 15} más (usa el dashboard o borra con /delwarn /clearwarns)._`
+        : "";
 
     const embed = new EmbedBuilder()
       .setColor(0xff2d6b)
@@ -65,16 +74,18 @@ const command: Command = {
       })
       .setTitle(`⚠️ Historial de Incidencias de ${target.username}`)
       .setThumbnail(target.displayAvatarURL())
-      .setDescription(warnsText)
+      .setDescription(warnsText + more)
       .addFields({
-        name: "📊 Total Acumulados",
-        value: `\`${userWarns.length} faltas registradas\``,
+        name: "📊 Total en BD",
+        value: `\`${userWarns.length} faltas\` · HeidiSQL \`zerotwo.warns\``,
         inline: false,
       })
-      .setFooter({ text: "The Garden · Archivo de Conducta Humana" })
+      .setFooter({
+        text: "The Garden · Archivo de Conducta · /delwarn id: · /clearwarns",
+      })
       .setTimestamp();
 
-    await interaction.reply({ embeds: [embed] });
+    await interaction.editReply({ embeds: [embed] });
   },
 };
 

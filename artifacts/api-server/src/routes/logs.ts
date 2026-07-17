@@ -1,7 +1,13 @@
 import { Router, type Request, type Response } from "express";
 import { db } from "@workspace/db";
 import { logsTable } from "@workspace/db";
-import { desc, eq, and, or, like } from "drizzle-orm";
+import { desc, eq, and, or, like, inArray } from "drizzle-orm";
+import { getBotClient } from "./bot.js";
+import {
+  dataScopeGuildIds,
+  isBotOwner,
+  resolveGuildAccess,
+} from "../lib/guildAccess.js";
 
 const router = Router();
 
@@ -16,6 +22,13 @@ router.get("/", async (req: Request, res: Response) => {
     } = req.query as Record<string, string>;
 
     const maxLimit = Math.min(parseInt(limit, 10) || 100, 500);
+    const access = await resolveGuildAccess(req, getBotClient());
+    const scope = dataScopeGuildIds(access);
+
+    // Non-owners with no manageable guilds: empty (don't leak global bot logs)
+    if (!access.isOwner && scope.size === 0) {
+      return res.status(200).json([]);
+    }
 
     let query = db
       .select()
@@ -27,7 +40,17 @@ router.get("/", async (req: Request, res: Response) => {
     const conditions = [];
     if (level) conditions.push(eq(logsTable.level, level));
     if (event) conditions.push(eq(logsTable.event, event));
-    if (guildId) conditions.push(eq(logsTable.guildId, guildId));
+
+    if (guildId) {
+      if (!access.isOwner && !scope.has(guildId)) {
+        return res.status(200).json([]);
+      }
+      conditions.push(eq(logsTable.guildId, guildId));
+    } else if (!access.isOwner) {
+      // Only logs for their guilds (null guild_id is owner/system-only)
+      conditions.push(inArray(logsTable.guildId, [...scope]));
+    }
+
     if (search) {
       conditions.push(
         or(
@@ -37,6 +60,11 @@ router.get("/", async (req: Request, res: Response) => {
           like(logsTable.event, `%${search}%`),
         )!,
       );
+    }
+
+    // System logs without guild — owner only
+    if (!access.isOwner && !isBotOwner(req.sessionUser?.id)) {
+      // already scoped by guild ids above
     }
 
     if (conditions.length > 0) {
