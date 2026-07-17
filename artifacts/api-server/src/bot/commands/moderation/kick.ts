@@ -3,6 +3,7 @@ import {
   EmbedBuilder,
   ChatInputCommandInteraction,
   Client,
+  MessageFlags,
 } from "discord.js";
 import { Command } from "../../types.js";
 import { logBotEvent } from "../../../lib/botLogger.js";
@@ -30,25 +31,29 @@ const command: Command = {
     const reason =
       interaction.options.getString("motivo") ??
       "Violación de directrices generales.";
-    const member = interaction.guild?.members.cache.get(target.id);
+    const member =
+      interaction.guild?.members.cache.get(target.id) ??
+      (await interaction.guild?.members.fetch(target.id).catch(() => null));
 
     if (!member)
       return interaction.reply({
         content:
           "❌ No se localizó al parásito dentro de los cuadrantes del servidor.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     if (!member.kickable)
       return interaction.reply({
         content:
           "❌ Error crítico: Jerarquía insuficiente para expulsar a este miembro.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     if (member.id === interaction.user.id)
       return interaction.reply({
         content: "❌ No puedes auto-ejecutar un protocolo de expulsión.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
+
+    await interaction.deferReply();
 
     let dmSent = false;
     try {
@@ -68,7 +73,16 @@ const command: Command = {
       dmSent = false;
     }
 
-    await member.kick(`${reason} | Ejecutado por: ${interaction.user.tag}`);
+    try {
+      await member.kick(`${reason} | Ejecutado por: ${interaction.user.tag}`);
+    } catch (kickErr) {
+      await interaction.editReply({
+        content: `❌ No se pudo expulsar a ${target.tag}: ${
+          kickErr instanceof Error ? kickErr.message : "error desconocido"
+        }`,
+      });
+      throw kickErr;
+    }
 
     const embed = new EmbedBuilder()
       .setColor(0xff2d6b)
@@ -102,7 +116,7 @@ const command: Command = {
       )
       .setTimestamp();
 
-    await interaction.reply({ embeds: [embed] });
+    await interaction.editReply({ embeds: [embed] });
     await sendModLog(client, interaction.guild?.id ?? "", embed, "kick");
 
     await logBotEvent({

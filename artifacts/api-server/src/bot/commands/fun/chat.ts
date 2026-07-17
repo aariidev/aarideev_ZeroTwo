@@ -96,19 +96,51 @@ const command: Command = {
       const newHistory = getUserHistory(interaction.user.id);
       const exchanges = Math.floor(newHistory.length / 2);
 
+      const dash = (
+        process.env.DASHBOARD_URL ??
+        process.env.PUBLIC_APP_URL ??
+        ""
+      ).replace(/\/+$/, "");
+      const clientId =
+        process.env.CLIENT_ID ?? process.env.DISCORD_CLIENT_ID ?? client.user?.id;
+      const invite = clientId
+        ? `https://discord.com/oauth2/authorize?client_id=${clientId}&permissions=8&scope=bot%20applications.commands`
+        : null;
+
+      // Soft promo ~25% of the time
+      const promoRoll = Math.random();
+      let promoField: { name: string; value: string } | null = null;
+      if (promoRoll < 0.12 && dash) {
+        promoField = {
+          name: "🖥️ Dashboard",
+          value: `Panel web (logs, tickets, stats):\n${dash}`,
+        };
+      } else if (promoRoll < 0.25 && invite) {
+        promoField = {
+          name: "➕ Invítame",
+          value: `Lléame a otro servidor:\n[Añadir Zero Two](${invite})`,
+        };
+      }
+
+      // Embed field max 1024 — split long replies into description + continuation embeds
+      const body =
+        respuesta.length > 4000
+          ? `${respuesta.slice(0, 3997)}…`
+          : respuesta;
+
       const embed = new EmbedBuilder()
         .setColor(0xff2d6b)
         .setAuthor({
           name: `${interaction.user.displayName} → ZeroTwo`,
           iconURL: interaction.user.displayAvatarURL(),
         })
+        .setDescription(body)
         .addFields({
           name: "📡 Transmisión recibida",
-          value: `\`\`\`${texto.length > 200 ? texto.slice(0, 197) + "..." : texto}\`\`\``,
-        })
-        .addFields({
-          name: "🌸 Respuesta del Núcleo 002",
-          value: respuesta,
+          value:
+            texto.length > 200
+              ? `\`\`\`${texto.slice(0, 197)}...\`\`\``
+              : `\`\`\`${texto}\`\`\``,
         })
         .setFooter({
           text: [
@@ -120,7 +152,11 @@ const command: Command = {
         })
         .setTimestamp();
 
-      await interaction.editReply({ embeds: [embed] });
+      if (promoField) {
+        embed.addFields(promoField);
+      }
+
+      await interaction.editReply({ embeds: [embed], content: null });
     } catch (err) {
       const isConfigError =
         err instanceof Error && err.message.includes("GEMINI_API_KEY");

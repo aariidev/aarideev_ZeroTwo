@@ -17,7 +17,24 @@ export type LogEvent =
   | "purge"
   | "command_used"
   | "system_startup"
-  | "config_change";
+  | "system_error"
+  | "config_change"
+  | "message_delete"
+  | "message_edit"
+  | "message_bulk_delete"
+  | "member_join"
+  | "member_leave"
+  | "member_roles"
+  | "member_nickname"
+  | "channel_create"
+  | "channel_delete"
+  | "role_create"
+  | "role_delete"
+  | "invite_create"
+  | "invite_delete"
+  | "voice_join"
+  | "voice_leave"
+  | "voice_move";
 
 export interface LogEntry {
   level?: LogLevel;

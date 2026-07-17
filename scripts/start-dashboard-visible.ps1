@@ -57,13 +57,30 @@ if (Test-Path -LiteralPath $lcNative) {
 $env:PORT = "5173"
 $env:BASE_PATH = "/"
 $env:NODE_ENV = "development"
+# Avoid hard-fail on ignored lifecycle scripts during filter runs
+$env:npm_config_strict_dep_builds = "false"
+
+# VS Code Dev Tunnel (optional) — set host without protocol for Vite HMR
+if (-not $env:TUNNEL_HOST) {
+  $env:TUNNEL_HOST = "zj4nchh4-5173.uks1.devtunnels.ms"
+}
 
 Write-Host ""
 Write-Host "URL: http://localhost:5173/" -ForegroundColor Cyan
 Write-Host "API proxy -> http://localhost:8080" -ForegroundColor DarkGray
 Write-Host ""
 
-pnpm --filter @workspace/dashboard run dev
+# Prefer direct vite (skips full monorepo install gate); fallback to filter run
+$viteJs = "H:\Discord\02\artifacts\dashboard\node_modules\vite\bin\vite.js"
+$dashDir = "H:\Discord\02\artifacts\dashboard"
+
+if (Test-Path -LiteralPath $viteJs) {
+  Set-Location $dashDir
+  node $viteJs --config vite.config.ts --host 0.0.0.0
+} else {
+  Set-Location "H:\Discord\02"
+  pnpm --filter @workspace/dashboard run dev
+}
 
 Write-Host ""
 Write-Host "El dashboard se detuvo. Pulsa Enter para cerrar." -ForegroundColor Yellow

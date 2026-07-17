@@ -53,8 +53,8 @@ export default function Home() {
     toast({
       title: `Hola, ${name}`,
       description: isOwner
-        ? "Sesión owner activa · acceso total al dashboard."
-        : "Sesión iniciada · bienvenido al dashboard.",
+        ? "Sesión owner activa · ves todos los servidores del bot."
+        : "Sesión iniciada · solo ves tus servidores (donde eres staff/admin).",
     });
     params.delete("welcome");
     const qs = params.toString();
@@ -87,7 +87,11 @@ export default function Home() {
   });
 
   const { data: guilds } = useListGuilds({
-    query: { queryKey: getListGuildsQueryKey(), refetchInterval: 60000 },
+    query: {
+      queryKey: getListGuildsQueryKey(),
+      refetchInterval: 120000,
+      staleTime: 60000,
+    },
   });
 
   const { data: warns } = useListWarns(undefined, {

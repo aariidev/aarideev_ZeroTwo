@@ -20,11 +20,25 @@ function ownerIds(): string[] {
     .filter(Boolean);
 }
 
+/**
+ * Optional dashboard allow-list.
+ * - If DASHBOARD_ALLOWED_IDS is unset/empty/"*" → anyone with Discord can log in.
+ * - If set to comma-separated IDs → only those users.
+ * OWNER_IDS is NEVER used as a login gate (only isOwner / Dev Panel).
+ */
 function allowIds(): string[] {
-  return (process.env.DASHBOARD_ALLOWED_IDS ?? process.env.OWNER_IDS ?? "")
+  const raw = (process.env.DASHBOARD_ALLOWED_IDS ?? "").trim();
+  if (!raw || raw === "*" || raw.toLowerCase() === "all" || raw.toLowerCase() === "open") {
+    return [];
+  }
+  return raw
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
+}
+
+function isLoginOpen(): boolean {
+  return allowIds().length === 0;
 }
 
 function roleFor(userId: string): "owner" | "admin" {
@@ -52,24 +66,28 @@ function clientSecret(): string {
 
 /** Public dashboard origin for post-login redirect */
 function dashboardOrigin(_req?: Request): string {
-  return (process.env.DASHBOARD_URL ?? "http://localhost:5173").replace(
-    /\/+$/,
-    "",
-  );
+  return (
+    process.env.DASHBOARD_URL ??
+    process.env.PUBLIC_APP_URL ??
+    "http://localhost:5173"
+  ).replace(/\/+$/, "");
 }
 
 /**
  * OAuth redirect_uri — MUST match Discord Developer Portal → OAuth2 → Redirects
  * exactly (scheme, host, port, path, no trailing slash).
  *
- * Default hits the API directly on :8080 (avoids Vite proxy quirks).
+ * With a Dev Tunnel on the dashboard (:5173), point this at the tunnel +
+ * `/api/auth/discord/callback` so Vite proxies the callback to the API.
  */
 function redirectUri(_req?: Request): string {
   if (process.env.DISCORD_REDIRECT_URI?.trim()) {
     return process.env.DISCORD_REDIRECT_URI.trim().replace(/\/+$/, "");
   }
   const api =
-    process.env.API_PUBLIC_URL?.replace(/\/+$/, "") ?? "http://localhost:8080";
+    process.env.API_PUBLIC_URL?.replace(/\/+$/, "") ??
+    process.env.PUBLIC_APP_URL?.replace(/\/+$/, "") ??
+    "http://localhost:8080";
   return `${api}/api/auth/discord/callback`;
 }
 
@@ -93,7 +111,7 @@ router.get("/discord", (req: Request, res: Response) => {
 
   // Express maxAge is milliseconds — 10 minutes
   res.cookie("zt_oauth_state", state, {
-    ...sessionCookieOptions(OAUTH_STATE_TTL_MS),
+    ...sessionCookieOptions(OAUTH_STATE_TTL_MS, req),
     httpOnly: true,
   });
   pendingOAuthStates.set(state, Date.now() + OAUTH_STATE_TTL_MS);
@@ -118,6 +136,16 @@ router.get("/discord", (req: Request, res: Response) => {
 router.get("/discord/callback", async (req: Request, res: Response) => {
   const dash = dashboardOrigin(req);
   try {
+    // Discord may bounce back with ?error=access_denied&error_description=...
+    const oauthError = String(req.query.error ?? "");
+    if (oauthError) {
+      const desc = String(req.query.error_description ?? oauthError);
+      logger.warn({ oauthError, desc }, "Discord OAuth denied/error");
+      return res.redirect(
+        `${dash}/login?error=discord&detail=${encodeURIComponent(desc.slice(0, 200))}`,
+      );
+    }
+
     const code = String(req.query.code ?? "");
     const state = String(req.query.state ?? "");
     const cookieState = req.cookies?.zt_oauth_state as string | undefined;
@@ -132,6 +160,7 @@ router.get("/discord/callback", async (req: Request, res: Response) => {
     if (!code) {
       return res.redirect(`${dash}/login?error=missing_code`);
     }
+    // Prefer cookie; memory is multi-user safe enough on single Node process
     if (!state || (!cookieOk && !memoryOk)) {
       logger.warn(
         {
@@ -146,8 +175,12 @@ router.get("/discord/callback", async (req: Request, res: Response) => {
     }
 
     pendingOAuthStates.delete(state);
-    res.clearCookie("zt_oauth_state", { path: "/" });
+    res.clearCookie("zt_oauth_state", {
+      ...sessionCookieOptions(OAUTH_STATE_TTL_MS, req),
+      path: "/",
+    });
 
+    const redir = redirectUri(req);
     const tokenRes = await fetch("https://discord.com/api/oauth2/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -156,14 +189,19 @@ router.get("/discord/callback", async (req: Request, res: Response) => {
         client_secret: clientSecret(),
         grant_type: "authorization_code",
         code,
-        redirect_uri: redirectUri(req),
+        redirect_uri: redir,
       }),
     });
 
     if (!tokenRes.ok) {
       const errText = await tokenRes.text();
-      logger.error({ errText }, "Discord token exchange failed");
-      return res.redirect(`${dash}/login?error=token_exchange`);
+      logger.error(
+        { errText, redirect_uri: redir },
+        "Discord token exchange failed",
+      );
+      return res.redirect(
+        `${dash}/login?error=token_exchange&detail=${encodeURIComponent(errText.slice(0, 180))}`,
+      );
     }
 
     const tokenData = (await tokenRes.json()) as {
@@ -187,12 +225,11 @@ router.get("/discord/callback", async (req: Request, res: Response) => {
       discriminator: string;
     };
 
-    // Optional allow-list (comma-separated Discord user IDs)
+    // Optional allow-list only if DASHBOARD_ALLOWED_IDS is explicitly set
     const allow = allowIds();
-
     if (allow.length > 0 && !allow.includes(discordUser.id)) {
       logger.warn(
-        { userId: discordUser.id },
+        { userId: discordUser.id, username: discordUser.username, allowCount: allow.length },
         "Dashboard login denied — user not in allow-list",
       );
       return res.redirect(`${dash}/login?error=not_allowed`);
@@ -208,8 +245,18 @@ router.get("/discord/callback", async (req: Request, res: Response) => {
 
     const payload = createSessionPayload(user, tokenData.access_token);
     const signed = signSession(payload);
+    const cookieOpts = sessionCookieOptions(undefined, req);
 
-    res.cookie(COOKIE_NAME, signed, sessionCookieOptions());
+    res.cookie(COOKIE_NAME, signed, cookieOpts);
+    logger.info(
+      {
+        userId: user.id,
+        username: user.username,
+        openLogin: isLoginOpen(),
+        secureCookie: cookieOpts.secure,
+      },
+      "Dashboard Discord login OK",
+    );
     // Flag welcome toast on first land
     res.redirect(`${dash}/?welcome=1`);
   } catch (err) {
@@ -264,9 +311,13 @@ router.post("/logout", (_req: Request, res: Response) => {
 
 router.get("/status", (_req: Request, res: Response) => {
   const bot = getBotPublicInfo();
+  const open = isLoginOpen();
   res.status(200).json({
     oauthConfigured: Boolean(clientId() && clientSecret()),
     clientId: clientId() || null,
+    /** true = any Discord user can log in */
+    loginOpen: open,
+    allowListSize: allowIds().length,
     bot,
   });
 });

@@ -7,6 +7,7 @@ import {
   FileText,
   Shield,
   Settings,
+  Ticket,
 } from "lucide-react";
 import { useGetBotStats, getGetBotStatsQueryKey } from "@workspace/api-client-react";
 import { useAuth } from "@/lib/auth";
@@ -26,6 +27,7 @@ const ALL_LINKS: NavLink[] = [
   { href: "/guilds", label: "Servers", icon: Server },
   { href: "/commands", label: "Commands", icon: Terminal },
   { href: "/warns", label: "Warnings", icon: AlertTriangle },
+  { href: "/tickets", label: "Tickets", icon: Ticket },
   { href: "/logs", label: "Logs", icon: FileText },
   // Visible ONLY if isOwner (OWNER_IDS) — never for admins/viewers
   { href: "/dev", label: "Dev Panel", icon: Shield, ownerOnly: true },

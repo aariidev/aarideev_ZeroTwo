@@ -14,6 +14,9 @@ import { logger } from "./lib/logger.js";
 
 const app: Express = express();
 
+// Dev Tunnels / reverse proxies send X-Forwarded-* — needed for secure cookies & correct hosts
+app.set("trust proxy", 1);
+
 app.use(
   pinoHttp({
     logger,

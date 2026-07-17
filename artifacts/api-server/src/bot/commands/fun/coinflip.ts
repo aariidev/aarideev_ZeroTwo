@@ -5,6 +5,7 @@ import {
   Client,
 } from "discord.js";
 import { Command } from "../../types.js";
+import { assetImage } from "../../lib/helpAssets.js";
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -24,6 +25,7 @@ const command: Command = {
         ? "🟡 [ CARA - EMBLEMA CORPORATIVO ]"
         : "⚪ [ CRUZ - REVERSO DE CONTENCIÓN ]";
 
+    const img = assetImage("fun");
     const embed = new EmbedBuilder()
       .setColor(0xff2d6b)
       .setAuthor({
@@ -31,11 +33,7 @@ const command: Command = {
         iconURL: client.user?.displayAvatarURL(),
       })
       .setTitle("🪙 Resultado del Volado Cinético")
-      .setThumbnail(
-        result === "Cara"
-          ? "https://i.imgur.com/H6z0vYn.png"
-          : "https://i.imgur.com/V9rPsnH.png",
-      )
+      .setThumbnail(client.user?.displayAvatarURL({ size: 128 }) ?? null)
       .setDescription(
         `La moneda ha sido eyectada con una energía de \`${forceNewtons} N\` ejecutando \`${airFlips}\` rotaciones completas en el eje vertical antes de colisionar con el suelo.\n\n` +
           `\`\`\`arm\n== Resultado Final ==\n${faceVisual}\n\`\`\``,
@@ -46,7 +44,12 @@ const command: Command = {
       })
       .setTimestamp();
 
-    await interaction.reply({ embeds: [embed] });
+    if (img.url) embed.setImage(img.url);
+
+    await interaction.reply({
+      embeds: [embed],
+      files: img.file ? [img.file] : undefined,
+    });
   },
 };
 

@@ -5,6 +5,9 @@ import {
   ButtonStyle,
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
 } from "discord.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -39,8 +42,15 @@ export interface GameState {
   startedAt: Date;
 }
 
+export const BJ_MIN_BET = 10;
+export const BJ_MAX_BET = 100_000;
+export const BJ_PRESET_BETS = [50, 100, 250, 500, 1000, 2500, 5000] as const;
+
 // ── Active games (in-memory) ──────────────────────────────────────────────────
 export const activeGames = new Map<string, GameState>();
+
+/** Last bet amount per user (for rematch) */
+export const lastBets = new Map<string, number>();
 
 // ── Deck helpers ──────────────────────────────────────────────────────────────
 export function createDeck(): Card[] {
@@ -66,6 +76,48 @@ export function handValue(hand: Card[]): number {
   let aces = hand.filter((c) => c.rank === "A").length;
   while (total > 21 && aces-- > 0) total -= 10;
   return total;
+}
+
+export function parseCustomBet(raw: string): number | null {
+  const cleaned = raw.trim().replace(/[,\s_]/g, "").toLowerCase();
+  if (!cleaned) return null;
+  let mult = 1;
+  let numStr = cleaned;
+  if (cleaned.endsWith("k")) {
+    mult = 1_000;
+    numStr = cleaned.slice(0, -1);
+  } else if (cleaned.endsWith("m")) {
+    mult = 1_000_000;
+    numStr = cleaned.slice(0, -1);
+  }
+  const n = Number(numStr);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.floor(n * mult);
+}
+
+export function clampBet(amount: number, balance: number): {
+  ok: true;
+  bet: number;
+} | { ok: false; error: string } {
+  if (!Number.isFinite(amount) || amount < BJ_MIN_BET) {
+    return {
+      ok: false,
+      error: `Apuesta mínima: **${BJ_MIN_BET}** fichas.`,
+    };
+  }
+  if (amount > BJ_MAX_BET) {
+    return {
+      ok: false,
+      error: `Apuesta máxima: **${BJ_MAX_BET.toLocaleString()}** fichas.`,
+    };
+  }
+  if (amount > balance) {
+    return {
+      ok: false,
+      error: `Saldo insuficiente. Necesitas **${amount.toLocaleString()}** pero tienes **${balance.toLocaleString()}**.`,
+    };
+  }
+  return { ok: true, bet: Math.floor(amount) };
 }
 
 // ── Card rendering ────────────────────────────────────────────────────────────
@@ -110,7 +162,7 @@ export function buildEmbed(
     : handValue(dealerHand);
 
   const playerBar = barProgress(playerVal);
-  const dealerBar = barProgress(isPlaying ? dealerVal : dealerVal);
+  const dealerBar = barProgress(dealerVal);
 
   const embed = new EmbedBuilder()
     .setColor(meta.color)
@@ -126,6 +178,10 @@ export function buildEmbed(
         "  Doblar — Dobla apuesta, recibe 1 carta final\n" +
         "```",
     );
+  } else {
+    embed.setDescription(
+      "¿Otra ronda? Usa **Volver a jugar**, **Misma apuesta** o elige una cantidad personalizada.",
+    );
   }
 
   embed.addFields(
@@ -133,7 +189,7 @@ export function buildEmbed(
       name: `🤖 Dealer — ${isPlaying ? `visible: **${dealerVal}**` : `total: **${dealerVal}**`}`,
       value:
         `${fmtHand(dealerHand, isPlaying)}\n` +
-        `\`[${dealerBar}] ${isPlaying ? dealerVal : dealerVal}/21\``,
+        `\`[${dealerBar}] ${dealerVal}/21\``,
       inline: false,
     },
     {
@@ -143,7 +199,7 @@ export function buildEmbed(
     },
     {
       name: "💰 Apuesta",
-      value: `**${bet}** fichas${doubled ? " *(×2 doblada)*" : ""}`,
+      value: `**${bet.toLocaleString()}** fichas${doubled ? " *(×2 doblada)*" : ""}`,
       inline: true,
     },
   );
@@ -189,7 +245,7 @@ export function buildEmbed(
     .setFooter({
       text: isPlaying
         ? `ZeroTwo Casino · Solo ${username} puede interactuar`
-        : "ZeroTwo Casino · ¡Gracias por jugar!",
+        : `ZeroTwo Casino · ${username} · elige cómo seguir`,
       iconURL: botIcon,
     })
     .setTimestamp();
@@ -197,38 +253,160 @@ export function buildEmbed(
   return embed;
 }
 
+export function buildLobbyEmbed(
+  username: string,
+  avatarURL: string,
+  balance: number,
+  botIcon?: string,
+): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(0xec4899)
+    .setAuthor({
+      name: "ZeroTwo Casino · Blackjack",
+      iconURL: botIcon,
+    })
+    .setTitle("🎰 ZeroTwo Casino — Blackjack")
+    .setDescription(
+      "Elige una **apuesta predefinida**, usa **apuesta personalizada**, o escribe la cantidad con `/blackjack apuesta:`.\n\n" +
+        "```\n" +
+        "Reglas del casino:\n" +
+        "  • Acércate a 21 sin pasarte\n" +
+        "  • El dealer pide carta hasta ≥17\n" +
+        "  • Blackjack (21 en 2 cartas) paga ×1.5\n" +
+        "  • Doblar: apuesta ×2, recibes 1 carta final\n" +
+        `  • Apuesta: ${BJ_MIN_BET} – ${BJ_MAX_BET.toLocaleString()} fichas\n` +
+        "```",
+    )
+    .setThumbnail(avatarURL)
+    .addFields(
+      {
+        name: "💰 Tu saldo",
+        value: `\`${balance.toLocaleString()} fichas\``,
+        inline: true,
+      },
+      {
+        name: "🏪 Tienda",
+        value: "`/shop` — power-ups",
+        inline: true,
+      },
+      {
+        name: "📅 Daily",
+        value: "`/wallet` — fichas gratis",
+        inline: true,
+      },
+    )
+    .setFooter({
+      text: `ZeroTwo Casino · Solo ${username} puede jugar`,
+      iconURL: botIcon,
+    })
+    .setTimestamp();
+}
+
 // ── Component builders ────────────────────────────────────────────────────────
 export function buildBetMenu(
   userId: string,
   balance: number,
 ): ActionRowBuilder<StringSelectMenuBuilder> {
-  const allOptions = [
-    { label: "50 fichas",   value: "50",   emoji: "🥉", desc: "Apuesta mínima" },
-    { label: "100 fichas",  value: "100",  emoji: "🥈", desc: "Apuesta estándar" },
-    { label: "250 fichas",  value: "250",  emoji: "🥇", desc: "Para los valientes" },
-    { label: "500 fichas",  value: "500",  emoji: "💎", desc: "Apuesta alta" },
-    { label: "1000 fichas", value: "1000", emoji: "👑", desc: "All-in · máximo riesgo" },
-  ];
+  const presets = BJ_PRESET_BETS.filter((v) => v <= balance && v <= BJ_MAX_BET);
 
-  const affordable = allOptions.filter((o) => parseInt(o.value) <= balance);
   const options =
-    affordable.length > 0
-      ? affordable
-      : [{ label: "Sin fichas suficientes", value: "0", emoji: "💸", desc: "Reclama tu daily con /wallet" }];
+    presets.length > 0
+      ? presets.map((v) => {
+          const emoji =
+            v <= 50
+              ? "🥉"
+              : v <= 100
+                ? "🥈"
+                : v <= 250
+                  ? "🥇"
+                  : v <= 500
+                    ? "💎"
+                    : v <= 1000
+                      ? "👑"
+                      : "🔥";
+          return {
+            label: `${v.toLocaleString()} fichas`,
+            value: String(v),
+            emoji,
+            desc:
+              v === balance
+                ? "Todo tu saldo"
+                : v >= 1000
+                  ? "Apuesta alta"
+                  : "Apuesta rápida",
+          };
+        })
+      : [
+          {
+            label: "Sin fichas suficientes",
+            value: "0",
+            emoji: "💸",
+            desc: `Mínimo ${BJ_MIN_BET} · /wallet daily`,
+          },
+        ];
+
+  // Always offer custom if they can afford the minimum
+  if (balance >= BJ_MIN_BET) {
+    options.push({
+      label: "Apuesta personalizada…",
+      value: "custom",
+      emoji: "✏️",
+      desc: `Entre ${BJ_MIN_BET} y ${Math.min(balance, BJ_MAX_BET).toLocaleString()}`,
+    });
+  }
+
+  // Discord select menus max 25 options
+  const capped = options.slice(0, 25);
 
   return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
     new StringSelectMenuBuilder()
       .setCustomId(`bj_bet:${userId}`)
-      .setPlaceholder("💰 Elige tu apuesta para comenzar...")
+      .setPlaceholder("💰 Elige apuesta o personalizada…")
       .addOptions(
-        options.map((o) =>
+        capped.map((o) =>
           new StringSelectMenuOptionBuilder()
             .setLabel(o.label)
             .setValue(o.value)
             .setEmoji(o.emoji)
-            .setDescription(o.desc),
+            .setDescription(o.desc.slice(0, 100)),
         ),
       ),
+  );
+}
+
+export function buildLobbyButtons(
+  userId: string,
+  balance: number,
+  lastBet?: number,
+): ActionRowBuilder<ButtonBuilder> {
+  const canCustom = balance >= BJ_MIN_BET;
+  const canRematch =
+    typeof lastBet === "number" &&
+    lastBet >= BJ_MIN_BET &&
+    lastBet <= balance &&
+    lastBet <= BJ_MAX_BET;
+
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`bj_custom:${userId}`)
+      .setLabel("Apuesta personalizada")
+      .setEmoji("✏️")
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(!canCustom),
+    new ButtonBuilder()
+      .setCustomId(
+        canRematch
+          ? `bj_rematch:${userId}:${lastBet}`
+          : `bj_rematch:${userId}:0`,
+      )
+      .setLabel(
+        canRematch
+          ? `Misma apuesta (${lastBet!.toLocaleString()})`
+          : "Misma apuesta",
+      )
+      .setEmoji("🔁")
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(!canRematch),
   );
 }
 
@@ -257,6 +435,67 @@ export function buildGameButtons(
       .setStyle(ButtonStyle.Success)
       .setDisabled(disabled || !canDouble),
   );
+}
+
+/** Buttons shown when a round ends */
+export function buildEndButtons(
+  userId: string,
+  lastBet: number,
+  balance: number,
+): ActionRowBuilder<ButtonBuilder>[] {
+  const canRematch =
+    lastBet >= BJ_MIN_BET && lastBet <= balance && lastBet <= BJ_MAX_BET;
+  const canPlay = balance >= BJ_MIN_BET;
+
+  const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`bj_again:${userId}`)
+      .setLabel("Volver a jugar")
+      .setEmoji("🔄")
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(!canPlay),
+    new ButtonBuilder()
+      .setCustomId(
+        canRematch
+          ? `bj_rematch:${userId}:${lastBet}`
+          : `bj_rematch:${userId}:0`,
+      )
+      .setLabel(
+        canRematch
+          ? `Misma apuesta (${lastBet.toLocaleString()})`
+          : "Sin saldo p/ misma apuesta",
+      )
+      .setEmoji("💰")
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(!canRematch),
+    new ButtonBuilder()
+      .setCustomId(`bj_custom:${userId}`)
+      .setLabel("Personalizada")
+      .setEmoji("✏️")
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(!canPlay),
+  );
+
+  return [row1];
+}
+
+export function buildCustomBetModal(userId: string, balance: number): ModalBuilder {
+  const max = Math.min(balance, BJ_MAX_BET);
+  return new ModalBuilder()
+    .setCustomId(`bj_custom_modal:${userId}`)
+    .setTitle("Apuesta personalizada")
+    .addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId("bet_amount")
+          .setLabel(`Cantidad (${BJ_MIN_BET} – ${max.toLocaleString()})`)
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder(`Ej: 75, 1500, 2k · saldo ${balance.toLocaleString()}`)
+          .setRequired(true)
+          .setMinLength(1)
+          .setMaxLength(12),
+      ),
+    );
 }
 
 // ── Dealer logic ──────────────────────────────────────────────────────────────

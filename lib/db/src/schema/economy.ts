@@ -1,18 +1,24 @@
-import { pgTable, text, timestamp, integer, primaryKey } from "drizzle-orm/pg-core";
+import {
+  mysqlTable,
+  varchar,
+  int,
+  timestamp,
+  primaryKey,
+} from "drizzle-orm/mysql-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
-export const economyTable = pgTable(
+export const economyTable = mysqlTable(
   "economy",
   {
-    guildId: text("guild_id").notNull(),
-    userId: text("user_id").notNull(),
-    balance: integer("balance").notNull().default(500),
-    totalEarned: integer("total_earned").notNull().default(0),
-    totalLost: integer("total_lost").notNull().default(0),
-    gamesPlayed: integer("games_played").notNull().default(0),
-    gamesWon: integer("games_won").notNull().default(0),
-    streak: integer("streak").notNull().default(0),
+    guildId: varchar("guild_id", { length: 32 }).notNull(),
+    userId: varchar("user_id", { length: 32 }).notNull(),
+    balance: int("balance").notNull().default(500),
+    totalEarned: int("total_earned").notNull().default(0),
+    totalLost: int("total_lost").notNull().default(0),
+    gamesPlayed: int("games_played").notNull().default(0),
+    gamesWon: int("games_won").notNull().default(0),
+    streak: int("streak").notNull().default(0),
     lastDaily: timestamp("last_daily"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
@@ -21,13 +27,13 @@ export const economyTable = pgTable(
 
 export type Economy = typeof economyTable.$inferSelect;
 
-export const inventoryTable = pgTable(
+export const inventoryTable = mysqlTable(
   "inventory",
   {
-    guildId: text("guild_id").notNull(),
-    userId: text("user_id").notNull(),
-    itemId: text("item_id").notNull(),
-    quantity: integer("quantity").notNull().default(1),
+    guildId: varchar("guild_id", { length: 32 }).notNull(),
+    userId: varchar("user_id", { length: 32 }).notNull(),
+    itemId: varchar("item_id", { length: 64 }).notNull(),
+    quantity: int("quantity").notNull().default(1),
     acquiredAt: timestamp("acquired_at").defaultNow().notNull(),
   },
   (t) => [primaryKey({ columns: [t.guildId, t.userId, t.itemId] })],
@@ -35,5 +41,7 @@ export const inventoryTable = pgTable(
 
 export type InventoryRow = typeof inventoryTable.$inferSelect;
 
-export const insertEconomySchema = createInsertSchema(economyTable).omit({ createdAt: true });
+export const insertEconomySchema = createInsertSchema(economyTable).omit({
+  createdAt: true,
+});
 export type InsertEconomy = z.infer<typeof insertEconomySchema>;

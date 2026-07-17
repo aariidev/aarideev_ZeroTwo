@@ -125,14 +125,34 @@ function settingsToDraft(s: GuildSettings): LogSettingsDraft {
 }
 
 async function fetchSettings(guildId: string): Promise<GuildSettings> {
-  const res = await fetch(`${BASE}/api/guilds/${guildId}/settings`, {
-    credentials: "include",
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error ?? `HTTP ${res.status}`);
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 25_000);
+  try {
+    const res = await fetch(`${BASE}/api/guilds/${guildId}/settings`, {
+      credentials: "include",
+      signal: ctrl.signal,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({} as { error?: string }));
+      if (res.status === 504 || res.status === 502) {
+        throw new Error(
+          err.error ??
+            "Timeout al cargar la config (tunnel/API). Reintenta en unos segundos.",
+        );
+      }
+      throw new Error(err.error ?? `HTTP ${res.status}`);
+    }
+    return res.json();
+  } catch (e) {
+    if (e instanceof Error && e.name === "AbortError") {
+      throw new Error(
+        "La config tardó demasiado. Reintenta; si sigue, reinicia el bot.",
+      );
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
   }
-  return res.json();
 }
 
 async function saveSettings(guildId: string, draft: LogSettingsDraft) {
@@ -165,7 +185,9 @@ export default function Guilds() {
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("members");
   const [sortAsc, setSortAsc] = useState(false);
-  const [onlyMine, setOnlyMine] = useState(false);
+  // Non-owners already only receive their guilds from the API.
+  // Toggle still useful for owners to focus on servers they "manage" (all).
+  const [onlyMine, setOnlyMine] = useState(true);
 
   const [configId, setConfigId] = useState<string | null>(null);
   const [settings, setSettings] = useState<GuildSettings | null>(null);
@@ -175,7 +197,12 @@ export default function Guilds() {
   const [showIgnoreChannels, setShowIgnoreChannels] = useState(false);
 
   const { data: guilds, isLoading, isError, error } = useListGuilds({
-    query: { queryKey: getListGuildsQueryKey(), refetchInterval: 30000 },
+    // Less frequent refresh — listing hits Discord OAuth guilds (rate-limited)
+    query: {
+      queryKey: getListGuildsQueryKey(),
+      refetchInterval: 120000,
+      staleTime: 60000,
+    },
   });
 
   const rows = (guilds ?? []) as GuildRow[];
@@ -379,9 +406,11 @@ export default function Guilds() {
         }
       />
 
-      {manageableCount === 0 && !isLoading && (
+      {!isLoading && rows.length === 0 && (
         <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-xs font-mono text-amber-100/90">
-          No detectamos servidores que gestiones. Si acabas de añadir el scope{" "}
+          No hay servidores en común entre tu cuenta y el bot. Solo ves guilds
+          donde <strong>tú eres miembro</strong> y el bot está presente. Si
+          acabas de unirte o falta el scope{" "}
           <code className="text-amber-200">guilds</code>,{" "}
           <button
             type="button"
@@ -391,6 +420,14 @@ export default function Guilds() {
             vuelve a iniciar sesión con Discord
           </button>
           .
+        </div>
+      )}
+      {manageableCount === 0 && rows.length > 0 && !isLoading && (
+        <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-xs font-mono text-muted-foreground">
+          Estás en {rows.length} servidor(es) con el bot, pero no tienes
+          permiso de <strong className="text-foreground">Administrador</strong>{" "}
+          o <strong className="text-foreground">Gestionar servidor</strong> para
+          editar la config.
         </div>
       )}
 
