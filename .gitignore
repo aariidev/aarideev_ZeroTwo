@@ -48,8 +48,8 @@ Thumbs.db
 .cache/
 .local/
 
-# Temp screenshots (only assets/screenshots/ is kept)
-screenshots/
+# Temp screenshots at repo root (assets/screenshots is committed for README)
+/screenshots/
 
 # Environment
 .env
