@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/aariidev/aarideev_ZeroTwo/main/assets/separador.png" width="100%"/>
+<img src="https://raw.githubusercontent.com/aariidev/aarideev_ZeroTwo/main/assets/separador.gif" width="100%"/>
 
 <br/>
 
@@ -18,7 +18,7 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Drizzle-336791?style=for-the-badge&logo=postgresql&logoColor=white&labelColor=0d0d0d)](https://orm.drizzle.team)
 [![pnpm](https://img.shields.io/badge/pnpm-workspace-F69220?style=for-the-badge&logo=pnpm&logoColor=white&labelColor=0d0d0d)](https://pnpm.io)
 
-<img src="https://raw.githubusercontent.com/aariidev/aarideev_ZeroTwo/main/assets/separador.png" width="100%"/>
+<img src="https://raw.githubusercontent.com/aariidev/aarideev_ZeroTwo/main/assets/separador.gif" width="100%"/>
 
 </div>
 
@@ -58,7 +58,7 @@
 <br/>
 
 <div align="center">
-<img src="https://raw.githubusercontent.com/aariidev/aarideev_ZeroTwo/main/assets/separador.png" width="100%"/>
+<img src="https://raw.githubusercontent.com/aariidev/aarideev_ZeroTwo/main/assets/separador.gif" width="100%"/>
 </div>
 
 <br/>
@@ -102,7 +102,7 @@
 <br/>
 
 <div align="center">
-<img src="https://raw.githubusercontent.com/aariidev/aarideev_ZeroTwo/main/assets/separador.png" width="100%"/>
+<img src="https://raw.githubusercontent.com/aariidev/aarideev_ZeroTwo/main/assets/separador.gif" width="100%"/>
 </div>
 
 <br/>
@@ -213,7 +213,7 @@ También: panel web en el dashboard → **Tickets**.
 <br/>
 
 <div align="center">
-<img src="https://raw.githubusercontent.com/aariidev/aarideev_ZeroTwo/main/assets/separador.png" width="100%"/>
+<img src="https://raw.githubusercontent.com/aariidev/aarideev_ZeroTwo/main/assets/separador.gif" width="100%"/>
 </div>
 
 <br/>
@@ -233,7 +233,7 @@ También: panel web en el dashboard → **Tickets**.
 <br/>
 
 <div align="center">
-<img src="https://raw.githubusercontent.com/aariidev/aarideev_ZeroTwo/main/assets/separador.png" width="100%"/>
+<img src="https://raw.githubusercontent.com/aariidev/aarideev_ZeroTwo/main/assets/separador.gif" width="100%"/>
 </div>
 
 <br/>
@@ -278,7 +278,7 @@ aarideev_ZeroTwo/
 <br/>
 
 <div align="center">
-<img src="https://raw.githubusercontent.com/aariidev/aarideev_ZeroTwo/main/assets/separador.png" width="100%"/>
+<img src="https://raw.githubusercontent.com/aariidev/aarideev_ZeroTwo/main/assets/separador.gif" width="100%"/>
 </div>
 
 <br/>
@@ -345,7 +345,7 @@ pnpm --filter @workspace/dashboard run dev
 <br/>
 
 <div align="center">
-<img src="https://raw.githubusercontent.com/aariidev/aarideev_ZeroTwo/main/assets/separador.png" width="100%"/>
+<img src="https://raw.githubusercontent.com/aariidev/aarideev_ZeroTwo/main/assets/separador.gif" width="100%"/>
 </div>
 
 <br/>
@@ -371,7 +371,7 @@ pnpm --filter @workspace/dashboard run dev
 
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/aariidev/aarideev_ZeroTwo/main/assets/separador.png" width="100%"/>
+<img src="https://raw.githubusercontent.com/aariidev/aarideev_ZeroTwo/main/assets/separador.gif" width="100%"/>
 
 <br/>
 
