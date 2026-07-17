@@ -70,7 +70,7 @@
     <td valign="top" width="50%">
 
 ### 🤖 Bot
-- **33 slash commands** — utility, moderation, fun & economy
+- **34 slash commands** — utility, moderation, fun, casino, tickets & admin
 - **Cooldown system** — per-user, per-command rate limiting
 - **Permission enforcement** — hierarchy checks before every action
 - **DM notifications** — users are notified on ban, kick or warn
@@ -109,64 +109,106 @@
 
 ## 📋 Commands
 
-> **33 commands total** — Utility · Moderation · Fun / Economy · Admin
+> **34 slash commands** — Utility · Moderation · Fun · Casino · Admin  
+> Uso en Discord: escribe `/` y el nombre del comando.  
+> En el bot: `/help` o `/help [comando]` para el panel interactivo.
 
-### 🔧 Utility
+### 🛠️ Utility (8)
 
-| Command | Description |
-|---|---|
-| `/help` | List all available commands with descriptions |
-| `/ping` | Check bot latency and WebSocket ping |
-| `/avatar` | Display a user's full-size avatar |
-| `/userinfo` | Show detailed user information |
-| `/serverinfo` | Display server statistics and details |
-| `/cfglogs` | Set / disable / check the server log channel |
-| `/cfgembed` | Configure custom embeds |
+| Command | Usage | Description | Permission |
+|---|---|---|---|
+| `/help` | `/help [comando]` | Panel de comandos por categoría o detalle de uno | — |
+| `/ping` | `/ping` | Latencia del bot y WebSocket | — |
+| `/avatar` | `/avatar [usuario]` | Avatar a tamaño completo | — |
+| `/userinfo` | `/userinfo [usuario]` | Ficha de usuario (roles, IDs, estado) | — |
+| `/serverinfo` | `/serverinfo` | Estadísticas y detalle del servidor | — |
+| `/cfgembed` | `/cfgembed [canal]` | Constructor interactivo de embeds | Manage Messages |
+| `/cfglogs` | `/cfglogs set\|disable\|status` | Canal de logs de moderación del servidor | Administrator |
+| `/ticket` | ver subcomandos ↓ | Sistema de tickets de soporte | ver abajo |
 
-### 🛡️ Moderation
+#### `/ticket` subcommands
 
-| Command | Description | Permission |
+| Subcommand | Description | Who |
 |---|---|---|
-| `/ban` | Ban a user with optional reason | Ban Members |
-| `/unban` | Unban a user by ID | Ban Members |
-| `/kick` | Kick a user from the server | Kick Members |
-| `/timeout` | Apply a timed timeout | Moderate Members |
-| `/untimeout` | Remove an active timeout | Moderate Members |
-| `/mute` | Mute a member | Moderate Members |
-| `/unmute` | Unmute a member | Moderate Members |
-| `/warn` | Issue a warning to a user | Moderate Members |
-| `/warns` | View warnings for a user | Moderate Members |
-| `/clearwarns` | Clear warnings for a user | Moderate Members |
-| `/purge` | Bulk delete messages in a channel | Manage Messages |
-| `/lock` | Lock a channel | Manage Channels |
-| `/unlock` | Unlock a channel | Manage Channels |
-| `/slowmode` | Set channel slowmode | Manage Channels |
-| `/logs` | View or manage moderation logs | Moderate Members |
+| `/ticket setup` | Categoría + rol staff [+ logs] [+ max abiertos] | Administrator |
+| `/ticket panel` | Publica el panel (menú de categorías) en un canal | Manage Guild |
+| `/ticket status` | Muestra la config actual de tickets | Anyone |
+| `/ticket claim` | Reclama el ticket del canal actual | Staff |
+| `/ticket close` | Cierra el ticket `[razon]` + transcript | Owner ticket / Staff |
+| `/ticket add` | Añade un usuario al canal del ticket | Owner ticket / Staff |
+| `/ticket remove` | Quita un usuario del ticket | Owner ticket / Staff |
 
-### 🎲 Fun & Economy
+También: panel web en el dashboard → **Tickets**.
 
-| Command | Description |
+### 🛡️ Moderation (15)
+
+| Command | Usage | Description | Permission |
+|---|---|---|---|
+| `/ban` | `/ban <usuario> [motivo] [días]` | Banea (días = borrar mensajes 0–7) | Ban Members |
+| `/unban` | `/unban <userid> [motivo]` | Desbanea por ID de usuario | Ban Members |
+| `/kick` | `/kick <usuario> [motivo]` | Expulsa del servidor | Kick Members |
+| `/timeout` | `/timeout <usuario> <duracion> [motivo]` | Aislamiento temporal (choices de duración) | Moderate Members |
+| `/untimeout` | `/untimeout <usuario>` | Quita el timeout | Moderate Members |
+| `/mute` | `/mute <usuario> <duracion> [motivo]` | Mute por rol / aislamiento | Moderate Members |
+| `/unmute` | `/unmute <usuario>` | Quita el mute | Moderate Members |
+| `/warn` | `/warn <usuario> <motivo>` | Añade una warn a la base de datos | Moderate Members |
+| `/warns` | `/warns <usuario>` | Lista warns del usuario | Moderate Members |
+| `/clearwarns` | `/clearwarns <usuario>` | Borra warns del usuario | Moderate Members |
+| `/purge` | `/purge <cantidad> [usuario]` | Borra mensajes (máx. 14 días) | Manage Messages |
+| `/lock` | `/lock [motivo] [global]` | Bloquea el canal (o todos) | Manage Channels |
+| `/unlock` | `/unlock [global]` | Desbloquea canal(es) | Manage Channels |
+| `/slowmode` | `/slowmode <segundos> [global]` | Slowmode 0–21600 s | Manage Channels |
+| `/logs` | `/logs ver\|borrar` | Consulta / limpia logs de moderación en DB | Moderate Members |
+
+### 🎮 Fun (3)
+
+| Command | Usage | Description |
+|---|---|---|
+| `/8ball` | `/8ball <pregunta>` | Respuesta del núcleo analítico (según longitud de la pregunta) |
+| `/coinflip` | `/coinflip` | Cara o cruz con animación |
+| `/roll` | `/roll [caras] [modificador]` | Tira dados (críticos / pifias) |
+
+### 🎰 Casino / Economy (7)
+
+| Command | Usage | Description |
+|---|---|---|
+| `/wallet` | `/wallet [usuario]` | Saldo de fichas + daily claim |
+| `/pay` | `/pay <usuario> <cantidad>` | Transfiere fichas a otro usuario |
+| `/shop` | `/shop` | Tienda de ítems del casino |
+| `/inventory` | `/inventory` | Inventario y uso de ítems |
+| `/top` | `/top [tipo]` | Ranking de economía |
+| `/blackjack` | `/blackjack` | Blackjack con apuestas e ítems |
+| `/slots` | `/slots <apuesta>` | Tragaperras |
+
+### 👑 Admin (1)
+
+| Command | Usage | Description | Permission |
+|---|---|---|---|
+| `/dev` | `/dev give\|take\|set\|reset\|info\|additem` | Herramientas de economía del owner | `OWNER_IDS` only |
+
+#### `/dev` subcommands
+
+| Subcommand | Description |
 |---|---|
-| `/8ball` | Ask the magic 8-ball a question |
-| `/coinflip` | Flip a coin |
-| `/roll` | Roll dice with optional modifiers |
-| `/blackjack` | Play blackjack with bets |
-| `/slots` | Slot machine |
-| `/wallet` | Check your balance |
-| `/pay` | Send currency to another user |
-| `/shop` | Browse the shop |
-| `/inventory` | View your items |
-| `/top` | Leaderboard |
-| `/chat` | Talk with the AI companion |
-| `/gig` | Random fixer gig generator |
-| `/chrome` | Cyberware upgrade simulator |
-| `/psycho` | Cyberpsychosis test |
+| `give` | Dar fichas a un usuario |
+| `take` | Quitar fichas |
+| `set` | Fijar saldo exacto |
+| `reset` | Resetear economía del usuario |
+| `info` | Stats de economía de un usuario |
+| `additem` | Añadir ítem al inventario |
 
-### 👑 Admin
+> Opcional en todos los sub de `/dev`: `guild_id` si no estás en el servidor objetivo.
 
-| Command | Description |
-|---|---|
-| `/dev` | Owner tools (economy admin, etc.) |
+### Resumen por categoría
+
+| Categoría | Cantidad |
+|---|---:|
+| Utility | 8 |
+| Moderation | 15 |
+| Fun | 3 |
+| Casino | 7 |
+| Admin | 1 |
+| **Total** | **34** |
 
 <br/>
 
