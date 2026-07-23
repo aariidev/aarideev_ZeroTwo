@@ -12,7 +12,14 @@ import {
   musicManager,
   resolveTracks,
 } from "../../music/manager.js";
-import { addedToQueueEmbed, nowPlayingEmbed, musicControls } from "../../music/embeds.js";
+import {
+  addedToQueueEmbed,
+  musicControls,
+  musicEmbedFiles,
+  musicNoticePayload,
+  nowPlayingEmbed,
+} from "../../music/embeds.js";
+import { canRequestMusic } from "../../music/permissions.js";
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -31,21 +38,26 @@ const command: Command = {
   async execute(interaction: ChatInputCommandInteraction, client: Client) {
     if (!interaction.guild) {
       await interaction.reply({
-        content: "❌ Solo en servidores.",
+        ...musicNoticePayload("❌ Este comando solo funciona en **servidores**.", {
+          kind: "error",
+          client,
+        }),
         flags: MessageFlags.Ephemeral,
       });
       return;
     }
 
     const member = interaction.member as GuildMember;
-    const voice = memberVoiceChannel(member);
-    if (!voice) {
+    const existing = musicManager.get(interaction.guild.id);
+    const req = canRequestMusic(member, existing);
+    if (!req.ok) {
       await interaction.reply({
-        content: "❌ Entra a un **canal de voz** primero.",
+        ...musicNoticePayload(req.reason, { kind: "error", client }),
         flags: MessageFlags.Ephemeral,
       });
       return;
     }
+    const voice = memberVoiceChannel(member)!;
 
     const me = interaction.guild.members.me;
     if (
@@ -56,7 +68,10 @@ const command: Command = {
       ])
     ) {
       await interaction.reply({
-        content: "❌ No tengo permiso de **Conectar/Hablar** en ese canal.",
+        ...musicNoticePayload(
+          "❌ No tengo permiso de **Conectar** / **Hablar** en ese canal de voz.",
+          { kind: "error", client },
+        ),
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -69,16 +84,22 @@ const command: Command = {
     try {
       tracks = await resolveTracks(query, member);
     } catch (err) {
-      await interaction.editReply({
-        content: `❌ No se pudo buscar: ${err instanceof Error ? err.message : "error"}`,
-      });
+      await interaction.editReply(
+        musicNoticePayload(
+          `❌ No se pudo buscar:\n\`\`\`${err instanceof Error ? err.message : "error"}\`\`\``,
+          { kind: "error", client, banner: true, title: "Zero Two Music · Búsqueda" },
+        ),
+      );
       return;
     }
 
     if (!tracks.length) {
-      await interaction.editReply({
-        content: "❌ No encontré resultados. Prueba otra búsqueda o un enlace de YouTube.",
-      });
+      await interaction.editReply(
+        musicNoticePayload(
+          "❌ No encontré resultados.\nPrueba otra búsqueda o un enlace de **YouTube** / **Spotify**.",
+          { kind: "error", client, banner: true, title: "Zero Two Music · Sin resultados" },
+        ),
+      );
       return;
     }
 
@@ -89,16 +110,32 @@ const command: Command = {
     if (wasIdle) session.suppressNextAnnounce = true;
     await session.enqueue(tracks, interaction.channelId);
 
+    // Keep fixed panel in sync
+    try {
+      const { schedulePanelRefresh } = await import("../../music/panel.js");
+      schedulePanelRefresh(client, interaction.guild.id);
+    } catch {
+      /* optional */
+    }
+
     if (tracks.length > 1) {
-      await interaction.editReply({
-        content: `📜 Playlist: **${tracks.length}** pistas añadidas a la cola.`,
-      });
+      await interaction.editReply(
+        musicNoticePayload(
+          `📜 **Mix / playlist cargada**\nSe han añadido **${tracks.length}** pistas a la cola.\nLa primera empieza a sonar ya.`,
+          {
+            kind: "ok",
+            client,
+            banner: true,
+            title: "Zero Two Music · Mix / Playlist",
+          },
+        ),
+      );
       return;
     }
 
     const track = tracks[0]!;
+    const files = musicEmbedFiles();
     if (wasIdle) {
-      // Now playing will also be announced by the session; reply with NP embed
       await interaction.editReply({
         embeds: [
           nowPlayingEmbed(client, track, {
@@ -107,14 +144,22 @@ const command: Command = {
             volume: session.volume,
             loop: session.loop,
             paused: session.paused,
+            playbackSec: session.playbackSec,
+            hasHistory: session.hasHistory,
           }),
         ],
-        components: musicControls(interaction.guild.id, session.paused),
+        components: musicControls(
+          interaction.guild.id,
+          session.paused,
+          session.hasHistory,
+        ),
+        files: files.length ? files : undefined,
       });
     } else {
-      const pos = session.queue.length; // just queued at end (current already playing)
+      const pos = session.queue.length;
       await interaction.editReply({
         embeds: [addedToQueueEmbed(client, track, pos)],
+        files: files.length ? files : undefined,
       });
     }
   },
