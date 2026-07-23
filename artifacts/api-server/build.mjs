@@ -104,7 +104,9 @@ async function buildAll() {
       "puppeteer-core",
       "electron",
     ],
-    sourcemap: "linked",
+    // Allow disabling sourcemap generation (which can use large memory) by setting
+    // ESBUILD_DISABLE_SOURCEMAP=1 in the environment. Default behavior remains "linked".
+    sourcemap: process.env.ESBUILD_DISABLE_SOURCEMAP === "1" ? false : "linked",
     plugins: [
       esbuildPluginPino({ transports: ["pino-pretty"] }),
     ],
