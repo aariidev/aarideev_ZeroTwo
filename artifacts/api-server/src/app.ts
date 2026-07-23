@@ -82,7 +82,7 @@ app.get("/api/health", (_req: Request, res: Response) => {
     status: "healthy",
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    signature: "Zero Two Core API // v2.3.0",
+    signature: "Zero Two Core API // v2.4.0",
   });
 });
 

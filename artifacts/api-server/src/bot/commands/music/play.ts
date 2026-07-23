@@ -8,8 +8,10 @@ import {
 } from "discord.js";
 import { Command } from "../../types.js";
 import {
+  isSpotifyQuery,
   memberVoiceChannel,
   musicManager,
+  resolveSpotifyProgressive,
   resolveTracks,
 } from "../../music/manager.js";
 import {
@@ -18,6 +20,9 @@ import {
   musicEmbedFiles,
   musicNoticePayload,
   nowPlayingEmbed,
+  spotifyLoadingEmbed,
+  spotifyPlaylistBootEmbed,
+  spotifyPlaylistReadyEmbed,
 } from "../../music/embeds.js";
 import { canRequestMusic } from "../../music/permissions.js";
 
@@ -80,6 +85,133 @@ const command: Command = {
     const query = interaction.options.getString("query", true).trim();
     await interaction.deferReply();
 
+    const session = musicManager.getOrCreate(interaction.guild.id, client);
+    session.connect(voice);
+    const wasIdle = !session.current && session.queue.length === 0;
+
+    // Spotify playlist/álbum: 1ª pista ya suena; el resto se resuelve en paralelo
+    // (50× ytsearch secuencial dejaba el defer "pensando" varios minutos).
+    if (isSpotifyQuery(query)) {
+      const bannerFiles = musicEmbedFiles();
+      try {
+        await interaction.editReply({
+          embeds: [spotifyLoadingEmbed(client, "reading")],
+          files: bannerFiles.length ? bannerFiles : undefined,
+        });
+
+        let firstTitle = "";
+        await resolveSpotifyProgressive(query, member, {
+          onFirst: async (tracks, meta) => {
+            if (wasIdle) session.suppressNextAnnounce = true;
+            await session.enqueue(tracks, interaction.channelId);
+            try {
+              const { schedulePanelRefresh } = await import(
+                "../../music/panel.js"
+              );
+              schedulePanelRefresh(client, interaction.guild!.id);
+            } catch {
+              /* optional */
+            }
+
+            const first = tracks[0]!;
+            firstTitle = first.title;
+            if (meta.totalItems === 1) {
+              const files = musicEmbedFiles();
+              if (wasIdle) {
+                await interaction.editReply({
+                  embeds: [
+                    nowPlayingEmbed(client, first, {
+                      position: 1,
+                      queueLen: session.queue.length,
+                      volume: session.volume,
+                      loop: session.loop,
+                      paused: session.paused,
+                      playbackSec: session.playbackSec,
+                      hasHistory: session.hasHistory,
+                    }),
+                  ],
+                  components: musicControls(
+                    interaction.guild!.id,
+                    session.paused,
+                    session.hasHistory,
+                  ),
+                  files: files.length ? files : undefined,
+                });
+              } else {
+                await interaction.editReply({
+                  embeds: [
+                    addedToQueueEmbed(client, first, session.queue.length),
+                  ],
+                  files: musicEmbedFiles().length
+                    ? musicEmbedFiles()
+                    : undefined,
+                });
+              }
+              return;
+            }
+
+            await interaction.editReply({
+              embeds: [
+                spotifyPlaylistBootEmbed(client, first, {
+                  totalItems: meta.totalItems,
+                  remaining: meta.totalItems - 1,
+                  volume: session.volume,
+                  loop: session.loop,
+                  queueLen: session.queue.length,
+                }),
+              ],
+              components: musicControls(
+                interaction.guild!.id,
+                session.paused,
+                session.hasHistory,
+              ),
+              files: musicEmbedFiles().length ? musicEmbedFiles() : undefined,
+            });
+          },
+          onRest: async (tracks, meta) => {
+            await session.enqueue(tracks, interaction.channelId);
+            try {
+              const { schedulePanelRefresh } = await import(
+                "../../music/panel.js"
+              );
+              schedulePanelRefresh(client, interaction.guild!.id);
+            } catch {
+              /* optional */
+            }
+            await interaction.editReply({
+              embeds: [
+                spotifyPlaylistReadyEmbed(client, {
+                  resolved: meta.resolved,
+                  totalItems: meta.totalItems,
+                  queueLen: session.queue.length,
+                  firstTitle,
+                }),
+              ],
+              components: musicControls(
+                interaction.guild!.id,
+                session.paused,
+                session.hasHistory,
+              ),
+              files: musicEmbedFiles().length ? musicEmbedFiles() : undefined,
+            });
+          },
+        });
+      } catch (err) {
+        await interaction.editReply(
+          musicNoticePayload(
+            `❌ No se pudo cargar Spotify:\n\`\`\`${err instanceof Error ? err.message : "error"}\`\`\``,
+            {
+              kind: "error",
+              client,
+              banner: true,
+              title: "Zero Two Music · Spotify",
+            },
+          ),
+        );
+      }
+      return;
+    }
+
     let tracks;
     try {
       tracks = await resolveTracks(query, member);
@@ -103,10 +235,6 @@ const command: Command = {
       return;
     }
 
-    const session = musicManager.getOrCreate(interaction.guild.id, client);
-    session.connect(voice);
-
-    const wasIdle = !session.current && session.queue.length === 0;
     if (wasIdle) session.suppressNextAnnounce = true;
     await session.enqueue(tracks, interaction.channelId);
 

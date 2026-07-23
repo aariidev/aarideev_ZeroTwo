@@ -447,9 +447,11 @@ export type YtSearchMeta = {
 /**
  * Resolve metadata with yt-dlp (search or direct URL).
  * Avoids play-dl browseId / innertube breakage.
+ * @param timeoutMs kill slow yt-dlp (default 25s; use lower for playlist batches)
  */
 export async function ytdlpSearchMeta(
   query: string,
+  opts?: { timeoutMs?: number },
 ): Promise<YtSearchMeta | null> {
   const ytdlp = findYtDlp();
   if (!ytdlp) return null;
@@ -457,6 +459,7 @@ export async function ytdlpSearchMeta(
   const isHttp = /^https?:\/\//i.test(query.trim());
   // Direct URL → metadata of that video; otherwise ytsearch1
   const target = isHttp ? query.trim() : `ytsearch1:${query}`;
+  const timeoutMs = opts?.timeoutMs ?? 25_000;
 
   return new Promise((resolve) => {
     // Use a rare separator so titles with tabs don't break parsing
@@ -481,7 +484,7 @@ export async function ytdlpSearchMeta(
         /* */
       }
       resolve(null);
-    }, 25_000);
+    }, timeoutMs);
 
     proc.on("close", (code) => {
       clearTimeout(timer);

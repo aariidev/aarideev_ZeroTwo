@@ -34,7 +34,7 @@ export function getBotPublicInfo() {
     online: ready,
     ping: ready && ping < 0 ? 0 : ping,
     guildCount: botClient?.guilds.cache.size ?? 0,
-    version: "2.3.0",
+    version: "2.4.0",
   };
 }
 
@@ -87,7 +87,7 @@ router.get("/stats", async (req: Request, res: Response) => {
       botAvatar,
       botTag: botClient?.user?.tag ?? null,
       online: ready,
-      version: "2.3.0",
+      version: "2.4.0",
       scoped: !access.isOwner,
     });
   } catch (err) {
