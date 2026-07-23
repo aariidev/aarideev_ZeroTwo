@@ -345,6 +345,7 @@ DISCORD_TOKEN=tu_token_del_bot
 CLIENT_ID=id_de_la_aplicacion
 CLIENT_SECRET=secreto_oauth
 OWNER_IDS=tu_discord_user_id
+BETA_TESTER_IDS=id_betatester_1,id_betatester_2
 
 # Base de datos MySQL/MariaDB (ej. local HeidiSQL)
 DATABASE_URL=mysql://root@127.0.0.1:3306/zerotwo

@@ -2,11 +2,27 @@ import type { ChatInputCommandInteraction, Guild } from "discord.js";
 
 const DEFAULT_OWNER_ID = "819080793447333918";
 
-export function specialUserIds(): string[] {
-  return (process.env.OWNER_IDS ?? DEFAULT_OWNER_ID)
+function parseIds(value: string | undefined): string[] {
+  return (value ?? "")
     .split(",")
     .map((id) => id.trim())
     .filter(Boolean);
+}
+
+export function specialUserIds(): string[] {
+  return [...new Set([...ownerUserIds(), ...betaTesterIds()])];
+}
+
+export function ownerUserIds(): string[] {
+  return parseIds(process.env.OWNER_IDS ?? DEFAULT_OWNER_ID);
+}
+
+export function betaTesterIds(): string[] {
+  return parseIds(process.env.BETA_TESTER_IDS);
+}
+
+export function isBetaTesterId(userId: string): boolean {
+  return betaTesterIds().includes(userId);
 }
 
 export function isSpecialUserId(userId: string): boolean {
@@ -27,6 +43,10 @@ export function hasSpecialTreatment(
   return Boolean(interaction.guild && isSpecialUserId(interaction.user.id));
 }
 
-export function specialTreatmentLabel(): string {
+export function specialTreatmentLabel(userId?: string): string {
+  if (userId && isBetaTesterId(userId) && !ownerUserIds().includes(userId)) {
+    return "Betatester autorizado en este servidor";
+  }
+
   return "Owner detectado en este servidor";
 }

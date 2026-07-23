@@ -60,16 +60,36 @@ const logQueue: Array<{
   moderatorName: string | null;
 }> = [];
 
-const BATCH_INTERVAL_MS = 2500;
-const MAX_BATCH_SIZE = 100;
+const BATCH_INTERVAL_MS = Number(process.env.BOT_LOG_BATCH_INTERVAL_MS ?? 2500);
+const MAX_BATCH_SIZE = Number(process.env.BOT_LOG_BATCH_SIZE ?? 100);
+const MAX_QUEUE_SIZE = Number(process.env.BOT_LOG_MAX_QUEUE_SIZE ?? 5000);
+const MAX_DETAILS_LENGTH = Number(process.env.BOT_LOG_MAX_DETAILS_LENGTH ?? 24_000);
 let isProcessing = false;
 let flushTimer: NodeJS.Timeout | null = null;
+let activeFlush: Promise<void> | null = null;
+let droppedRecords = 0;
 
 export function logBotEvent(entry: LogEntry): void {
+  if (logQueue.length >= MAX_QUEUE_SIZE) {
+    droppedRecords += 1;
+    if (droppedRecords === 1 || droppedRecords % 100 === 0) {
+      logger.warn(
+        {
+          droppedRecords,
+          maxQueueSize: MAX_QUEUE_SIZE,
+          event: entry.event,
+          guildId: entry.guildId,
+        },
+        "botLogger: cola llena, descartando eventos nuevos",
+      );
+    }
+    return;
+  }
+
   logQueue.push({
     level: entry.level ?? "info",
     event: entry.event,
-    details: JSON.stringify(entry.details ?? {}),
+    details: safeStringify(entry.details ?? {}),
     guildId: entry.guildId ?? null,
     guildName: entry.guildName ?? null,
     userId: entry.userId ?? null,
@@ -79,20 +99,11 @@ export function logBotEvent(entry: LogEntry): void {
   });
 
   if (logQueue.length >= MAX_BATCH_SIZE) {
-    processQueue().catch((err) =>
-      logger.error(
-        { err },
-        "❌ Error crítico en despacho forzado por tamaño máximo",
-      ),
-    );
-  } else if (!flushTimer) {
-    flushTimer = setTimeout(() => {
-      flushTimer = null;
-      processQueue().catch((err) =>
-        logger.error({ err }, "❌ Error en el ciclo periódico de logs"),
-      );
-    }, BATCH_INTERVAL_MS);
+    void runProcessQueue("max_batch_size");
+    return;
   }
+
+  scheduleFlush();
 }
 
 async function processQueue(): Promise<void> {
@@ -103,6 +114,13 @@ async function processQueue(): Promise<void> {
 
   try {
     await db.insert(logsTable).values(recordsToInsert);
+    if (droppedRecords > 0) {
+      logger.warn(
+        { droppedRecords },
+        "botLogger: eventos descartados durante presión de cola",
+      );
+      droppedRecords = 0;
+    }
   } catch (err) {
     logger.error(
       { err, totalLostRecords: recordsToInsert.length },
@@ -123,15 +141,61 @@ async function processQueue(): Promise<void> {
   } finally {
     isProcessing = false;
 
-    if (logQueue.length > 0 && !flushTimer) {
-      flushTimer = setTimeout(() => {
-        flushTimer = null;
-        processQueue().catch((e) =>
-          logger.error({ err: e }, "❌ Error reactivando cola residual"),
-        );
-      }, BATCH_INTERVAL_MS);
+    if (logQueue.length > 0) {
+      scheduleFlush();
     }
   }
+}
+
+function scheduleFlush(): void {
+  if (flushTimer) return;
+
+  flushTimer = setTimeout(() => {
+    flushTimer = null;
+    void runProcessQueue("timer");
+  }, BATCH_INTERVAL_MS);
+  flushTimer.unref?.();
+}
+
+async function runProcessQueue(reason: string): Promise<void> {
+  if (activeFlush) return activeFlush;
+
+  activeFlush = processQueue().catch((err) => {
+    logger.error({ err, reason }, "botLogger: error procesando la cola");
+  }).finally(() => {
+    activeFlush = null;
+  });
+
+  return activeFlush;
+}
+
+function safeStringify(value: Record<string, unknown>): string {
+  const seen = new WeakSet<object>();
+
+  const json = JSON.stringify(value, (_key, nestedValue: unknown) => {
+    if (typeof nestedValue === "bigint") return nestedValue.toString();
+    if (nestedValue instanceof Error) {
+      return {
+        name: nestedValue.name,
+        message: nestedValue.message,
+        stack: nestedValue.stack,
+      };
+    }
+    if (typeof nestedValue === "object" && nestedValue !== null) {
+      if (seen.has(nestedValue)) return "[circular]";
+      seen.add(nestedValue);
+    }
+    return nestedValue;
+  });
+
+  if (!json) return "{}";
+  if (json.length <= MAX_DETAILS_LENGTH) return json;
+
+  return JSON.stringify({
+    truncated: true,
+    originalLength: json.length,
+    preview: json.slice(0, MAX_DETAILS_LENGTH),
+  });
 }
 
 export async function flushAllLogs(): Promise<void> {
@@ -139,10 +203,19 @@ export async function flushAllLogs(): Promise<void> {
     clearTimeout(flushTimer);
     flushTimer = null;
   }
+  if (activeFlush) {
+    await activeFlush;
+  }
   if (logQueue.length > 0) {
     logger.info(
       `🧹 Vaciando buffer residual de logs antes de apagar (${logQueue.length} restantes)...`,
     );
-    await processQueue();
+    await runProcessQueue("shutdown");
+  }
+  if (droppedRecords > 0) {
+    logger.warn(
+      { droppedRecords },
+      "botLogger: apagado con eventos descartados por presión de cola",
+    );
   }
 }
