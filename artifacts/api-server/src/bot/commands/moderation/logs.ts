@@ -75,7 +75,7 @@ const command: Command = {
       }
 
       if (rows.length === 0) {
-        return interaction.editReply({
+        await interaction.editReply({
           embeds: [
             new EmbedBuilder()
               .setColor(0xff2d6b)
@@ -84,6 +84,7 @@ const command: Command = {
               ),
           ],
         });
+        return;
       }
 
       // Configuración de paginación (5 logs por página)
@@ -149,10 +150,11 @@ const command: Command = {
 
       collector.on("collect", async (btnInt) => {
         if (btnInt.user.id !== interaction.user.id) {
-          return btnInt.reply({
+          await btnInt.reply({
             content: "❌ Panel bloqueado para tu firma digital.",
             ephemeral: true,
           });
+          return;
         }
 
         if (btnInt.customId === "prev") currentPage--;
@@ -177,10 +179,11 @@ const command: Command = {
       if (
         !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)
       ) {
-        return interaction.reply({
-          content: "❌ Permiso denegado. Requiere rango: \`Administrador\`.",
+        await interaction.reply({
+          content: "❌ Permiso denegado. Requiere rango: `Administrador`.",
           ephemeral: true,
         });
+        return;
       }
 
       await interaction.deferReply({ ephemeral: true });
