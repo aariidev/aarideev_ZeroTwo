@@ -45,11 +45,12 @@ const command: Command = {
       (await interaction.guild?.members.fetch(target.id).catch(() => null));
 
     if (member && !member.bannable) {
-      return interaction.reply({
+      await interaction.reply({
         content:
           "❌ Jerarquía de privilegios insuficiente para purgar a este sujeto.",
         flags: MessageFlags.Ephemeral,
       });
+      return;
     }
 
     // DM + ban API can exceed the 3s interaction window → defer first
