@@ -11,6 +11,7 @@ import {
   ButtonBuilder,
   ButtonStyle,
   AttachmentBuilder,
+  type GuildTextBasedChannel,
 } from "discord.js";
 import { Command } from "../../types.js";
 import {
@@ -31,6 +32,9 @@ const PINK  = 0xff2d6b;
 const CYAN  = 0x00f5d4;
 const GREEN = 0x00ff9f;
 const AMBER = 0xff9900;
+
+const EMBED_FIELD_LIMIT = 1024;
+const SELECT_DESCRIPTION_LIMIT = 100;
 
 
 // ── Slash command definition ──────────────────────────────────────────────────
@@ -235,6 +239,89 @@ function configUpdatedEmbed(
     .setTitle(title)
     .setDescription(description)
     .setTimestamp();
+}
+
+function truncateText(value: string, maxLength: number): string {
+  const clean = value.replace(/\s+/g, " ").trim();
+  if (clean.length <= maxLength) return clean;
+  return `${clean.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
+}
+
+function formatPanelCategories(categories: TicketCategory[]): string {
+  const lines: string[] = [];
+  let total = 0;
+
+  for (const category of categories) {
+    const line = `${category.emoji} **${category.label}**\n${truncateText(category.description, 120)}`;
+    const nextTotal = total + line.length + (lines.length ? 2 : 0);
+    if (nextTotal > EMBED_FIELD_LIMIT) {
+      const remaining = `+ ${categories.length - lines.length} categorías más en el selector.`;
+      if (total + remaining.length + (lines.length ? 2 : 0) <= EMBED_FIELD_LIMIT) {
+        lines.push(remaining);
+      }
+      break;
+    }
+    lines.push(line);
+    total = nextTotal;
+  }
+
+  return lines.join("\n\n") || "No hay categorías configuradas.";
+}
+
+function buildTicketPanelEmbed(
+  cfg: Awaited<ReturnType<typeof getTicketConfig>>,
+  categories: TicketCategory[],
+  botIcon?: string,
+): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(PINK)
+    .setAuthor({ name: "Zero Two · Centro de Tickets", iconURL: botIcon })
+    .setTitle(cfg.panelTitle)
+    .setDescription(
+      cfg.panelDescription ||
+        "Selecciona una categoría para abrir un ticket privado con el staff.",
+    )
+    .addFields(
+      {
+        name: "Categorías disponibles",
+        value: formatPanelCategories(categories),
+      },
+      {
+        name: "Antes de abrir",
+        value:
+          "Elige la categoría correcta, describe el caso con detalle y evita abrir tickets duplicados.",
+      },
+      {
+        name: "Límite",
+        value: `Máximo **${cfg.maxOpen}** ticket(s) abierto(s) por usuario.`,
+        inline: true,
+      },
+    )
+    .setFooter({ text: "Zero Two · Soporte privado y transcripts", iconURL: botIcon })
+    .setTimestamp();
+}
+
+function buildTicketPanelSelect(categories: TicketCategory[]): StringSelectMenuBuilder {
+  return new StringSelectMenuBuilder()
+    .setCustomId("ticket_open")
+    .setPlaceholder("Elige el motivo de tu ticket")
+    .addOptions(
+      categories.slice(0, 25).map((category) => ({
+        label: truncateText(category.label, 100),
+        description: truncateText(category.description || "Abrir ticket", SELECT_DESCRIPTION_LIMIT),
+        value: category.id,
+        emoji: category.emoji,
+      })),
+    );
+}
+
+function isGuildTextSendableChannel(channel: unknown): channel is GuildTextBasedChannel {
+  return Boolean(
+    channel &&
+      typeof channel === "object" &&
+      "send" in channel &&
+      "permissionsFor" in channel,
+  );
 }
 
 async function handleConfig(
@@ -574,44 +661,59 @@ const command: Command = {
       }
 
       const target = interaction.options.getChannel("canal") ?? interaction.channel;
-      if (!target || !("send" in target)) {
+      if (!isGuildTextSendableChannel(target)) {
         await interaction.reply({
-          embeds: [new EmbedBuilder().setColor(PINK).setDescription("❌ Canal inválido.")],
+          embeds: [new EmbedBuilder().setColor(PINK).setDescription("❌ Canal inválido para publicar paneles.")],
           ephemeral: true,
         });
         return;
       }
 
       const cats = resolveCategories(cfg);
-      const embed = new EmbedBuilder()
-        .setColor(PINK)
-        .setAuthor({ name: "Central de Tickets // Zero Two", iconURL: botIcon })
-        .setTitle(cfg.panelTitle)
-        .setDescription(cfg.panelDescription || "Selecciona una categoría para abrir un ticket.")
-        .addFields({
-          name: "📋 Categorías disponibles",
-          value: cats.map((c) => `${c.emoji} **${c.label}** — ${c.description}`).join("\n"),
-        })
-        .setFooter({ text: "Zero Two · Sistema de Tickets", iconURL: botIcon })
-        .setTimestamp();
+      if (!cats.length) {
+        await interaction.reply({
+          embeds: [new EmbedBuilder().setColor(AMBER).setDescription("⚠️ No hay categorías disponibles para el panel.")],
+          ephemeral: true,
+        });
+        return;
+      }
 
-      const select = new StringSelectMenuBuilder()
-        .setCustomId("ticket_open")
-        .setPlaceholder("Selecciona una categoría…")
-        .addOptions(cats.map((c) => ({
-          label: c.label,
-          description: c.description,
-          value: c.id,
-          emoji: c.emoji,
-        })));
+      const botMember = interaction.guild.members.me ?? await interaction.guild.members.fetchMe();
+      const targetPermissions = target.permissionsFor(botMember);
+      if (
+        !targetPermissions?.has([
+          PermissionFlagsBits.ViewChannel,
+          PermissionFlagsBits.SendMessages,
+          PermissionFlagsBits.EmbedLinks,
+        ])
+      ) {
+        await interaction.reply({
+          embeds: [
+            new EmbedBuilder()
+              .setColor(PINK)
+              .setDescription("❌ Necesito **Ver canal**, **Enviar mensajes** e **Insertar enlaces** en ese canal."),
+          ],
+          ephemeral: true,
+        });
+        return;
+      }
 
-      await (target as typeof interaction.channel & { send: Function }).send({
+      const embed = buildTicketPanelEmbed(cfg, cats, botIcon);
+      const select = buildTicketPanelSelect(cats);
+
+      const panelMessage = await target.send({
         embeds: [embed],
         components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select)],
       });
 
       await interaction.reply({
-        embeds: [new EmbedBuilder().setColor(GREEN).setDescription(`✅ Panel publicado en <#${target.id}>.`)],
+        embeds: [
+          new EmbedBuilder()
+            .setColor(GREEN)
+            .setTitle("✅ Panel de tickets publicado")
+            .setDescription(`Publicado en <#${target.id}> con **${Math.min(cats.length, 25)}** categoría(s).`)
+            .addFields({ name: "Mensaje", value: `[Ir al panel](${panelMessage.url})` }),
+        ],
         ephemeral: true,
       });
       return;
