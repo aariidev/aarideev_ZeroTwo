@@ -145,16 +145,16 @@ export async function initMusicProviders(): Promise<MusicProvidersStatus> {
     };
     status.spotify = true;
   } else if (clientId && clientSecret) {
-    // play-dl types require refresh_token; some setups still work with empty after authorization()
+    // Sin refresh_token — client_credentials cubre playlists/álbumes públicos
     token.spotify = {
       client_id: clientId,
       client_secret: clientSecret,
-      refresh_token: refreshToken || " ",
+      refresh_token: " ",
       market,
     };
     status.spotify = true;
-    logger.warn(
-      "🎵 Spotify: solo client_id/secret — para playlists/álbumes usa SPOTIFY_REFRESH_TOKEN (play-dl authorization)",
+    logger.info(
+      "🎵 Spotify: client_id/secret listos — playlists públicas funcionarán. Para privadas añade SPOTIFY_REFRESH_TOKEN.",
     );
   } else {
     logger.info(

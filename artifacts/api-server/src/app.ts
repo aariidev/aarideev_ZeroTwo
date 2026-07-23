@@ -10,6 +10,11 @@ import pinoHttp from "pino-http";
 import router from "./routes/index.js";
 import authRouter from "./routes/auth.js";
 import { requireAuth } from "./middleware/requireAuth.js";
+import {
+  authRateLimiter,
+  readRateLimiter,
+  writeRateLimiter,
+} from "./middleware/rateLimiter.js";
 import { logger } from "./lib/logger.js";
 
 const app: Express = express();
@@ -61,11 +66,11 @@ app.get("/api/health", (_req: Request, res: Response) => {
   });
 });
 
-// Auth routes (public)
-app.use("/api/auth", authRouter);
+// Auth routes (public) — rate limitado estrictamente
+app.use("/api/auth", authRateLimiter, authRouter);
 
-// Protected API surface
-app.use("/api", requireAuth, router);
+// Protected API surface — write limiter en métodos de escritura, read limiter general
+app.use("/api", requireAuth, writeRateLimiter, readRateLimiter, router);
 
 app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
   req.log?.error(

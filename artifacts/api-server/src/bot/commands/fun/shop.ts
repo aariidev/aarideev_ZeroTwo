@@ -49,7 +49,7 @@ const command: Command = {
 
     embed
       .setFooter({
-        text: "ZeroTwo Casino · Los ítems pasivos se usan automáticamente al siguiente BJ",
+        text: "ZeroTwo Casino · Los ítems pasivos se usan automáticamente en la siguiente partida de Blackjack",
         iconURL: client.user?.displayAvatarURL(),
       })
       .setTimestamp();

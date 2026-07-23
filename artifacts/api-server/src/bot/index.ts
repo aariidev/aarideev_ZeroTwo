@@ -24,10 +24,7 @@ import banCmd from "./commands/moderation/ban.js";
 import kickCmd from "./commands/moderation/kick.js";
 import muteCmd from "./commands/moderation/mute.js";
 import unmuteCmd from "./commands/moderation/unmute.js";
-import warnCmd from "./commands/moderation/warn.js";
-import warnsCmd from "./commands/moderation/warns.js";
-import clearwarnsCmd from "./commands/moderation/clearwarns.js";
-import delwarnCmd from "./commands/moderation/delwarn.js";
+import warnCmd from "./commands/moderation/warngroup.js"; // unified /warn subcommands
 import purgeCmd from "./commands/moderation/purge.js";
 import timeoutCmd from "./commands/moderation/timeout.js";
 import untimeoutCmd from "./commands/moderation/untimeout.js";
@@ -36,12 +33,15 @@ import slowmodeCmd from "./commands/moderation/slowmode.js";
 import lockCmd from "./commands/moderation/lock.js";
 import unlockCmd from "./commands/moderation/unlock.js";
 import logsCmd from "./commands/moderation/logs.js";
+import automodCmd from "./commands/moderation/automod.js";
+import giveroleCmd from "./commands/moderation/giverole.js";
 
 // Fun
 import eightballCmd from "./commands/fun/8ball.js";
 import coinflipCmd from "./commands/fun/coinflip.js";
 import rollCmd from "./commands/fun/roll.js";
 import blackjackCmd from "./commands/fun/blackjack.js";
+import dailyCmd from "./commands/fun/daily.js";
 import cfgembedCmd from "./commands/utility/cfgembed.js";
 import cfglogsCmd from "./commands/utility/cfglogs.js";
 import ticketCmd from "./commands/utility/ticket.js";
@@ -63,6 +63,10 @@ import volumeCmd from "./commands/music/volume.js";
 import loopCmd from "./commands/music/loop.js";
 import shuffleCmd from "./commands/music/shuffle.js";
 import leaveCmd from "./commands/music/leave.js";
+import musicpanelCmd from "./commands/music/musicpanel.js";
+import removeCmd from "./commands/music/remove.js";
+import clearCmd from "./commands/music/clear.js";
+import continueCmd from "./commands/music/continue.js";
 import { startGameCleanup } from "./lib/gameCleanup.js";
 
 const ALL_COMMANDS = [
@@ -76,10 +80,7 @@ const ALL_COMMANDS = [
   kickCmd,
   muteCmd,
   unmuteCmd,
-  warnCmd,
-  warnsCmd,
-  clearwarnsCmd,
-  delwarnCmd,
+  warnCmd,       // /warn add | list | remove | clear
   purgeCmd,
   timeoutCmd,
   untimeoutCmd,
@@ -88,10 +89,13 @@ const ALL_COMMANDS = [
   lockCmd,
   unlockCmd,
   logsCmd,
+  automodCmd,
+  giveroleCmd,
   eightballCmd,
   coinflipCmd,
   rollCmd,
   blackjackCmd,
+  dailyCmd,
   cfgembedCmd,
   cfglogsCmd,
   ticketCmd,
@@ -112,6 +116,10 @@ const ALL_COMMANDS = [
   loopCmd,
   shuffleCmd,
   leaveCmd,
+  musicpanelCmd,
+  removeCmd,
+  clearCmd,
+  continueCmd,
 ];
 
 export async function startBot() {
@@ -189,6 +197,25 @@ export async function startBot() {
   registerServerLogs(client);
   // Private DMs answered by Gemini (Zero Two)
   registerDmChat(client);
+  // Cap competing music bots when enabled per guild
+  const { registerMusicBotCap } = await import("./music/capBots.js");
+  registerMusicBotCap(client);
+
+  // Persist music sessions before process exit / restart
+  const saveMusicOnExit = () => {
+    void import("./music/manager.js")
+      .then(({ musicManager }) => musicManager.saveAll())
+      .catch(() => null);
+  };
+  process.once("SIGINT", () => {
+    saveMusicOnExit();
+  });
+  process.once("SIGTERM", () => {
+    saveMusicOnExit();
+  });
+  process.once("beforeExit", () => {
+    saveMusicOnExit();
+  });
 
   // Re-run on each gateway ready (including after destroy()+login() restarts).
   // Guard against double-fire of ready + clientReady in the same connect cycle.
@@ -199,6 +226,14 @@ export async function startBot() {
     lastReadyAt = now;
 
     try {
+      // Snapshot any live sessions before a soft restart re-binds
+      try {
+        const { musicManager } = await import("./music/manager.js");
+        await musicManager.saveAll();
+      } catch {
+        /* optional */
+      }
+
       await onReady(client);
 
       setBotClientForBot(client);
@@ -208,6 +243,26 @@ export async function startBot() {
 
       startGameCleanup();
       logger.info("🔗 Pasarelas y rutas API vinculadas al cliente central.");
+
+      // Refresh panels so "Continuar sesión" appears if DB has snapshots
+      try {
+        const { listSavedMusicSessions } = await import(
+          "./music/sessionStore.js"
+        );
+        const { schedulePanelRefresh } = await import("./music/panel.js");
+        const saved = await listSavedMusicSessions();
+        for (const s of saved) {
+          schedulePanelRefresh(client, s.guildId);
+        }
+        if (saved.length) {
+          logger.info(
+            { n: saved.length },
+            "🎵 Sesiones de música pendientes de /continue",
+          );
+        }
+      } catch (err) {
+        logger.warn({ err }, "music: no se pudieron refrescar paneles de resume");
+      }
 
       const rows = await db.select().from(botConfigTable);
       const maintenanceRow = rows.find((r) => r.key === "maintenance_mode");
@@ -306,6 +361,14 @@ export async function startBot() {
         `❌ Error al inicializar nexo con un nuevo servidor.`,
       );
     }
+  });
+
+  // Actualizar presencia cuando el bot sale de un servidor
+  client.on("guildDelete", (guild) => {
+    void import("./lib/presence.js")
+      .then(({ onGuildCountChange }) => onGuildCountChange(client))
+      .catch(() => null);
+    logger.info({ guildId: guild.id, name: guild.name }, "Bot eliminado de un servidor");
   });
 
   try {

@@ -790,6 +790,12 @@ export default async function onInteractionCreate(interaction: Interaction) {
   const { handleTicketInteraction } = await import("./ticketInteractions.js");
   if (await handleTicketInteraction(interaction)) return;
 
+  // Dev reload buttons (from dev-watch.mjs watcher)
+  if (interaction.isButton()) {
+    const { handleDevReloadButton } = await import("../lib/devReload.js");
+    if (await handleDevReloadButton(interaction)) return;
+  }
+
   if (!interaction.isChatInputCommand()) return;
 
   const client = interaction.client as BotClient;

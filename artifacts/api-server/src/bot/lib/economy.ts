@@ -147,8 +147,6 @@ export async function claimDaily(
   return { success: true, coins, streak: newStreak };
 }
 
-// ── Inventory ─────────────────────────────────────────────────────────────────
-
 export async function getInventory(guildId: string, userId: string): Promise<InventoryRow[]> {
   return db
     .select()

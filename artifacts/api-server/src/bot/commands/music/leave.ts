@@ -5,7 +5,9 @@ import {
   GuildMember,
 } from "discord.js";
 import { Command } from "../../types.js";
-import { memberVoiceChannel, musicManager } from "../../music/manager.js";
+import { musicManager } from "../../music/manager.js";
+import { musicNoticePayload } from "../../music/embeds.js";
+import { canControlMusic } from "../../music/permissions.js";
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -14,26 +16,43 @@ const command: Command = {
   cooldown: 2,
 
   async execute(interaction: ChatInputCommandInteraction) {
+    const client = interaction.client;
     if (!interaction.guild) {
-      await interaction.reply({ content: "❌ Solo en servidores.", flags: MessageFlags.Ephemeral });
-      return;
-    }
-    const member = interaction.member as GuildMember;
-    const voice = memberVoiceChannel(member);
-    const session = musicManager.get(interaction.guild.id);
-    if (!session) {
-      await interaction.reply({ content: "❌ No estoy en un canal de voz.", flags: MessageFlags.Ephemeral });
-      return;
-    }
-    if (voice && session.voiceChannelId && voice.id !== session.voiceChannelId) {
       await interaction.reply({
-        content: "❌ Debes estar en el mismo canal de voz (o vacío).",
+        ...musicNoticePayload("❌ Solo en servidores.", { kind: "error", client }),
         flags: MessageFlags.Ephemeral,
       });
       return;
     }
-    session.destroy();
-    await interaction.reply({ content: "👋 Desconectado. ¡Hasta la próxima!" });
+    const member = interaction.member as GuildMember;
+    const session = musicManager.get(interaction.guild.id);
+    if (!session) {
+      await interaction.reply({
+        ...musicNoticePayload("❌ No estoy en un canal de voz.", {
+          kind: "error",
+          client,
+        }),
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    const perm = await canControlMusic(member, session);
+    if (!perm.ok) {
+      await interaction.reply({
+        ...musicNoticePayload(perm.reason, { kind: "error", client }),
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    session.destroy(true); // clear saved session
+    await interaction.reply(
+      musicNoticePayload("👋 Desconectado del canal de voz.\n¡Hasta la próxima!", {
+        kind: "ok",
+        client,
+        banner: true,
+        title: "Zero Two Music · Adiós",
+      }),
+    );
   },
 };
 

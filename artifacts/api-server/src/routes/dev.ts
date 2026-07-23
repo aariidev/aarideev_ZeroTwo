@@ -240,6 +240,15 @@ async function performSoftRestart(): Promise<{ ok: boolean; lines: string[] }> {
 
   const client = botClient;
 
+  // Snapshot music sessions so /continue works after restart
+  try {
+    const { musicManager } = await import("../bot/music/manager.js");
+    await musicManager.saveAll();
+    push("→ Sesiones de música guardadas");
+  } catch {
+    push("⚠ No se pudieron guardar sesiones de música");
+  }
+
   // ── Attempt 0: gentle shard reconnect (no full destroy) ──────────────────
   try {
     setRestartPhase("disconnect");

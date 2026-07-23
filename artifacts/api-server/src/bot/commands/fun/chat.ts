@@ -55,7 +55,8 @@ const command: Command = {
         .setFooter({ text: "El nexo ha sido reiniciado." })
         .setTimestamp();
 
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      await interaction.reply({ embeds: [embed], ephemeral: true });
+      return;
     }
 
     const texto = interaction.options.getString("texto", true);

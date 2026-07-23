@@ -19,6 +19,7 @@ import {
   resolveGuildAccess,
 } from "../lib/guildAccess.js";
 import { logger } from "../lib/logger.js";
+import { validateBody, PatchGuildSettingsBody } from "../middleware/validate.js";
 
 const router = Router();
 let botClient: Client | null = null;
@@ -291,7 +292,7 @@ router.get("/:id/settings", async (req: Request, res: Response) => {
 
 // ── PATCH /guilds/:id/settings ───────────────────────────────────────────────
 
-router.patch("/:id/settings", async (req: Request, res: Response) => {
+router.patch("/:id/settings", validateBody(PatchGuildSettingsBody), async (req: Request, res: Response) => {
   try {
     const guildId = req.params.id;
     if (!botClient) {

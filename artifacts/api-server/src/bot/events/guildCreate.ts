@@ -1,6 +1,7 @@
 import { Guild } from "discord.js";
 import { logger } from "../../lib/logger.js";
 import { db, activityTable } from "@workspace/db";
+import { onGuildCountChange } from "../lib/presence.js";
 
 export default async function onGuildCreate(guild: Guild) {
   if (!guild.available) return;
@@ -16,6 +17,9 @@ export default async function onGuildCreate(guild: Guild) {
     },
     `¡Conexión establecida con una nueva plantación! 🌱 // Bot añadido a: ${name}`,
   );
+
+  // Actualizar presencia con el nuevo contador de servidores
+  onGuildCountChange(guild.client);
 
   try {
     await db.insert(activityTable).values({
