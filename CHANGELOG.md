@@ -5,9 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.4.0] - 2026-07-17
+## [2.4.0] - 2026-07-24
 
 ### Added
+- **Music · Spotify progressive load**
+  - Scrape de `open.spotify.com/embed/…` (`__NEXT_DATA__` + `trackList`) sin Web API OAuth
+  - La 1ª pista suena al instante; el resto se resuelve en paralelo (pool ×4)
+  - Embeds Spotify dedicados (loading / boot / ready) con barra de progreso y color `#1DB954`
 - **Sistema de logs de servidor ampliado** (20 eventos en 5 categorías)
   - Moderación: ban, unban, kick, timeout, untimeout
   - Mensajes: delete, edit, bulk delete
@@ -27,17 +31,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OAuth Discord con scope `guilds` para permisos reales de gestión
 - API `GET/PATCH /api/guilds/:id/settings` con settings completos
 - Intents `GuildVoiceStates` + `GuildInvites` para logs de voz e invites
-- Rich Presence: `/help - v2.3.0` (versión centralizada)
+- Rich Presence: `/help` + versión centralizada (`BOT_VERSION`)
 - Separación de páginas **Cuenta** vs **Ajustes** en el dashboard
 - Dev Panel restringido a `OWNER_IDS`
 - Temas del dashboard (selector de apariencia)
+- Manifiesto de release `255ari/v2.4.0.md`
 
 ### Changed
+- Versión del núcleo unificada a **v2.4.0** (`bot/lib/version.ts` → health, stats, presence, footers)
 - Migración unificada de config de logs a `log_settings:{guildId}` (compat. con keys antiguas)
 - `/cfglogs status` muestra filtros, ping y eventos por categoría
 - Embebidos de log unificados (`baseLogEmbed`, audit log helper)
+- Now Playing / cola: fuente `Spotify → YT`, barra de progreso más nítida, link Spotify opcional
+- yt-dlp search: timeout configurable (12 s en batch de playlist, 25 s normal)
 
 ### Fixed
+- Spotify playlists: open.spotify.com sin pistas embebidas + Web API `/tracks` 403
+- `/play` con playlist Spotify ya no se queda “pensando” minutos (búsqueda YT secuencial)
 - Redirects OAuth / state cookie (maxAge en ms)
 - Activity endpoint 404 y forma de respuesta del Dev Panel
 - Dependencias nativas Windows (esbuild, lightningcss, tailwind oxide)
