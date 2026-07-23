@@ -1,5 +1,6 @@
 import app from "./app.js";
 import { logger } from "./lib/logger.js";
+import { flushAllLogs } from "./lib/botLogger.js";
 import { startBot } from "./bot/index.js";
 import { Client } from "discord.js";
 
@@ -66,6 +67,12 @@ const handleShutdown = (signal: string) => {
       } catch (err) {
         logger.error({ err }, "Error al destruir la sesión del bot de Discord");
       }
+    }
+
+    try {
+      await flushAllLogs();
+    } catch (err) {
+      logger.error({ err }, "Error al vaciar la cola de logs del bot");
     }
 
     logger.info("Protocolo terminado. Desconexión del sistema completada.");
