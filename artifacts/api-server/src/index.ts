@@ -29,6 +29,23 @@ const server = app.listen(port, () => {
     { port },
     `¡Sistemas de la Plantación Online! 🌐  Servidor Express escuchando en el puerto ${port}`,
   );
+  // Prefetch Discord verify_key so Event Webhooks validate on first PING
+  void import("./routes/discordWebhooks.js")
+    .then(({ resolveDiscordPublicKey }) => resolveDiscordPublicKey())
+    .then((key) => {
+      if (key) {
+        logger.info(
+          "discord webhooks: listo · POST /api/discord/webhooks/events",
+        );
+      } else {
+        logger.warn(
+          "discord webhooks: sin public key — pon DISCORD_PUBLIC_KEY o revisa DISCORD_TOKEN",
+        );
+      }
+    })
+    .catch(() => {
+      /* ignore */
+    });
 });
 
 server.on("error", (err) => {
