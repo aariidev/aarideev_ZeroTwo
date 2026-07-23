@@ -225,6 +225,9 @@ importers:
       youtube-dl-exec:
         specifier: ^3.1.9
         version: 3.1.9(debug@4.4.3)
+      zod:
+        specifier: 'catalog:'
+        version: 3.25.76
     devDependencies:
       '@types/cookie-parser':
         specifier: ^1.4.10
