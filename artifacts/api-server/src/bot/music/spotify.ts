@@ -1,10 +1,14 @@
 /**
- * Spotify resolver — sin Web API OAuth.
+ * Spotify resolver — sin Web API OAuth (y sin depender de play-dl).
  *
- * Para tracks individuales: oEmbed (sin auth).
- * Para playlists/álbumes: parsea el JSON __NEXT_DATA__ embebido en la página
- * HTML pública de open.spotify.com — igual que hacen Jockie y otros bots.
- * No requiere refresh_token ni Premium, funciona para cualquier playlist pública.
+ * Contexto 2025/2026: open.spotify.com ya no embebe __NEXT_DATA__ con pistas
+ * (SPA vacía). La Web API con client_credentials a menudo devuelve playlists
+ * sin `tracks` y 403 en /tracks (quota extendida).
+ *
+ * Estrategia:
+ *   - track individual → oEmbed
+ *   - playlist/álbum  → scrape de open.spotify.com/embed/{type}/{id}
+ *     (sigue incluyendo __NEXT_DATA__ con entity.trackList[])
  */
 import { logger } from "../../lib/logger.js";
 
@@ -35,7 +39,7 @@ function extractSpotifyId(
     };
   }
   const m = url.match(
-    /open\.spotify\.com\/(?:intl-[a-z]{2}\/)?(track|album|playlist)\/([a-zA-Z0-9]+)/i,
+    /open\.spotify\.com\/(?:intl-[a-z]{2}\/)?(?:embed\/)?(track|album|playlist)\/([a-zA-Z0-9]+)/i,
   );
   if (m) {
     return {
@@ -48,6 +52,8 @@ function extractSpotifyId(
 
 const BROWSER_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
+
+const MAX_TRACKS = 50;
 
 async function fetchSpotifyPage(url: string): Promise<string> {
   const res = await fetch(url, {
@@ -66,8 +72,7 @@ async function fetchSpotifyPage(url: string): Promise<string> {
 }
 
 /**
- * Extrae el objeto JSON embebido en <script id="__NEXT_DATA__"> de la página
- * pública de Spotify. Funciona para playlists y álbumes.
+ * Extrae el objeto JSON embebido en <script id="__NEXT_DATA__">.
  */
 function extractNextData(html: string): unknown {
   const match = html.match(
@@ -83,24 +88,130 @@ function extractNextData(html: string): unknown {
   return null;
 }
 
+function uriToSpotifyUrl(uri: string | undefined): string {
+  if (!uri || typeof uri !== "string") return "";
+  const m = uri.match(/^spotify:(track|album|playlist):([a-zA-Z0-9]+)$/i);
+  if (!m) return "";
+  return `https://open.spotify.com/${m[1]!.toLowerCase()}/${m[2]}`;
+}
+
+function pushItem(
+  items: SpotifyResolvedItem[],
+  opts: {
+    name: string;
+    artists: string;
+    durationMs?: number;
+    spotifyUrl?: string;
+    thumbnail?: string | null;
+  },
+): boolean {
+  const name = opts.name.trim();
+  if (!name) return false;
+  const artists = (opts.artists ?? "").trim();
+  items.push({
+    name,
+    artists,
+    searchQuery: `${name} ${artists}`.trim(),
+    thumbnail: opts.thumbnail ?? null,
+    durationSec: Math.floor((opts.durationMs ?? 0) / 1000),
+    spotifyUrl: opts.spotifyUrl ?? "",
+  });
+  return items.length >= MAX_TRACKS;
+}
+
 /**
- * Extrae tracks del JSON __NEXT_DATA__ de una página de playlist.
- * La estructura de Spotify cambia de vez en cuando; probamos varias rutas.
+ * Formato actual del embed: entity.trackList[] con title/subtitle/duration/uri.
  */
-function tracksFromNextData(data: unknown): SpotifyResolvedItem[] {
+function tracksFromEmbedEntity(data: unknown): SpotifyResolvedItem[] {
   const items: SpotifyResolvedItem[] = [];
 
-  // Ruta típica: props.pageProps.state.data.playlist.tracks.items[]
+  const walk = (obj: unknown, depth = 0): void => {
+    if (items.length >= MAX_TRACKS || depth > 14 || !obj || typeof obj !== "object") {
+      return;
+    }
+
+    if (Array.isArray(obj)) {
+      for (const row of obj) {
+        if (items.length >= MAX_TRACKS) return;
+        if (!row || typeof row !== "object") continue;
+        const r = row as Record<string, unknown>;
+
+        // embed trackList item
+        const title =
+          typeof r["title"] === "string"
+            ? r["title"]
+            : typeof r["name"] === "string"
+              ? r["name"]
+              : null;
+        const entityType = r["entityType"];
+        const uri = typeof r["uri"] === "string" ? r["uri"] : "";
+        const looksLikeTrack =
+          entityType === "track" ||
+          (typeof uri === "string" && uri.startsWith("spotify:track:")) ||
+          (title &&
+            (typeof r["subtitle"] === "string" ||
+              typeof r["duration"] === "number") &&
+            !r["trackList"]);
+
+        if (title && looksLikeTrack) {
+          const subtitle =
+            typeof r["subtitle"] === "string" ? r["subtitle"] : "";
+          const durationMs =
+            typeof r["duration"] === "number"
+              ? r["duration"]
+              : typeof r["duration_ms"] === "number"
+                ? r["duration_ms"]
+                : 0;
+          if (
+            pushItem(items, {
+              name: title,
+              artists: subtitle,
+              durationMs,
+              spotifyUrl: uriToSpotifyUrl(uri),
+            })
+          ) {
+            return;
+          }
+          continue;
+        }
+
+        walk(row, depth + 1);
+      }
+      return;
+    }
+
+    const o = obj as Record<string, unknown>;
+
+    // Atajo: entity.trackList del embed
+    if (Array.isArray(o["trackList"])) {
+      walk(o["trackList"], depth + 1);
+      if (items.length > 0) return;
+    }
+
+    for (const val of Object.values(o)) {
+      if (items.length >= MAX_TRACKS) return;
+      if (val && typeof val === "object") walk(val, depth + 1);
+    }
+  };
+
+  walk(data);
+  return items;
+}
+
+/**
+ * Formato legacy Web API embebido: items[].track { name, artists, duration_ms }.
+ */
+function tracksFromLegacyItems(data: unknown): SpotifyResolvedItem[] {
+  const items: SpotifyResolvedItem[] = [];
+
   const tryPaths = (obj: unknown, depth = 0): SpotifyResolvedItem[] => {
     if (depth > 12 || !obj || typeof obj !== "object") return [];
     const o = obj as Record<string, unknown>;
 
-    // Detectar array de items de playlist/álbum
     if (Array.isArray(o["items"])) {
       for (const row of o["items"] as unknown[]) {
         if (!row || typeof row !== "object") continue;
         const r = row as Record<string, unknown>;
-        // playlist item: { track: { name, artists, duration_ms, ... } }
         const trackNode =
           (r["track"] as Record<string, unknown> | undefined) ??
           (r as Record<string, unknown>);
@@ -126,7 +237,11 @@ function tracksFromNextData(data: unknown): SpotifyResolvedItem[] {
         const extUrls = trackNode["external_urls"] as
           | { spotify?: string }
           | undefined;
-        const spotifyUrl = extUrls?.spotify ?? "";
+        const spotifyUrl =
+          extUrls?.spotify ??
+          uriToSpotifyUrl(
+            typeof trackNode["uri"] === "string" ? trackNode["uri"] : undefined,
+          );
 
         const albumNode = trackNode["album"] as
           | { images?: { url?: string }[] }
@@ -136,20 +251,21 @@ function tracksFromNextData(data: unknown): SpotifyResolvedItem[] {
           (trackNode["images"] as { url?: string }[] | undefined)?.[0]?.url ??
           null;
 
-        items.push({
-          name,
-          artists,
-          searchQuery: `${name} ${artists}`.trim(),
-          thumbnail,
-          durationSec: Math.floor(durationMs / 1000),
-          spotifyUrl,
-        });
-        if (items.length >= 50) return items;
+        if (
+          pushItem(items, {
+            name,
+            artists,
+            durationMs,
+            spotifyUrl,
+            thumbnail,
+          })
+        ) {
+          return items;
+        }
       }
       if (items.length > 0) return items;
     }
 
-    // Recurrir en todos los valores del objeto
     for (const val of Object.values(o)) {
       if (val && typeof val === "object") {
         const found = tryPaths(val, depth + 1);
@@ -160,6 +276,25 @@ function tracksFromNextData(data: unknown): SpotifyResolvedItem[] {
   };
 
   return tryPaths(data);
+}
+
+function tracksFromNextData(data: unknown): SpotifyResolvedItem[] {
+  const embed = tracksFromEmbedEntity(data);
+  if (embed.length > 0) return embed;
+  return tracksFromLegacyItems(data);
+}
+
+function metaContent(html: string, property: string): string | null {
+  // property/content en cualquier orden
+  const re1 = new RegExp(
+    `<meta[^>]+property=["']${property}["'][^>]+content=["']([^"']+)["']`,
+    "i",
+  );
+  const re2 = new RegExp(
+    `<meta[^>]+content=["']([^"']+)["'][^>]+property=["']${property}["']`,
+    "i",
+  );
+  return html.match(re1)?.[1]?.trim() || html.match(re2)?.[1]?.trim() || null;
 }
 
 // ── Resolver de oEmbed (tracks individuales) ──────────────────────────────────
@@ -185,7 +320,7 @@ export async function resolveViaOEmbed(
 
 /**
  * Convierte una URL de Spotify en lista de tracks con metadatos.
- * Para playlists/álbumes: parsea la página HTML pública (sin API key).
+ * Para playlists/álbumes: parsea la página embed pública (sin API key).
  * Para tracks individuales: usa oEmbed.
  */
 export async function resolveSpotifyItems(
@@ -218,56 +353,75 @@ export async function resolveSpotifyItems(
     }
   }
 
-  // Playlist o álbum — parsear la página HTML pública
-  const pageUrl = `https://open.spotify.com/${parsed.type}/${parsed.id}`;
-  logger.info({ pageUrl }, "spotify: scraping página pública");
+  // Playlist o álbum — el embed sigue trayendo trackList en __NEXT_DATA__
+  // (la web player principal ya no embebe las pistas en el HTML inicial).
+  const pageCandidates = [
+    `https://open.spotify.com/embed/${parsed.type}/${parsed.id}`,
+    `https://open.spotify.com/${parsed.type}/${parsed.id}`,
+  ];
 
-  let html: string;
-  try {
-    html = await fetchSpotifyPage(pageUrl);
-  } catch (err) {
-    throw new Error(
-      `No se pudo cargar la ${parsed.type === "album" ? "álbum" : "playlist"} de Spotify. ` +
-        `¿Es privada? Solo se pueden cargar ${parsed.type === "album" ? "álbumes" : "playlists"} públicas.`,
-    );
-  }
+  let lastHtml = "";
+  let lastError: unknown = null;
 
-  // Intentar __NEXT_DATA__ primero
-  const nextData = extractNextData(html);
-  if (nextData) {
-    const items = tracksFromNextData(nextData);
-    if (items.length > 0) {
-      logger.info(
-        { n: items.length, type: parsed.type },
-        "spotify: tracks extraídos de __NEXT_DATA__",
-      );
-      return items;
+  for (const pageUrl of pageCandidates) {
+    logger.info({ pageUrl }, "spotify: scraping página pública");
+    let html: string;
+    try {
+      html = await fetchSpotifyPage(pageUrl);
+      lastHtml = html;
+    } catch (err) {
+      lastError = err;
+      logger.warn({ err, pageUrl }, "spotify: fallo al cargar página");
+      continue;
+    }
+
+    const nextData = extractNextData(html);
+    if (nextData) {
+      const items = tracksFromNextData(nextData);
+      if (items.length > 0) {
+        logger.info(
+          { n: items.length, type: parsed.type, pageUrl },
+          "spotify: tracks extraídos de __NEXT_DATA__",
+        );
+        return items;
+      }
     }
   }
 
-  // Fallback: buscar JSON-LD o meta tags para el título y hacer búsqueda única
+  // Fallback: og:title (una sola búsqueda en YouTube con el nombre de la lista)
   logger.warn(
-    { type: parsed.type, id: parsed.id },
+    { type: parsed.type, id: parsed.id, lastError: String(lastError ?? "") },
     "spotify: __NEXT_DATA__ vacío, intentando meta fallback",
   );
 
-  // Intentar extraer nombre de la playlist del og:title
-  const ogTitle = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i);
-  const ogImage = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i);
-  const title = ogTitle?.[1]?.trim();
+  const html = lastHtml;
+  if (html) {
+    const title =
+      metaContent(html, "og:title") ||
+      metaContent(html, "twitter:title") ||
+      html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim() ||
+      null;
+    const ogImage =
+      metaContent(html, "og:image") || metaContent(html, "twitter:image");
 
-  if (title) {
-    logger.info({ title }, "spotify: usando og:title como fallback");
-    return [
-      {
-        name: title,
-        artists: "",
-        searchQuery: title,
-        thumbnail: ogImage?.[1] ?? null,
-        durationSec: 0,
-        spotifyUrl: url,
-      },
-    ];
+    // El embed a veces deja title vacío ("Spotify - Web Player") — no usar basura
+    if (
+      title &&
+      !/^spotify(\s*-\s*web player)?$/i.test(title) &&
+      title.length > 1
+    ) {
+      logger.info({ title }, "spotify: usando og:title como fallback");
+      return [
+        {
+          name: title,
+          artists: "",
+          searchQuery: title,
+          thumbnail: ogImage,
+          durationSec: 0,
+          spotifyUrl: url,
+        },
+      ];
+    }
   }
 
   throw new Error(

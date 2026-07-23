@@ -6,6 +6,7 @@ import {
   type AttachmentBuilder,
   type Client,
 } from "discord.js";
+import { BOT_VERSION } from "../lib/version.js";
 import { musicBanner, musicBannerFiles } from "./assets.js";
 import { formatDuration, type LoopMode, type Track } from "./types.js";
 
@@ -13,13 +14,23 @@ const PINK = 0xff2d6b;
 const CYAN = 0x22d3ee;
 const GREEN = 0x22c55e;
 const AMBER = 0xf59e0b;
+/** Spotify brand-ish green for playlist flow */
+const SPOTIFY = 0x1db954;
 
 const SOURCE_LABEL: Record<Track["source"], string> = {
   youtube: "YouTube",
   soundcloud: "SoundCloud",
-  spotify: "Spotify",
+  spotify: "Spotify → YT",
   url: "URL",
   search: "Búsqueda",
+};
+
+const SOURCE_EMOJI: Record<Track["source"], string> = {
+  youtube: "▶️",
+  soundcloud: "☁️",
+  spotify: "💚",
+  url: "🔗",
+  search: "🔎",
 };
 
 /** Apply animated banner as large image; keeps song art as thumbnail. */
@@ -31,9 +42,9 @@ function withBanner(embed: EmbedBuilder): EmbedBuilder {
 
 /** Progress bar (visual only; no live seek unless position provided). */
 function progressBar(positionSec: number | null, durationSec: number): string {
-  const total = 12;
+  const total = 14;
   if (!durationSec || durationSec <= 0) {
-    return "`" + "░".repeat(total) + "`  `?:??`";
+    return "`" + "░".repeat(total) + "`  `live / ?:??`";
   }
   const pos =
     positionSec == null
@@ -41,10 +52,27 @@ function progressBar(positionSec: number | null, durationSec: number): string {
       : Math.min(Math.max(0, positionSec), durationSec);
   const ratio = pos / durationSec;
   const filled = Math.round(ratio * total);
+  const head = filled > 0 && filled < total ? "▓" : filled >= total ? "█" : "";
+  const solid = Math.max(0, filled - (head ? 1 : 0));
   const bar =
-    "█".repeat(Math.min(filled, total)) +
-    "░".repeat(Math.max(0, total - filled));
+    "█".repeat(solid) +
+    head +
+    "░".repeat(Math.max(0, total - solid - (head ? 1 : 0)));
   return `\`${bar}\`  \`${formatDuration(pos)} / ${formatDuration(durationSec)}\``;
+}
+
+/** Mini bar for playlist load progress (0–1). */
+function loadBar(done: number, total: number): string {
+  const n = 10;
+  if (total <= 0) return "`" + "░".repeat(n) + "`";
+  const filled = Math.min(n, Math.round((done / total) * n));
+  return (
+    "`" +
+    "█".repeat(filled) +
+    "░".repeat(n - filled) +
+    "`" +
+    `  \`${done}/${total}\``
+  );
 }
 
 export function nowPlayingEmbed(
@@ -117,12 +145,15 @@ export function nowPlayingEmbed(
       },
       {
         name: "📡 Fuente",
-        value: `\`${SOURCE_LABEL[track.source] ?? track.source}\``,
+        value: `${SOURCE_EMOJI[track.source] ?? "📡"} \`${SOURCE_LABEL[track.source] ?? track.source}\``,
         inline: true,
       },
     )
     .setFooter({
-      text: "Zero Two Music · usa los botones de abajo",
+      text:
+        track.source === "spotify"
+          ? "Zero Two Music · Spotify → YouTube · botones ↓"
+          : "Zero Two Music · usa los botones de abajo",
       iconURL:
         track.requestedBy.avatarURL ??
         client.user?.displayAvatarURL() ??
@@ -133,7 +164,190 @@ export function nowPlayingEmbed(
   if (track.thumbnail) {
     emb.setThumbnail(track.thumbnail);
   }
+  if (track.spotifyUrl) {
+    emb.addFields({
+      name: "💚 Spotify",
+      value: `[Abrir en Spotify](${track.spotifyUrl})`,
+      inline: false,
+    });
+  }
 
+  return withBanner(emb);
+}
+
+/**
+ * Embeds del flujo progressive Spotify (loading → first → complete).
+ * Verde Spotify + banner Zero Two.
+ */
+export function spotifyLoadingEmbed(
+  client: Client,
+  phase: "reading" | "mirrors",
+): EmbedBuilder {
+  const emb = new EmbedBuilder()
+    .setColor(SPOTIFY)
+    .setAuthor({
+      name: "Zero Two Music · Spotify",
+      iconURL: client.user?.displayAvatarURL() ?? undefined,
+    })
+    .setTitle(
+      phase === "reading"
+        ? "💚 Escaneando playlist…"
+        : "🔎 Buscando mirrors en YouTube…",
+    )
+    .setDescription(
+      phase === "reading"
+        ? [
+            "Leyendo pistas desde el **embed público** de Spotify.",
+            "Sin OAuth, sin drama — solo listo para el mirror.",
+            "",
+            "*Un momento, darling…*",
+          ].join("\n")
+        : [
+            "Conectando cada pista con un mirror de **YouTube**.",
+            "La primera suena enseguida; el resto entra en cola en paralelo.",
+          ].join("\n"),
+    )
+    .setFooter({
+      text: `Zero Two Music · ${BOT_VERSION} · Spotify progressive`,
+      iconURL: client.user?.displayAvatarURL() ?? undefined,
+    })
+    .setTimestamp();
+  return withBanner(emb);
+}
+
+export function spotifyPlaylistBootEmbed(
+  client: Client,
+  first: Track,
+  opts: {
+    totalItems: number;
+    remaining: number;
+    volume: number;
+    loop: LoopMode;
+    queueLen: number;
+  },
+): EmbedBuilder {
+  const emb = new EmbedBuilder()
+    .setColor(SPOTIFY)
+    .setAuthor({
+      name: "Zero Two Music · Playlist Spotify",
+      iconURL: client.user?.displayAvatarURL() ?? undefined,
+    })
+    .setTitle("▶️ Ya suena · cargando el resto")
+    .setURL(first.url)
+    .setDescription(
+      [
+        `**[${first.title.slice(0, 100)}](${first.url})**`,
+        progressBar(0, first.durationSec),
+        "",
+        loadBar(1, opts.totalItems),
+        "",
+        `Resolviendo **${opts.remaining}** pistas más en segundo plano…`,
+        "Puedes saltar, pausar o mezclar mientras cargo el resto.",
+      ].join("\n"),
+    )
+    .addFields(
+      {
+        name: "📜 Playlist",
+        value: `\`${opts.totalItems}\` pistas en Spotify`,
+        inline: true,
+      },
+      {
+        name: "📋 Cola",
+        value: `\`${opts.queueLen}\` en espera`,
+        inline: true,
+      },
+      {
+        name: "🔊 Vol",
+        value: `\`${opts.volume}%\``,
+        inline: true,
+      },
+      {
+        name: "🎧 Pedido por",
+        value: `<@${first.requestedBy.id}>`,
+        inline: true,
+      },
+      {
+        name: "📡 Fuente",
+        value: "💚 `Spotify → YT`",
+        inline: true,
+      },
+      {
+        name: "🔁 Loop",
+        value:
+          opts.loop === "track"
+            ? "🔂 Pista"
+            : opts.loop === "queue"
+              ? "🔁 Cola"
+              : "➡️ Off",
+        inline: true,
+      },
+    )
+    .setFooter({
+      text: `Zero Two Music · ${BOT_VERSION} · progressive load`,
+      iconURL: client.user?.displayAvatarURL() ?? undefined,
+    })
+    .setTimestamp();
+
+  if (first.thumbnail) emb.setThumbnail(first.thumbnail);
+  return withBanner(emb);
+}
+
+export function spotifyPlaylistReadyEmbed(
+  client: Client,
+  opts: {
+    resolved: number;
+    totalItems: number;
+    queueLen: number;
+    firstTitle?: string;
+  },
+): EmbedBuilder {
+  const missed = Math.max(0, opts.totalItems - opts.resolved);
+  const emb = new EmbedBuilder()
+    .setColor(SPOTIFY)
+    .setAuthor({
+      name: "Zero Two Music · Playlist lista",
+      iconURL: client.user?.displayAvatarURL() ?? undefined,
+    })
+    .setTitle("📜 Playlist de Spotify en cola")
+    .setDescription(
+      [
+        loadBar(opts.resolved, opts.totalItems),
+        "",
+        `**${opts.resolved}** mirrors listos de **${opts.totalItems}** pistas.`,
+        opts.firstTitle
+          ? `Primera: \`${opts.firstTitle.slice(0, 80)}\``
+          : null,
+        missed > 0
+          ? `⚠️ \`${missed}\` sin mirror en YouTube (omitidas).`
+          : "✨ Todas las pistas encontraron mirror.",
+        "",
+        "Controla con el **panel** o los botones de abajo.",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    )
+    .addFields(
+      {
+        name: "✅ Resueltas",
+        value: `\`${opts.resolved}\``,
+        inline: true,
+      },
+      {
+        name: "📋 En cola ahora",
+        value: `\`${opts.queueLen}\``,
+        inline: true,
+      },
+      {
+        name: "💚 Origen",
+        value: "`Spotify embed → YT`",
+        inline: true,
+      },
+    )
+    .setFooter({
+      text: `Zero Two Music · ${BOT_VERSION} · mix cargada`,
+      iconURL: client.user?.displayAvatarURL() ?? undefined,
+    })
+    .setTimestamp();
   return withBanner(emb);
 }
 
@@ -560,12 +774,12 @@ export function addedToQueueEmbed(
       },
       {
         name: "📡 Fuente",
-        value: `\`${SOURCE_LABEL[track.source] ?? track.source}\``,
+        value: `${SOURCE_EMOJI[track.source] ?? "📡"} \`${SOURCE_LABEL[track.source] ?? track.source}\``,
         inline: true,
       },
     )
     .setFooter({
-      text: "Zero Two Music",
+      text: `Zero Two Music · ${BOT_VERSION}`,
       iconURL: client.user?.displayAvatarURL() ?? undefined,
     })
     .setTimestamp();

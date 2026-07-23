@@ -763,15 +763,25 @@ type Requester = Track["requestedBy"];
  * YouTube search — prefer yt-dlp (stable). play-dl often throws
  * "Cannot read properties of undefined (reading 'browseId')" when YT changes.
  */
+type YoutubeSearchOpts = {
+  /** Skip play-dl (faster for playlist batches). Default false. */
+  ytdlpOnly?: boolean;
+  /** yt-dlp kill timeout. Default 25s. */
+  timeoutMs?: number;
+};
+
 async function youtubeSearchOne(
   query: string,
   requester: Requester,
   source: Track["source"] = "search",
   spotifyUrl?: string,
+  opts?: YoutubeSearchOpts,
 ): Promise<Track | null> {
   // 1) yt-dlp first
   try {
-    const meta = await ytdlpSearchMeta(query);
+    const meta = await ytdlpSearchMeta(query, {
+      timeoutMs: opts?.timeoutMs,
+    });
     if (meta?.url) {
       return {
         title: meta.title,
@@ -786,6 +796,8 @@ async function youtubeSearchOne(
   } catch (err) {
     logger.warn({ err, query }, "music: ytdlp search failed");
   }
+
+  if (opts?.ytdlpOnly) return null;
 
   // 2) play-dl fallback (may break with innertube / browseId)
   try {
@@ -828,7 +840,62 @@ async function youtubeSearchOne(
   return null;
 }
 
-/** Spotify track/album/playlist → YouTube playable tracks */
+const SPOTIFY_YT_CONCURRENCY = 4;
+const SPOTIFY_YT_TIMEOUT_MS = 12_000;
+
+/** Run async mapper with limited concurrency; preserves input order (nulls kept). */
+async function mapPool<T, R>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  if (items.length === 0) return [];
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const workers = Array.from(
+    { length: Math.min(concurrency, items.length) },
+    async () => {
+      while (true) {
+        const i = next++;
+        if (i >= items.length) return;
+        results[i] = await fn(items[i]!, i);
+      }
+    },
+  );
+  await Promise.all(workers);
+  return results;
+}
+
+type SpotifyItem = {
+  name: string;
+  artists: string;
+  searchQuery: string;
+  thumbnail: string | null;
+  durationSec: number;
+  spotifyUrl: string;
+};
+
+async function spotifyItemToTrack(
+  item: SpotifyItem,
+  requester: Requester,
+  playlistUrl: string,
+  opts?: YoutubeSearchOpts,
+): Promise<Track | null> {
+  const t = await youtubeSearchOne(
+    item.searchQuery,
+    requester,
+    "spotify",
+    item.spotifyUrl || playlistUrl,
+    opts,
+  );
+  if (!t) return null;
+  t.title = item.artists ? `${item.name} · ${item.artists}` : item.name;
+  if (item.thumbnail) t.thumbnail = item.thumbnail;
+  if (item.durationSec > 0) t.durationSec = item.durationSec;
+  return t;
+}
+
+/** Spotify track/album/playlist → YouTube playable tracks (all resolved). */
 async function resolveSpotify(
   url: string,
   requester: Requester,
@@ -837,22 +904,49 @@ async function resolveSpotify(
 
   try {
     const items = await resolveSpotifyItems(url);
-    const out: Track[] = [];
-    for (const item of items) {
-      const t = await youtubeSearchOne(
-        item.searchQuery,
-        requester,
-        "spotify",
-        item.spotifyUrl || url,
-      );
-      if (!t) continue;
-      t.title = item.artists
-        ? `${item.name} · ${item.artists}`
-        : item.name;
-      if (item.thumbnail) t.thumbnail = item.thumbnail;
-      if (item.durationSec > 0) t.durationSec = item.durationSec;
-      out.push(t);
+    if (!items.length) {
+      throw new Error("La playlist/álbum no tiene pistas legibles.");
     }
+
+    // Single track — full search path
+    if (items.length === 1) {
+      const t = await spotifyItemToTrack(items[0]!, requester, url);
+      if (!t) {
+        throw new Error(
+          "No se encontró mirror en YouTube para esa pista (¿cookies YT?).",
+        );
+      }
+      return [t];
+    }
+
+    logger.info(
+      { n: items.length, concurrency: SPOTIFY_YT_CONCURRENCY },
+      "spotify: resolviendo mirrors YouTube en paralelo",
+    );
+
+    const mapped = await mapPool(
+      items,
+      SPOTIFY_YT_CONCURRENCY,
+      async (item, i) => {
+        const t = await spotifyItemToTrack(item, requester, url, {
+          ytdlpOnly: true,
+          timeoutMs: SPOTIFY_YT_TIMEOUT_MS,
+        });
+        if ((i + 1) % 10 === 0 || i === 0) {
+          logger.info(
+            { done: i + 1, total: items.length, ok: Boolean(t) },
+            "spotify: progreso YT",
+          );
+        }
+        return t;
+      },
+    );
+
+    const out = mapped.filter((t): t is Track => t != null);
+    logger.info(
+      { resolved: out.length, total: items.length },
+      "spotify: mirrors listos",
+    );
     if (out.length) return out;
     throw new Error(
       "Se leyeron pistas de Spotify pero no se encontraron mirrors en YouTube (¿cookies YT?).",
@@ -862,6 +956,109 @@ async function resolveSpotify(
     logger.warn({ err, url }, "music:spotify falló");
     throw new Error(`Spotify: ${msg}`);
   }
+}
+
+/**
+ * Spotify playlist/álbum: arranca con la 1ª pista y resuelve el resto en
+ * segundo plano (evita "pensando…" minutos con 50 ytsearch).
+ */
+export async function resolveSpotifyProgressive(
+  url: string,
+  member: GuildMember,
+  handlers: {
+    onFirst: (tracks: Track[], meta: { totalItems: number }) => Promise<void>;
+    onRest: (
+      tracks: Track[],
+      meta: { totalItems: number; resolved: number },
+    ) => Promise<void>;
+  },
+): Promise<{ totalItems: number; resolved: number }> {
+  const { resolveSpotifyItems } = await import("./spotify.js");
+  const requester: Requester = {
+    id: member.id,
+    tag: member.user.tag,
+    avatarURL: member.user.displayAvatarURL({ size: 128 }),
+  };
+
+  const items = await resolveSpotifyItems(url);
+  if (!items.length) {
+    throw new Error("La playlist/álbum no tiene pistas legibles.");
+  }
+
+  // Una sola pista → path simple
+  if (items.length === 1) {
+    const t = await spotifyItemToTrack(items[0]!, requester, url);
+    if (!t) {
+      throw new Error(
+        "No se encontró mirror en YouTube para esa pista (¿cookies YT?).",
+      );
+    }
+    await handlers.onFirst([t], { totalItems: 1 });
+    return { totalItems: 1, resolved: 1 };
+  }
+
+  logger.info(
+    { n: items.length },
+    "spotify: progressive — 1ª pista, luego cola en paralelo",
+  );
+
+  // Buscar la primera pista usable (a veces la #1 falla en YT)
+  let first: Track | null = null;
+  let firstIdx = -1;
+  for (let i = 0; i < Math.min(items.length, 5); i++) {
+    first = await spotifyItemToTrack(items[i]!, requester, url, {
+      timeoutMs: 20_000,
+    });
+    if (first) {
+      firstIdx = i;
+      break;
+    }
+  }
+  if (!first || firstIdx < 0) {
+    throw new Error(
+      "Se leyeron pistas de Spotify pero no se encontró la primera en YouTube (¿cookies YT?).",
+    );
+  }
+
+  await handlers.onFirst([first], { totalItems: items.length });
+
+  const restItems = items.filter((_, i) => i !== firstIdx);
+  const mapped = await mapPool(
+    restItems,
+    SPOTIFY_YT_CONCURRENCY,
+    async (item, i) => {
+      const t = await spotifyItemToTrack(item, requester, url, {
+        ytdlpOnly: true,
+        timeoutMs: SPOTIFY_YT_TIMEOUT_MS,
+      });
+      if ((i + 1) % 10 === 0) {
+        logger.info(
+          { done: i + 1, total: restItems.length, ok: Boolean(t) },
+          "spotify: progreso YT (resto)",
+        );
+      }
+      return t;
+    },
+  );
+
+  const rest = mapped.filter((t): t is Track => t != null);
+  const resolved = 1 + rest.length;
+  logger.info(
+    { resolved, total: items.length },
+    "spotify: progressive listo",
+  );
+  if (rest.length) {
+    await handlers.onRest(rest, { totalItems: items.length, resolved });
+  }
+  return { totalItems: items.length, resolved };
+}
+
+export function isSpotifyQuery(query: string): boolean {
+  return (
+    query.includes("open.spotify.com") ||
+    query.includes("spotify.link") ||
+    query.startsWith("spotify:")
+  );
 }
 
 /** Resolve query/URL into one or more tracks */
