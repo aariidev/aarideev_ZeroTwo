@@ -7,6 +7,7 @@ import {
   dataScopeGuildIds,
   resolveGuildAccess,
 } from "../lib/guildAccess.js";
+import { BOT_VERSION_SHORT } from "../bot/lib/version.js";
 
 const router = Router();
 
@@ -34,7 +35,7 @@ export function getBotPublicInfo() {
     online: ready,
     ping: ready && ping < 0 ? 0 : ping,
     guildCount: botClient?.guilds.cache.size ?? 0,
-    version: "2.4.0",
+    version: BOT_VERSION_SHORT,
   };
 }
 
@@ -87,7 +88,7 @@ router.get("/stats", async (req: Request, res: Response) => {
       botAvatar,
       botTag: botClient?.user?.tag ?? null,
       online: ready,
-      version: "2.4.0",
+      version: BOT_VERSION_SHORT,
       scoped: !access.isOwner,
     });
   } catch (err) {
