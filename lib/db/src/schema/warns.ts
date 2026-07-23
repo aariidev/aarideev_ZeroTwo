@@ -7,7 +7,7 @@ import {
   boolean,
 } from "drizzle-orm/mysql-core";
 import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod/v4";
+import { z } from "zod";
 
 export const warnsTable = mysqlTable("warns", {
   id: int("id").autoincrement().primaryKey(),

@@ -6,7 +6,7 @@ import {
   timestamp,
 } from "drizzle-orm/mysql-core";
 import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod/v4";
+import { z } from "zod";
 
 export const ticketsTable = mysqlTable("tickets", {
   id: int("id").autoincrement().primaryKey(),

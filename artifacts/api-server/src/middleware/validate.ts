@@ -8,7 +8,7 @@
  * En caso de error de validación devuelve 400 con detalles de los campos.
  */
 import type { Request, Response, NextFunction } from "express";
-import { z, ZodError } from "zod/v4";
+import { z, ZodError } from "zod";
 
 function formatZodError(err: ZodError): { field: string; message: string }[] {
   return err.issues.map((issue) => ({
