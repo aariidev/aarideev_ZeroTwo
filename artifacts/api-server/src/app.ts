@@ -17,6 +17,7 @@ import {
   writeRateLimiter,
 } from "./middleware/rateLimiter.js";
 import { logger } from "./lib/logger.js";
+import { BOT_VERSION } from "./bot/lib/version.js";
 
 const app: Express = express();
 
