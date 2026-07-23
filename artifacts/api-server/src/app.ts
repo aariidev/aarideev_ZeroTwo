@@ -18,6 +18,11 @@ import {
 } from "./middleware/rateLimiter.js";
 import { logger } from "./lib/logger.js";
 import { BOT_VERSION } from "./bot/lib/version.js";
+import {
+  discordWebhookEventsGet,
+  discordWebhookEventsPost,
+  discordWebhookRawBody,
+} from "./routes/discordWebhooks.js";
 
 const app: Express = express();
 
@@ -37,7 +42,10 @@ app.use(
       return requestId;
     },
     autoLogging: {
-      ignore: (req) => req.url === "/api/health" || req.url === "/api/auth/status",
+      ignore: (req) =>
+        req.url === "/api/health" ||
+        req.url === "/api/auth/status" ||
+        req.url?.startsWith("/api/discord/webhooks"),
     },
     customLogLevel: (_req, res, err) => {
       if (err || res.statusCode >= 500) return "error";
@@ -70,12 +78,38 @@ app.use(
   cors({
     origin: true,
     credentials: true,
-    allowedHeaders: ["Content-Type", "X-Dev-Token", "Authorization"],
+    allowedHeaders: [
+      "Content-Type",
+      "X-Dev-Token",
+      "Authorization",
+      "X-Signature-Ed25519",
+      "X-Signature-Timestamp",
+    ],
   }),
 );
 
 app.use(cookieParser());
-app.use(express.json({ limit: "10mb" }));
+
+/**
+ * Discord Event Webhooks MUST run before express.json():
+ * signature is over the exact raw body bytes.
+ * Public — no session cookie / requireAuth.
+ */
+app.get("/api/discord/webhooks/events", discordWebhookEventsGet);
+app.post(
+  "/api/discord/webhooks/events",
+  discordWebhookRawBody,
+  discordWebhookEventsPost,
+);
+
+app.use(
+  express.json({
+    limit: "10mb",
+    verify: (req, _res, buf) => {
+      (req as Request & { rawBody?: Buffer }).rawBody = Buffer.from(buf);
+    },
+  }),
+);
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 app.get("/api/health", (_req: Request, res: Response) => {
