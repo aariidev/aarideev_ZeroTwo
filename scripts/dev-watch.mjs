@@ -11,7 +11,7 @@
  *  4. Cuando detecta cambios, compila en segundo plano
  *  5. Si la build es exitosa, manda un embed al canal DEV_LOG_CHANNEL_ID
  *     con botones "✅ Reiniciar ahora" / "❌ Cancelar"
- *  6. Cuando el bot confirma (SIGUSR2), mata el hijo y lo reinicia
+ *  6. Cuando el bot confirma (IPC o SIGUSR2), mata el hijo y lo reinicia
  *
  * Variables de entorno necesarias (en .env):
  *   DISCORD_TOKEN, DEV_LOG_CHANNEL_ID, OWNER_IDS
@@ -200,8 +200,14 @@ function startBot() {
 
   botProcess = spawn("node", ["--enable-source-maps", "./dist/index.mjs"], {
     cwd: API_DIR,
-    stdio: "inherit",
+    stdio: ["inherit", "inherit", "inherit", "ipc"],
     env: { ...process.env, NODE_ENV: "development" },
+  });
+
+  botProcess.on("message", (message) => {
+    if (message?.type !== "dev_reload_confirm") return;
+    console.log("[watch] 📨 IPC dev_reload_confirm recibido → reiniciando bot");
+    restartBot().catch(console.error);
   });
 
   botProcess.on("exit", (code, signal) => {
