@@ -48,6 +48,7 @@ import {
   getBalance,
 } from "../lib/economy.js";
 import { SHOP_ITEMS, ITEM_REWARDS } from "../lib/shop.js";
+import { hasSpecialTreatment } from "../lib/specialUser.js";
 
 function buildNetLabel(status: string, state: GameState): string {
   const { bet, multiplierActive, insuranceActive } = state;
@@ -804,7 +805,9 @@ export default async function onInteractionCreate(interaction: Interaction) {
   const command = client.commands.get(commandName);
   if (!command) return;
 
-  if (devState.current.maintenanceMode) {
+  const specialTreatment = hasSpecialTreatment(interaction);
+
+  if (devState.current.maintenanceMode && !specialTreatment) {
     return interaction.reply({
       embeds: [
         new EmbedBuilder()
@@ -821,36 +824,38 @@ export default async function onInteractionCreate(interaction: Interaction) {
     });
   }
 
-  if (!client.cooldowns.has(command.data.name)) {
-    client.cooldowns.set(command.data.name, new Collection());
-  }
-
-  const timestamps = client.cooldowns.get(command.data.name)!;
-  const cooldownMs = (command.cooldown ?? 3) * 1000;
-  const now = Date.now();
-
-  if (timestamps.has(user.id)) {
-    const expirationTime = timestamps.get(user.id)!;
-
-    if (now < expirationTime) {
-      const relativeTimestamp = Math.floor(expirationTime / 1000);
-
-      return interaction.reply({
-        embeds: [
-          new EmbedBuilder()
-            .setColor(0xff0000)
-            .setDescription(
-              `🛑 ¡Cálmate! Estás pilotando demasiado rápido. Podrás usar \`/${command.data.name}\` **<t:${relativeTimestamp}:R>**.`,
-            ),
-        ],
-        ephemeral: true,
-      });
+  if (!specialTreatment) {
+    if (!client.cooldowns.has(command.data.name)) {
+      client.cooldowns.set(command.data.name, new Collection());
     }
-  }
 
-  const expiration = now + cooldownMs;
-  timestamps.set(user.id, expiration);
-  setTimeout(() => timestamps.delete(user.id), cooldownMs);
+    const timestamps = client.cooldowns.get(command.data.name)!;
+    const cooldownMs = (command.cooldown ?? 3) * 1000;
+    const now = Date.now();
+
+    if (timestamps.has(user.id)) {
+      const expirationTime = timestamps.get(user.id)!;
+
+      if (now < expirationTime) {
+        const relativeTimestamp = Math.floor(expirationTime / 1000);
+
+        return interaction.reply({
+          embeds: [
+            new EmbedBuilder()
+              .setColor(0xff0000)
+              .setDescription(
+                `🛑 ¡Cálmate! Estás pilotando demasiado rápido. Podrás usar \`/${command.data.name}\` **<t:${relativeTimestamp}:R>**.`,
+              ),
+          ],
+          ephemeral: true,
+        });
+      }
+    }
+
+    const expiration = now + cooldownMs;
+    timestamps.set(user.id, expiration);
+    setTimeout(() => timestamps.delete(user.id), cooldownMs);
+  }
 
   let success = true;
 

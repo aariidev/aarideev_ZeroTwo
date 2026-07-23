@@ -5,6 +5,7 @@ import {
   Client,
 } from "discord.js";
 import { Command } from "../../types.js";
+import { isSpecialUserId, specialTreatmentLabel } from "../../lib/specialUser.js";
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -19,6 +20,7 @@ const command: Command = {
   async execute(interaction: ChatInputCommandInteraction, client: Client) {
     const user = interaction.options.getUser("usuario") ?? interaction.user;
     const member = interaction.guild?.members.cache.get(user.id);
+    const isSpecial = Boolean(member && isSpecialUserId(user.id));
 
     const createdTimestamp = Math.floor(user.createdTimestamp / 1000);
 
@@ -38,7 +40,7 @@ const command: Command = {
         },
         {
           name: "🤖 Naturaleza",
-          value: `\`${user.bot ? "Entidad de Código (Bot)" : "Humano / Parásito"}\``,
+          value: `\`${isSpecial ? "Owner / Piloto principal" : user.bot ? "Entidad de Código (Bot)" : "Humano / Parásito"}\``,
           inline: true,
         },
         {
@@ -78,6 +80,14 @@ const command: Command = {
           inline: false,
         },
       );
+
+      if (isSpecial) {
+        embed.addFields({
+          name: "🌸 Trato especial",
+          value: `\`${specialTreatmentLabel()}\`\nSin cooldowns y acceso durante mantenimiento.`,
+          inline: false,
+        });
+      }
     }
 
     await interaction.reply({ embeds: [embed] });
