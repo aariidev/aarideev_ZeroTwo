@@ -5,7 +5,7 @@
  * El watcher arranca el bot como proceso hijo. Cuando hay una build lista,
  * manda un embed con dos botones al canal DEV_LOG_CHANNEL_ID.
  * Este módulo responde a esos botones:
- *   - dev_reload_confirm  → manda SIGUSR2 al proceso padre (el watcher), que reinicia el bot
+ *   - dev_reload_confirm  → avisa al watcher por IPC (o señal fallback), que reinicia el bot
  *   - dev_reload_cancel   → descarta la build pendiente
  */
 import {
@@ -60,7 +60,7 @@ export async function handleDevReloadButton(
     return true;
   }
 
-  // dev_reload_confirm → avisar al watcher vía SIGUSR2
+  // dev_reload_confirm → avisar al watcher
   await interaction.update({
     embeds: [
       new EmbedBuilder()
@@ -72,15 +72,24 @@ export async function handleDevReloadButton(
     components: [],
   });
 
-  // El watcher escucha SIGUSR2 en el proceso padre
-  // process.ppid solo está disponible en Node 16+
-  const parentPid = process.ppid;
-  if (parentPid && parentPid !== 1) {
-    process.kill(parentPid, "SIGUSR2");
-  } else {
-    // Fallback: reiniciar el propio proceso (solo si no hay watcher)
-    setTimeout(() => process.exit(0), 500);
+  if (typeof process.send === "function") {
+    process.send({ type: "dev_reload_confirm" });
+    return true;
   }
+
+  const parentPid = process.ppid;
+  const canSignalParent = parentPid && parentPid !== 1 && process.platform !== "win32";
+  if (canSignalParent) {
+    try {
+      process.kill(parentPid, "SIGUSR2");
+      return true;
+    } catch {
+      // Fall through to local restart when signals are not available.
+    }
+  }
+
+  // Fallback: reiniciar el propio proceso (solo si no hay watcher/IPC)
+  setTimeout(() => process.exit(0), 500);
 
   return true;
 }
