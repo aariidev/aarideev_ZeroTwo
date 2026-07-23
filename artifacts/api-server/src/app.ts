@@ -7,6 +7,7 @@ import express, {
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
+import { randomUUID } from "node:crypto";
 import router from "./routes/index.js";
 import authRouter from "./routes/auth.js";
 import { requireAuth } from "./middleware/requireAuth.js";
@@ -25,15 +26,34 @@ app.set("trust proxy", 1);
 app.use(
   pinoHttp({
     logger,
+    genReqId: (req, res) => {
+      const incomingId = req.headers["x-request-id"];
+      const requestId = Array.isArray(incomingId)
+        ? incomingId[0]
+        : incomingId || randomUUID();
+
+      res.setHeader("x-request-id", requestId);
+      return requestId;
+    },
     autoLogging: {
       ignore: (req) => req.url === "/api/health" || req.url === "/api/auth/status",
     },
+    customLogLevel: (_req, res, err) => {
+      if (err || res.statusCode >= 500) return "error";
+      if (res.statusCode >= 400) return "warn";
+      return "info";
+    },
+    customSuccessMessage: (req, res) =>
+      `${req.method} ${req.url?.split("?")[0]} -> ${res.statusCode}`,
+    customErrorMessage: (req, res) =>
+      `${req.method} ${req.url?.split("?")[0]} -> ${res.statusCode}`,
     serializers: {
       req(req) {
         return {
           id: req.id,
           method: req.method,
           url: req.url?.split("?")[0],
+          remoteAddress: req.remoteAddress,
         };
       },
       res(res) {
@@ -74,7 +94,7 @@ app.use("/api", requireAuth, writeRateLimiter, readRateLimiter, router);
 
 app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
   req.log?.error(
-    { err },
+    { err, requestId: req.id },
     "❌ Excepción controlada en el núcleo del servidor Express",
   );
 

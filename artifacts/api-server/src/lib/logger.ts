@@ -1,20 +1,53 @@
 import pino from "pino";
 
 const isProduction = process.env.NODE_ENV === "production";
+const appName = process.env.APP_NAME ?? "zerotwo-api";
+const logLevel = process.env.LOG_LEVEL ?? (isProduction ? "info" : "debug");
 
 export const logger = pino({
-  // (ej: debug en dev, info en prod)
-  level: process.env.LOG_LEVEL ?? (isProduction ? "info" : "debug"),
+  name: appName,
+  level: logLevel,
+  base: {
+    service: appName,
+    env: process.env.NODE_ENV ?? "development",
+    version: process.env.npm_package_version,
+  },
 
   redact: {
     paths: [
+      "authorization",
+      "cookie",
+      "set-cookie",
+      "token",
+      "accessToken",
+      "access_token",
+      "refreshToken",
+      "refresh_token",
+      "clientSecret",
+      "client_secret",
+      "password",
+      "secret",
+      "apiKey",
+      "api_key",
       "req.headers.authorization",
       "req.headers.cookie",
+      "req.headers['x-dev-token']",
       "res.headers['set-cookie']",
-      "process.env.DISCORD_TOKEN",
-      "process.env.DATABASE_URL",
+      "*.authorization",
+      "*.cookie",
+      "*.token",
+      "*.accessToken",
+      "*.access_token",
+      "*.refreshToken",
+      "*.refresh_token",
+      "*.clientSecret",
+      "*.client_secret",
+      "*.password",
+      "*.secret",
+      "*.apiKey",
+      "*.api_key",
     ],
-    remove: true,
+    censor: "[redacted]",
   },
 
   serializers: {
@@ -34,7 +67,12 @@ export const logger = pino({
             colorize: true,
             ignore: "pid,hostname",
             translateTime: "SYS:yyyy-mm-dd HH:MM:ss",
+            singleLine: true,
           },
         },
       }),
 });
+
+export function createChildLogger(bindings: Record<string, unknown>) {
+  return logger.child(bindings);
+}

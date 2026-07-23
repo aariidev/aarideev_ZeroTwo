@@ -84,7 +84,7 @@ const command: Command = {
       if (isSpecial) {
         embed.addFields({
           name: "🌸 Trato especial",
-          value: `\`${specialTreatmentLabel()}\`\nSin cooldowns y acceso durante mantenimiento.`,
+          value: `\`${specialTreatmentLabel(user.id)}\`\nSin cooldowns y acceso durante mantenimiento.`,
           inline: false,
         });
       }
