@@ -31,7 +31,8 @@
     "pino-http": "^10",
     "play-dl": "^1.9.7",
     "sodium-native": "^5.1.0",
-    "youtube-dl-exec": "^3.1.9"
+    "youtube-dl-exec": "^3.1.9",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@types/cookie-parser": "^1.4.10",
