@@ -64,6 +64,14 @@ const command: Command = {
   cooldown: 5,
 
   async execute(interaction: ChatInputCommandInteraction, client: Client) {
+    if (!isOwner(interaction.user.id)) {
+      await interaction.reply({
+        content: "❌ Solo el dev del bot puede usar esto.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
     const sub = interaction.options.getSubcommand();
 
     if (sub === "status") {
