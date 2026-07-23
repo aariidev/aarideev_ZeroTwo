@@ -45,6 +45,7 @@ const META: Record<
   lock:       { emoji: "🔒", category: "Moderación", usage: "/lock [motivo]", permission: "Gestionar Canales" },
   unlock:     { emoji: "🔓", category: "Moderación", usage: "/unlock", permission: "Gestionar Canales" },
   logs:       { emoji: "📋", category: "Moderación", usage: "/logs <ver|buscar|borrar>", permission: "Silenciar Miembros" },
+  automod:    { emoji: "🛡️", category: "Moderación", usage: "/automod <setup|status|remove|sync-all>", permission: "Gestionar Servidor" },
 
   // ── Diversión ───────────────────────────────────────────────────────────────
   "8ball":  { emoji: "🎱", category: "Diversión", usage: "/8ball <pregunta>" },
@@ -71,6 +72,10 @@ const META: Record<
   loop:        { emoji: "🔁", category: "Música", usage: "/loop" },
   shuffle:     { emoji: "🔀", category: "Música", usage: "/shuffle" },
   leave:       { emoji: "🚪", category: "Música", usage: "/leave" },
+  musicpanel:  { emoji: "🎛️", category: "Música", usage: "/musicpanel <set|panel|dj|cap|status|disable>", permission: "Gestionar Servidor" },
+  remove:      { emoji: "🗑️", category: "Música", usage: "/remove <posicion>" },
+  clear:       { emoji: "🧹", category: "Música", usage: "/clear" },
+  continue:    { emoji: "▶️", category: "Música", usage: "/continue" },
 };
 
 const OPTION_TYPE_LABEL: Record<number, string> = {
@@ -123,7 +128,7 @@ const command: Command = {
     if (commandName) {
       const cmd = botClient.commands.get(commandName);
       if (!cmd) {
-        return interaction.reply({
+        await interaction.reply({
           embeds: [
             new EmbedBuilder()
               .setColor(0xff2d6b)
@@ -131,6 +136,7 @@ const command: Command = {
           ],
           ephemeral: true,
         });
+        return;
       }
 
       const meta = META[commandName];
@@ -189,7 +195,8 @@ const command: Command = {
           text: `Zero Two ${VERSION} · Módulo de diagnóstico`,
           iconURL: client.user?.displayAvatarURL(),
         });
-      return interaction.reply({ embeds: [embed] });
+      await interaction.reply({ embeds: [embed] });
+      return;
     }
 
     // ── VISTA GENERAL ────────────────────────────────────────────────────────
@@ -292,20 +299,22 @@ const command: Command = {
 
     collector.on("collect", async (i) => {
       if (i.user.id !== interaction.user.id) {
-        return i.reply({
+        await i.reply({
           content: "⚠️ No puedes interactuar con el panel de otro parásito.",
           ephemeral: true,
         });
+        return;
       }
 
       const selected = i.values[0]!;
 
       if (selected === "main") {
         const m = generateMainEmbed();
-        return i.update({
+        await i.update({
           embeds: [m.embed],
           files: m.file ? [m.file] : [],
         });
+        return;
       }
 
       const cat = generateCatEmbed(selected);
