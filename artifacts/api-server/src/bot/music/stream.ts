@@ -110,8 +110,12 @@ function youtubeJsArgs(): string[] {
   ];
 }
 
-function baseYtDlpArgs(pageUrl: string, format: string): string[] {
-  return [
+function baseYtDlpArgs(
+  pageUrl: string,
+  format: string,
+  startSec = 0,
+): string[] {
+  const args = [
     "-f",
     format,
     "--no-playlist",
@@ -123,8 +127,13 @@ function baseYtDlpArgs(pageUrl: string, format: string): string[] {
     // web works with cookies; android skips cookies
     "--extractor-args",
     "youtube:player_client=web,default,ios",
-    pageUrl,
   ];
+  // Resume from position (yt-dlp section download)
+  if (startSec > 2) {
+    args.push("--download-sections", `*${Math.floor(startSec)}-inf`);
+  }
+  args.push(pageUrl);
+  return args;
 }
 
 export type StreamHandle = {
@@ -139,6 +148,7 @@ export type StreamHandle = {
 export async function createTrackResource(
   pageUrl: string,
   volumePercent: number,
+  startSec = 0,
 ): Promise<StreamHandle> {
   const ytdlp = findYtDlp();
   if (!ytdlp) {
@@ -153,6 +163,7 @@ export async function createTrackResource(
       ytdlp,
       ffmpeg,
       cookies: findCookiesFile() ? "yes" : "no",
+      startSec,
       url: pageUrl.slice(0, 90),
     },
     "music: yt-dlp | ffmpeg → OggOpus",
@@ -169,13 +180,35 @@ export async function createTrackResource(
   let lastErr: Error | null = null;
   for (const format of formatAttempts) {
     try {
-      return await spawnPipeline(ytdlp, ffmpeg, pageUrl, format, volumePercent);
+      return await spawnPipeline(
+        ytdlp,
+        ffmpeg,
+        pageUrl,
+        format,
+        volumePercent,
+        startSec,
+      );
     } catch (err) {
       lastErr = err instanceof Error ? err : new Error(String(err));
       logger.warn(
         { format, err: lastErr.message.slice(0, 220) },
         "music: format attempt failed",
       );
+      // If section seek fails, retry from start once
+      if (startSec > 0) {
+        try {
+          return await spawnPipeline(
+            ytdlp,
+            ffmpeg,
+            pageUrl,
+            format,
+            volumePercent,
+            0,
+          );
+        } catch (err2) {
+          lastErr = err2 instanceof Error ? err2 : new Error(String(err2));
+        }
+      }
     }
   }
   throw lastErr ?? new Error("No se pudo abrir stream de audio");
@@ -187,8 +220,9 @@ function spawnPipeline(
   pageUrl: string,
   format: string,
   volumePercent: number,
+  startSec = 0,
 ): Promise<StreamHandle> {
-  const ytdlpArgs = baseYtDlpArgs(pageUrl, format);
+  const ytdlpArgs = baseYtDlpArgs(pageUrl, format, startSec);
 
   const ffmpegArgs = [
     "-hide_banner",
@@ -399,30 +433,185 @@ function spawnPipeline(
 
 /** ytsearch1 via yt-dlp → watch URL */
 export async function ytdlpSearchUrl(query: string): Promise<string | null> {
+  const hit = await ytdlpSearchMeta(query);
+  return hit?.url ?? null;
+}
+
+export type YtSearchMeta = {
+  url: string;
+  title: string;
+  durationSec: number;
+  thumbnail: string | null;
+};
+
+/**
+ * Resolve metadata with yt-dlp (search or direct URL).
+ * Avoids play-dl browseId / innertube breakage.
+ */
+export async function ytdlpSearchMeta(
+  query: string,
+): Promise<YtSearchMeta | null> {
   const ytdlp = findYtDlp();
   if (!ytdlp) return null;
 
+  const isHttp = /^https?:\/\//i.test(query.trim());
+  // Direct URL → metadata of that video; otherwise ytsearch1
+  const target = isHttp ? query.trim() : `ytsearch1:${query}`;
+
   return new Promise((resolve) => {
+    // Use a rare separator so titles with tabs don't break parsing
+    const sep = "|||";
     const args = [
-      `ytsearch1:${query}`,
+      target,
       "--print",
-      "id",
+      `%(id)s${sep}%(title)s${sep}%(duration)s${sep}%(thumbnail)s`,
       "--skip-download",
       "--no-warnings",
+      "--no-playlist",
       ...cookieArgs(),
       ...youtubeJsArgs(),
     ];
     const proc = spawn(ytdlp, args, { windowsHide: true });
     let out = "";
     proc.stdout.on("data", (c) => (out += c.toString()));
+    const timer = setTimeout(() => {
+      try {
+        proc.kill("SIGKILL");
+      } catch {
+        /* */
+      }
+      resolve(null);
+    }, 25_000);
+
     proc.on("close", (code) => {
-      const id = out.trim().split(/\r?\n/).find(Boolean);
-      if (code === 0 && id && /^[\w-]{6,}$/.test(id)) {
-        resolve(`https://www.youtube.com/watch?v=${id}`);
-      } else resolve(null);
+      clearTimeout(timer);
+      const line = out
+        .trim()
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .find((l) => l.includes(sep) || /^[\w-]{6,}/.test(l));
+      if (code !== 0 || !line) {
+        resolve(null);
+        return;
+      }
+      const parts = line.split(sep);
+      const id = parts[0]?.trim();
+      const title = parts[1]?.trim();
+      const durationRaw = parts[2]?.trim();
+      const thumb = parts[3]?.trim();
+      if (!id || !/^[\w-]{6,}$/.test(id)) {
+        resolve(null);
+        return;
+      }
+      const durationSec = Math.max(0, Math.floor(Number(durationRaw) || 0));
+      resolve({
+        url: `https://www.youtube.com/watch?v=${id}`,
+        title: (title && title !== "NA" ? title : query).slice(0, 200),
+        durationSec,
+        thumbnail:
+          thumb && thumb !== "NA" && /^https?:\/\//i.test(thumb) ? thumb : null,
+      });
     });
-    proc.on("error", () => resolve(null));
+    proc.on("error", () => {
+      clearTimeout(timer);
+      resolve(null);
+    });
   });
+}
+
+/**
+ * Expand a YouTube playlist / Mix / radio (list=RD…) into multiple entries.
+ * Uses yt-dlp --flat-playlist (does NOT use --no-playlist).
+ */
+export async function ytdlpPlaylistEntries(
+  urlOrList: string,
+  max = 50,
+): Promise<YtSearchMeta[]> {
+  const ytdlp = findYtDlp();
+  if (!ytdlp) return [];
+
+  const target = urlOrList.trim();
+  if (!target) return [];
+
+  return new Promise((resolve) => {
+    const sep = "|||";
+    const args = [
+      target,
+      "--flat-playlist",
+      "--yes-playlist",
+      "--print",
+      `%(id)s${sep}%(title)s${sep}%(duration)s${sep}%(thumbnail)s`,
+      "--skip-download",
+      "--no-warnings",
+      "--playlist-end",
+      String(Math.max(1, Math.min(100, max))),
+      ...cookieArgs(),
+      ...youtubeJsArgs(),
+    ];
+    const proc = spawn(ytdlp, args, { windowsHide: true });
+    let out = "";
+    const timer = setTimeout(() => {
+      try {
+        proc.kill("SIGKILL");
+      } catch {
+        /* */
+      }
+      // still parse whatever we got
+      resolve(parsePlaylistPrint(out, sep));
+    }, 45_000);
+
+    proc.stdout.on("data", (c) => (out += c.toString()));
+    proc.on("close", () => {
+      clearTimeout(timer);
+      resolve(parsePlaylistPrint(out, sep));
+    });
+    proc.on("error", () => {
+      clearTimeout(timer);
+      resolve([]);
+    });
+  });
+}
+
+function parsePlaylistPrint(out: string, sep: string): YtSearchMeta[] {
+  const seen = new Set<string>();
+  const items: YtSearchMeta[] = [];
+  for (const raw of out.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || !line.includes(sep)) continue;
+    const parts = line.split(sep);
+    const id = parts[0]?.trim();
+    if (!id || !/^[\w-]{6,}$/.test(id) || seen.has(id)) continue;
+    seen.add(id);
+    const title = parts[1]?.trim();
+    const durationRaw = parts[2]?.trim();
+    const thumb = parts[3]?.trim();
+    const durationSec = Math.max(0, Math.floor(Number(durationRaw) || 0));
+    items.push({
+      url: `https://www.youtube.com/watch?v=${id}`,
+      title: title && title !== "NA" ? title.slice(0, 200) : id,
+      durationSec,
+      thumbnail:
+        thumb && thumb !== "NA" && /^https?:\/\//i.test(thumb) ? thumb : null,
+    });
+  }
+  return items;
+}
+
+/** Detect playlist / Mix / radio URL (list= param or /playlist). */
+export function isYoutubePlaylistOrMixUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\./, "");
+    if (!/youtube\.com|youtu\.be|music\.youtube\.com/i.test(host)) return false;
+    if (u.pathname.includes("/playlist")) return true;
+    const list = u.searchParams.get("list");
+    if (list && list.length > 2) return true;
+    // /watch/videoseries etc.
+    if (u.searchParams.get("start_radio") === "1") return true;
+    return false;
+  } catch {
+    return /[?&]list=[\w-]+/i.test(url) || /\/playlist\?/i.test(url);
+  }
 }
 
 export function getStreamDiagnostics(): {

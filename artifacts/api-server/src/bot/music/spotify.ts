@@ -1,5 +1,10 @@
 /**
- * Spotify Web API (refresh_token) → metadata for YouTube search.
+ * Spotify resolver — sin Web API OAuth.
+ *
+ * Para tracks individuales: oEmbed (sin auth).
+ * Para playlists/álbumes: parsea el JSON __NEXT_DATA__ embebido en la página
+ * HTML pública de open.spotify.com — igual que hacen Jockie y otros bots.
+ * No requiere refresh_token ni Premium, funciona para cualquier playlist pública.
  */
 import { logger } from "../../lib/logger.js";
 
@@ -12,87 +17,12 @@ export type SpotifyResolvedItem = {
   spotifyUrl: string;
 };
 
-let cachedAccess: { token: string; expiresAt: number } | null = null;
-
-function creds() {
-  return {
-    clientId: (process.env.SPOTIFY_CLIENT_ID ?? "").trim(),
-    clientSecret: (process.env.SPOTIFY_CLIENT_SECRET ?? "").trim(),
-    refreshToken: (process.env.SPOTIFY_REFRESH_TOKEN ?? "").trim(),
-    market: (process.env.SPOTIFY_MARKET ?? "ES").trim() || "ES",
-  };
-}
-
+// ── Siempre disponible mientras haya internet ─────────────────────────────────
 export function isSpotifyConfigured(): boolean {
-  const c = creds();
-  return Boolean(c.clientId && c.clientSecret && c.refreshToken);
+  return true;
 }
 
-async function readJson(res: Response, label: string): Promise<unknown> {
-  const text = await res.text();
-  const trimmed = text.trim();
-  if (!trimmed) {
-    throw new Error(`${label}: respuesta vacía (HTTP ${res.status})`);
-  }
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    const preview = trimmed.slice(0, 120).replace(/\s+/g, " ");
-    throw new Error(
-      `${label}: Spotify no devolvió JSON (HTTP ${res.status}): ${preview}`,
-    );
-  }
-}
-
-export async function getSpotifyAccessToken(): Promise<string> {
-  const c = creds();
-  if (!c.clientId || !c.clientSecret || !c.refreshToken) {
-    throw new Error(
-      "Faltan SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET o SPOTIFY_REFRESH_TOKEN en el .env (reinicia el bot).",
-    );
-  }
-
-  if (cachedAccess && Date.now() < cachedAccess.expiresAt - 30_000) {
-    return cachedAccess.token;
-  }
-
-  const res = await fetch("https://accounts.spotify.com/api/token", {
-    method: "POST",
-    headers: {
-      Authorization:
-        "Basic " +
-        Buffer.from(`${c.clientId}:${c.clientSecret}`).toString("base64"),
-      "Content-Type": "application/x-www-form-urlencoded",
-      Accept: "application/json",
-    },
-    body: new URLSearchParams({
-      grant_type: "refresh_token",
-      refresh_token: c.refreshToken,
-    }),
-    signal: AbortSignal.timeout(15_000),
-  });
-
-  const json = (await readJson(res, "token")) as {
-    access_token?: string;
-    expires_in?: number;
-    error?: string;
-    error_description?: string;
-  };
-
-  if (!res.ok || !json.access_token) {
-    const msg = json.error_description || json.error || `HTTP ${res.status}`;
-    logger.error({ status: res.status, json }, "Spotify token refresh failed");
-    throw new Error(
-      `Spotify auth falló: ${msg}. Vuelve a ejecutar: node scripts/spotify-auth.mjs`,
-    );
-  }
-
-  cachedAccess = {
-    token: json.access_token,
-    expiresAt: Date.now() + (json.expires_in ?? 3600) * 1000,
-  };
-  return json.access_token;
-}
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function extractSpotifyId(
   url: string,
@@ -116,53 +46,147 @@ function extractSpotifyId(
   return null;
 }
 
-type SpotTrack = {
-  name?: string;
-  artists?: { name?: string }[];
-  duration_ms?: number;
-  external_urls?: { spotify?: string };
-  album?: { images?: { url?: string }[] };
-  images?: { url?: string }[];
-};
+const BROWSER_UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
 
-function itemFromTrack(t: SpotTrack, fallbackUrl: string): SpotifyResolvedItem {
-  const name = t.name ?? "Unknown";
-  const artists = (t.artists ?? [])
-    .map((a) => a.name)
-    .filter(Boolean)
-    .join(", ");
-  return {
-    name,
-    artists,
-    searchQuery: `${name} ${artists}`.trim(),
-    thumbnail:
-      t.album?.images?.[0]?.url ?? t.images?.[0]?.url ?? null,
-    durationSec: Math.floor((t.duration_ms ?? 0) / 1000),
-    spotifyUrl: t.external_urls?.spotify ?? fallbackUrl,
-  };
-}
-
-async function apiGet(url: string, token: string): Promise<unknown> {
+async function fetchSpotifyPage(url: string): Promise<string> {
   const res = await fetch(url, {
     headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/json",
+      "User-Agent": BROWSER_UA,
+      Accept:
+        "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
     },
     signal: AbortSignal.timeout(20_000),
   });
-  const json = await readJson(res, "api");
   if (!res.ok) {
-    const err = json as { error?: { message?: string; status?: number } };
-    throw new Error(
-      err.error?.message ||
-        `Spotify API HTTP ${res.status}`,
-    );
+    throw new Error(`Spotify page HTTP ${res.status} para ${url}`);
   }
-  return json;
+  return res.text();
 }
 
 /**
- * Resolve Spotify URL → list of track metadata (max 50).
+ * Extrae el objeto JSON embebido en <script id="__NEXT_DATA__"> de la página
+ * pública de Spotify. Funciona para playlists y álbumes.
+ */
+function extractNextData(html: string): unknown {
+  const match = html.match(
+    /<script[^>]+id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i,
+  );
+  if (match?.[1]) {
+    try {
+      return JSON.parse(match[1]);
+    } catch {
+      // ignorar
+    }
+  }
+  return null;
+}
+
+/**
+ * Extrae tracks del JSON __NEXT_DATA__ de una página de playlist.
+ * La estructura de Spotify cambia de vez en cuando; probamos varias rutas.
+ */
+function tracksFromNextData(data: unknown): SpotifyResolvedItem[] {
+  const items: SpotifyResolvedItem[] = [];
+
+  // Ruta típica: props.pageProps.state.data.playlist.tracks.items[]
+  const tryPaths = (obj: unknown, depth = 0): SpotifyResolvedItem[] => {
+    if (depth > 12 || !obj || typeof obj !== "object") return [];
+    const o = obj as Record<string, unknown>;
+
+    // Detectar array de items de playlist/álbum
+    if (Array.isArray(o["items"])) {
+      for (const row of o["items"] as unknown[]) {
+        if (!row || typeof row !== "object") continue;
+        const r = row as Record<string, unknown>;
+        // playlist item: { track: { name, artists, duration_ms, ... } }
+        const trackNode =
+          (r["track"] as Record<string, unknown> | undefined) ??
+          (r as Record<string, unknown>);
+        const name =
+          typeof trackNode["name"] === "string" ? trackNode["name"] : null;
+        if (!name) continue;
+
+        const artistsRaw = trackNode["artists"];
+        const artists = Array.isArray(artistsRaw)
+          ? (artistsRaw as { name?: string }[])
+              .map((a) => a.name)
+              .filter(Boolean)
+              .join(", ")
+          : typeof artistsRaw === "string"
+            ? artistsRaw
+            : "";
+
+        const durationMs =
+          typeof trackNode["duration_ms"] === "number"
+            ? trackNode["duration_ms"]
+            : 0;
+
+        const extUrls = trackNode["external_urls"] as
+          | { spotify?: string }
+          | undefined;
+        const spotifyUrl = extUrls?.spotify ?? "";
+
+        const albumNode = trackNode["album"] as
+          | { images?: { url?: string }[] }
+          | undefined;
+        const thumbnail =
+          albumNode?.images?.[0]?.url ??
+          (trackNode["images"] as { url?: string }[] | undefined)?.[0]?.url ??
+          null;
+
+        items.push({
+          name,
+          artists,
+          searchQuery: `${name} ${artists}`.trim(),
+          thumbnail,
+          durationSec: Math.floor(durationMs / 1000),
+          spotifyUrl,
+        });
+        if (items.length >= 50) return items;
+      }
+      if (items.length > 0) return items;
+    }
+
+    // Recurrir en todos los valores del objeto
+    for (const val of Object.values(o)) {
+      if (val && typeof val === "object") {
+        const found = tryPaths(val, depth + 1);
+        if (found.length > 0) return found;
+      }
+    }
+    return [];
+  };
+
+  return tryPaths(data);
+}
+
+// ── Resolver de oEmbed (tracks individuales) ──────────────────────────────────
+
+export async function resolveViaOEmbed(
+  url: string,
+): Promise<{ title: string; thumbnail: string | null }> {
+  const oembedUrl = `https://open.spotify.com/oembed?url=${encodeURIComponent(url)}`;
+  const res = await fetch(oembedUrl, {
+    headers: { "User-Agent": BROWSER_UA },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) throw new Error(`oEmbed HTTP ${res.status}`);
+  const data = (await res.json()) as {
+    title?: string;
+    thumbnail_url?: string;
+  };
+  if (!data.title) throw new Error("oEmbed: sin título");
+  return { title: data.title, thumbnail: data.thumbnail_url ?? null };
+}
+
+// ── Resolver principal ────────────────────────────────────────────────────────
+
+/**
+ * Convierte una URL de Spotify en lista de tracks con metadatos.
+ * Para playlists/álbumes: parsea la página HTML pública (sin API key).
+ * Para tracks individuales: usa oEmbed.
  */
 export async function resolveSpotifyItems(
   url: string,
@@ -174,94 +198,80 @@ export async function resolveSpotifyItems(
     );
   }
 
-  const token = await getSpotifyAccessToken();
-  const market = encodeURIComponent(creds().market);
-  const base = "https://api.spotify.com/v1";
-
+  // Track individual — oEmbed es suficiente y más rápido
   if (parsed.type === "track") {
-    const t = (await apiGet(
-      `${base}/tracks/${parsed.id}?market=${market}`,
-      token,
-    )) as SpotTrack;
-    return [itemFromTrack(t, url)];
+    try {
+      const { title, thumbnail } = await resolveViaOEmbed(url);
+      return [
+        {
+          name: title,
+          artists: "",
+          searchQuery: title,
+          thumbnail,
+          durationSec: 0,
+          spotifyUrl: url,
+        },
+      ];
+    } catch (err) {
+      logger.warn({ err }, "spotify: oEmbed track falló");
+      throw new Error(`No se pudo resolver el track de Spotify: ${url}`);
+    }
   }
 
-  if (parsed.type === "album") {
-    const album = (await apiGet(
-      `${base}/albums/${parsed.id}?market=${market}`,
-      token,
-    )) as {
-      images?: { url?: string }[];
-      tracks?: { items?: SpotTrack[]; next?: string | null };
-    };
-    const thumb = album.images?.[0]?.url ?? null;
-    const items: SpotifyResolvedItem[] = [];
+  // Playlist o álbum — parsear la página HTML pública
+  const pageUrl = `https://open.spotify.com/${parsed.type}/${parsed.id}`;
+  logger.info({ pageUrl }, "spotify: scraping página pública");
 
-    let next: string | null | undefined = null;
-    let batch = album.tracks?.items ?? [];
-    next = album.tracks?.next ?? null;
-
-    if (!batch.length) {
-      const page = (await apiGet(
-        `${base}/albums/${parsed.id}/tracks?market=${market}&limit=50`,
-        token,
-      )) as { items: SpotTrack[]; next: string | null };
-      batch = page.items ?? [];
-      next = page.next;
-    }
-
-    const consume = (list: SpotTrack[]) => {
-      for (const t of list) {
-        if (!t?.name) continue;
-        const item = itemFromTrack(t, url);
-        if (thumb && !item.thumbnail) item.thumbnail = thumb;
-        items.push(item);
-        if (items.length >= 50) return false;
-      }
-      return true;
-    };
-
-    if (!consume(batch)) return items;
-
-    while (next && items.length < 50) {
-      const page = (await apiGet(next, token)) as {
-        items: SpotTrack[];
-        next: string | null;
-      };
-      if (!consume(page.items ?? [])) break;
-      next = page.next;
-    }
-
-    if (!items.length) throw new Error("Álbum vacío o no accesible.");
-    return items;
-  }
-
-  // playlist — use full next URLs from Spotify (don't rewrite paths)
-  const items: SpotifyResolvedItem[] = [];
-  let next: string | null =
-    `${base}/playlists/${parsed.id}/tracks?market=${market}&limit=50&fields=items(track(name,artists(name),duration_ms,external_urls,album(images))),next`;
-
-  while (next && items.length < 50) {
-    const page = (await apiGet(next, token)) as {
-      items?: { track?: SpotTrack | null }[];
-      next?: string | null;
-    };
-
-    for (const row of page.items ?? []) {
-      const t = row.track;
-      if (!t || !t.name) continue; // local/unavailable tracks
-      items.push(itemFromTrack(t, url));
-      if (items.length >= 50) break;
-    }
-
-    next = page.next ?? null;
-  }
-
-  if (!items.length) {
+  let html: string;
+  try {
+    html = await fetchSpotifyPage(pageUrl);
+  } catch (err) {
     throw new Error(
-      "Playlist vacía o no accesible. Si es privada, vuelve a autorizar con: node scripts/spotify-auth.mjs",
+      `No se pudo cargar la ${parsed.type === "album" ? "álbum" : "playlist"} de Spotify. ` +
+        `¿Es privada? Solo se pueden cargar ${parsed.type === "album" ? "álbumes" : "playlists"} públicas.`,
     );
   }
-  return items;
-}
 
+  // Intentar __NEXT_DATA__ primero
+  const nextData = extractNextData(html);
+  if (nextData) {
+    const items = tracksFromNextData(nextData);
+    if (items.length > 0) {
+      logger.info(
+        { n: items.length, type: parsed.type },
+        "spotify: tracks extraídos de __NEXT_DATA__",
+      );
+      return items;
+    }
+  }
+
+  // Fallback: buscar JSON-LD o meta tags para el título y hacer búsqueda única
+  logger.warn(
+    { type: parsed.type, id: parsed.id },
+    "spotify: __NEXT_DATA__ vacío, intentando meta fallback",
+  );
+
+  // Intentar extraer nombre de la playlist del og:title
+  const ogTitle = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i);
+  const ogImage = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i);
+  const title = ogTitle?.[1]?.trim();
+
+  if (title) {
+    logger.info({ title }, "spotify: usando og:title como fallback");
+    return [
+      {
+        name: title,
+        artists: "",
+        searchQuery: title,
+        thumbnail: ogImage?.[1] ?? null,
+        durationSec: 0,
+        spotifyUrl: url,
+      },
+    ];
+  }
+
+  throw new Error(
+    `No se pudieron leer las pistas de la ${parsed.type === "album" ? "álbum" : "playlist"}. ` +
+      `Comprueba que es pública en Spotify.`,
+  );
+}

@@ -149,7 +149,7 @@ const command: Command = {
             .setRequired(true)
             .addChoices(
               { name: "🎰 Multiplicador ×2", value: "multiplier" },
-              { name: "🛡 Seguro BJ", value: "insurance" },
+              { name: "🛡 Seguro de Apuesta", value: "insurance" },
               { name: "📦 Caja de Fichas", value: "chip_box" },
               { name: "💎 Cofre Élite", value: "elite_chest" },
             ),

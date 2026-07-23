@@ -17,9 +17,11 @@ import {
   getTicketConfig,
   claimTicket,
   closeTicketRecord,
-  isStaff,
+  canClaimTicket,
+  canCloseTicket,
+  buildWelcomeMessage,
   buildTranscript,
-  TICKET_CATEGORIES,
+  resolveCategories,
 } from "../lib/tickets.js";
 import { logger } from "../../lib/logger.js";
 import { ticketControlRow } from "../commands/utility/ticket.js";
@@ -53,7 +55,7 @@ export async function handleTicketInteraction(
       const category = interaction.values[0] ?? "soporte";
       const cfg = await getTicketConfig(interaction.guild.id);
 
-      if (!cfg.categoryId || !cfg.staffRoleId) {
+      if (!cfg.categoryId || !cfg.staffRoleIds.length) {
         await interaction.reply({
           embeds: [
             new EmbedBuilder()
@@ -122,11 +124,24 @@ export async function handleTicketInteraction(
         return true;
       }
 
-      const category =
-        interaction.customId.split(":")[1] ?? "soporte";
+      const category = interaction.customId.split(":")[1] ?? "soporte";
       const subject = interaction.fields.getTextInputValue("subject").trim();
       const cfg = await getTicketConfig(interaction.guild.id);
       const botIcon = interaction.client.user?.displayAvatarURL();
+      const cats = resolveCategories(cfg);
+      const catMeta = cats.find((c) => c.id === category);
+
+      if (!catMeta) {
+        await interaction.reply({
+          embeds: [
+            new EmbedBuilder()
+              .setColor(PINK)
+              .setDescription("❌ Esa categoría ya no está disponible."),
+          ],
+          ephemeral: true,
+        });
+        return true;
+      }
 
       await interaction.deferReply({ ephemeral: true });
 
@@ -172,18 +187,29 @@ export async function handleTicketInteraction(
         return true;
       }
 
-      const catMeta = TICKET_CATEGORIES.find((c) => c.id === category);
+      const customWelcome = buildWelcomeMessage(
+        cfg.welcomeMessage,
+        member,
+        catMeta.label,
+        subject,
+      );
+      const staffMentions = [
+        ...new Set([
+          ...cfg.staffRoleIds,
+          ...(catMeta.staffRoleIds ?? []),
+        ]),
+      ];
       const welcome = new EmbedBuilder()
         .setColor(CYAN)
         .setAuthor({
           name: "Central de Tickets // Zero Two",
           iconURL: botIcon,
         })
-        .setTitle(`${catMeta?.label ?? "🎫 Ticket"} abierto`)
+        .setTitle(`${catMeta.label} abierto`)
         .setDescription(
-          `Hola ${member}, el staff te atenderá aquí.\n\n` +
+          (customWelcome || `Hola ${member}, el staff te atenderá aquí.`) + "\n\n" +
             `**Asunto:** ${subject}\n\n` +
-            (cfg.staffRoleId ? `<@&${cfg.staffRoleId}>` : ""),
+            staffMentions.map((id) => `<@&${id}>`).join(" "),
         )
         .addFields(
           {
@@ -193,7 +219,7 @@ export async function handleTicketInteraction(
           },
           {
             name: "📁 Categoría",
-            value: catMeta?.label ?? category,
+            value: catMeta.label,
             inline: true,
           },
         )
@@ -201,14 +227,12 @@ export async function handleTicketInteraction(
         .setTimestamp();
 
       await channel.send({
-        content: cfg.staffRoleId
-          ? `${member} · <@&${cfg.staffRoleId}>`
-          : `${member}`,
+        content: [String(member), ...staffMentions.map((id) => `<@&${id}>`)].join(" · "),
         embeds: [welcome],
         components: [ticketControlRow()],
         allowedMentions: {
           users: [member.id],
-          roles: cfg.staffRoleId ? [cfg.staffRoleId] : [],
+          roles: staffMentions,
         },
       });
 
@@ -234,7 +258,7 @@ export async function handleTicketInteraction(
                     },
                     {
                       name: "Categoría",
-                      value: catMeta?.label ?? category,
+                      value: catMeta.label,
                       inline: true,
                     },
                     { name: "Asunto", value: subject },
@@ -274,12 +298,12 @@ export async function handleTicketInteraction(
 
       const cfg = await getTicketConfig(interaction.guild.id);
       const member = await interaction.guild.members.fetch(interaction.user.id);
-      if (!isStaff(member, cfg)) {
+      if (!canClaimTicket(member, cfg)) {
         await interaction.reply({
           embeds: [
             new EmbedBuilder()
               .setColor(PINK)
-              .setDescription("❌ Solo el staff puede reclamar."),
+              .setDescription(cfg.claimPolicy === "anyone" ? "❌ No puedes reclamar este ticket." : "❌ Solo el staff puede reclamar."),
           ],
           ephemeral: true,
         });
@@ -322,9 +346,7 @@ export async function handleTicketInteraction(
 
       const cfg = await getTicketConfig(interaction.guild.id);
       const member = await interaction.guild.members.fetch(interaction.user.id);
-      const canClose =
-        ticket.userId === interaction.user.id || isStaff(member, cfg);
-      if (!canClose) {
+      if (!canCloseTicket(member, cfg, ticket.userId)) {
         await interaction.reply({
           embeds: [
             new EmbedBuilder()
@@ -353,7 +375,7 @@ export async function handleTicketInteraction(
             .setColor(PINK)
             .setDescription(
               "¿Seguro que quieres **cerrar** este ticket?\n" +
-                "Se generará un transcript y el canal se eliminará en unos segundos.",
+                `Se generará un transcript${cfg.deleteAfterCloseSec > 0 ? ` y el canal se eliminará en ${cfg.deleteAfterCloseSec}s` : ""}.`,
             ),
         ],
         components: [row],
@@ -390,6 +412,18 @@ export async function handleTicketInteraction(
       }
 
       const cfg = await getTicketConfig(interaction.guild.id);
+      const member = await interaction.guild.members.fetch(interaction.user.id);
+      if (!canCloseTicket(member, cfg, ticket.userId)) {
+        await interaction.update({
+          embeds: [
+            new EmbedBuilder()
+              .setColor(PINK)
+              .setDescription("❌ Ya no tienes permiso para cerrar este ticket."),
+          ],
+          components: [],
+        });
+        return true;
+      }
       const channel = interaction.channel;
       if (!channel || !channel.isTextBased() || channel.isDMBased()) {
         return true;
