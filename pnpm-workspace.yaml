@@ -169,5 +169,6 @@ allowBuilds:
   '@discordjs/opus': set this to true or false
   '@google/genai': set this to true or false
   esbuild: true
+  ffmpeg-static: set this to true or false
   protobufjs: set this to true or false
   youtube-dl-exec: set this to true or false
