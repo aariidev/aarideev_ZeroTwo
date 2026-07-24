@@ -405,7 +405,8 @@ SESSION_SECRET=una_cadena_secreta_aleatoria
 DEV_TOKEN=token_secreto_del_panel_dev
 DASHBOARD_URL=http://localhost:5173
 API_PUBLIC_URL=http://localhost:8080
-DISCORD_REDIRECT_URI=http://localhost:8080/api/auth/callback
+# Debe coincidir EXACTO con Discord Developer Portal → OAuth2 → Redirects
+DISCORD_REDIRECT_URI=http://localhost:5173/api/auth/discord/callback
 
 # Opcional — IA (chat por MD / panel dev)
 GEMINI_API_KEY=
@@ -417,6 +418,34 @@ SPOTIFY_CLIENT_SECRET=
 SPOTIFY_REFRESH_TOKEN=
 SPOTIFY_MARKET=ES
 ```
+
+### Dashboard público con VS Code Dev Tunnels (sin VPS)
+
+Si no tienes host, puedes exponer el Vite local (`:5173`) con un **Dev Tunnel** de VS Code:
+
+1. Arranca la API/bot (`:8080`) y el dashboard (`:5173`).
+2. En VS Code: Ports → forward `5173` → **Public** (o el comando Ports: Focus on Ports View).
+3. Copia la URL HTTPS (ej. `https://xxxx-5173.uks1.devtunnels.ms`).
+4. En `.env` (raíz del monorepo):
+
+```env
+DASHBOARD_URL=https://xxxx-5173.uks1.devtunnels.ms
+PUBLIC_APP_URL=https://xxxx-5173.uks1.devtunnels.ms
+API_PUBLIC_URL=https://xxxx-5173.uks1.devtunnels.ms
+DISCORD_REDIRECT_URI=https://xxxx-5173.uks1.devtunnels.ms/api/auth/discord/callback
+TUNNEL_HOST=xxxx-5173.uks1.devtunnels.ms
+COOKIE_SECURE=auto
+```
+
+5. En [Discord Developer Portal](https://discord.com/developers/applications) → tu app → **OAuth2 → Redirects**, añade **exactamente**:
+
+```text
+https://xxxx-5173.uks1.devtunnels.ms/api/auth/discord/callback
+```
+
+El login OAuth va al túnel; Vite hace proxy de `/api` → `http://localhost:8080`. No hace falta un segundo túnel para la API.
+
+En Windows, `.\scripts\start-dashboard-visible.ps1` lee `DASHBOARD_URL` / `TUNNEL_HOST` del `.env` y configura HMR por `wss` en el host del túnel.
 
 ### Base de datos
 
