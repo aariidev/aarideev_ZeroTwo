@@ -3,22 +3,26 @@ import {
   ChannelType,
   Client,
   GuildChannel,
+  GuildEmoji,
   GuildMember,
   Invite,
   Message,
   PartialGuildMember,
   PartialMessage,
   Role,
+  ThreadChannel,
   VoiceState,
   type NonThreadGuildBasedChannel,
 } from "discord.js";
 import {
   baseLogEmbed,
   codeBlock,
+  diffField,
   findAuditExecutor,
   findBulkDeleteActor,
   findMessageDeleteActor,
   getGuildLogSettings,
+  LOG_COLORS,
   messageJumpLink,
   quoteBlock,
   sendModLog,
@@ -37,24 +41,8 @@ import {
 import { logBotEvent } from "../../lib/botLogger.js";
 import { logger } from "../../lib/logger.js";
 
-const COLORS = {
-  ban: 0xff2d6b,
-  unban: 0x22c55e,
-  kick: 0xef4444,
-  timeout: 0xf97316,
-  untimeout: 0x84cc16,
-  delete: 0xf59e0b,
-  edit: 0x3b82f6,
-  bulk: 0xdc2626,
-  join: 0x00f5d4,
-  leave: 0x94a3b8,
-  roles: 0xa78bfa,
-  nick: 0x38bdf8,
-  channel: 0x2dd4bf,
-  role: 0xc084fc,
-  invite: 0xfbbf24,
-  voice: 0x22d3ee,
-};
+/** @deprecated prefer LOG_COLORS[event] + baseLogEmbed(..., { event }) */
+const COLORS = LOG_COLORS;
 
 function safeAvatar(user: { displayAvatarURL?: (o?: object) => string } | null | undefined) {
   try {
@@ -123,10 +111,15 @@ export function registerServerLogs(client: Client) {
         AuditLogEvent.MemberBanAdd,
         user.id,
       );
-      const embed = baseLogEmbed(client, "🔨 Miembro baneado", COLORS.ban)
+      const embed = baseLogEmbed(client, "Miembro baneado", COLORS.ban, {
+        event: "ban",
+        guildName: guild.name,
+        guildIcon: guild.iconURL({ size: 64 }),
+        description: "Un miembro fue **baneado** del servidor.",
+      })
         .setThumbnail(safeAvatar(user))
         .addFields(
-          { name: "👤 Usuario", value: userField(user), inline: false },
+          { name: "👤 Usuario", value: userField(user), inline: true },
           {
             name: "🛡️ Moderador",
             value: audit.executor ? userField(audit.executor) : "`Desconocido`",
@@ -156,10 +149,15 @@ export function registerServerLogs(client: Client) {
         AuditLogEvent.MemberBanRemove,
         user.id,
       );
-      const embed = baseLogEmbed(client, "✅ Miembro desbaneado", COLORS.unban)
+      const embed = baseLogEmbed(client, "Miembro desbaneado", COLORS.unban, {
+        event: "unban",
+        guildName: guild.name,
+        guildIcon: guild.iconURL({ size: 64 }),
+        description: "Se revocó un **ban**.",
+      })
         .setThumbnail(safeAvatar(user))
         .addFields(
-          { name: "👤 Usuario", value: userField(user), inline: false },
+          { name: "👤 Usuario", value: userField(user), inline: true },
           {
             name: "🛡️ Moderador",
             value: audit.executor ? userField(audit.executor) : "`Desconocido`",
@@ -241,9 +239,11 @@ export function registerServerLogs(client: Client) {
           : "BD (vacío) + gateway"
         : "solo gateway (no indexado)";
 
-      const embed = baseLogEmbed(client, "🗑️ Mensaje eliminado", COLORS.delete, {
-        description: `${actor.label}\n📦 Fuente de datos: **${source}**`,
+      const embed = baseLogEmbed(client, "Mensaje eliminado", COLORS.message_delete, {
+        event: "message_delete",
+        description: `${actor.label}\n📦 Fuente: **${source}**`,
         guildName: guild.name,
+        guildIcon: guild.iconURL({ size: 64 }),
       }).addFields(
         {
           name: "👤 Autor del mensaje",
@@ -403,7 +403,7 @@ export function registerServerLogs(client: Client) {
       const embed = baseLogEmbed(
         client,
         "🧹 Borrado masivo de mensajes",
-        COLORS.bulk,
+        COLORS.message_bulk_delete,
         {
           description: `${actor.label}\n📦 Reconstruidos desde BD: **${fromDb}/${messages.size}**`,
           guildName: guild.name,
@@ -520,10 +520,12 @@ export function registerServerLogs(client: Client) {
             ? `<@${dbBefore.authorId}>\n\`${dbBefore.authorTag}\``
             : "`Desconocido`";
 
-        const embed = baseLogEmbed(client, "✏️ Mensaje editado", COLORS.edit, {
+        const embed = baseLogEmbed(client, "Mensaje editado", COLORS.message_edit, {
+          event: "message_edit",
+          guildName: newMessage.guild.name,
+          guildIcon: newMessage.guild.iconURL({ size: 64 }),
           description:
             "Cambio de contenido detectado. El **antes** se lee de BD si el caché no lo tenía.",
-          guildName: newMessage.guild.name,
         })
           .setThumbnail(safeAvatar(newMessage.author ?? undefined))
           .addFields(
@@ -602,28 +604,35 @@ export function registerServerLogs(client: Client) {
         (Date.now() - accountAge.getTime()) / (1000 * 60 * 60 * 24),
       );
 
-      const embed = baseLogEmbed(client, "📥 Entrada al servidor", COLORS.join)
+      const embed = baseLogEmbed(client, "Entrada al servidor", COLORS.member_join, {
+        event: "member_join",
+        guildName: member.guild.name,
+        guildIcon: member.guild.iconURL({ size: 64 }),
+        description: `${member} se unió al nexo.`,
+      })
         .setThumbnail(safeAvatar(member.user))
         .addFields(
           { name: "👤 Usuario", value: userField(member.user), inline: false },
           {
             name: "📅 Cuenta creada",
-            value: `<t:${Math.floor(accountAge.getTime() / 1000)}:R> (${ageDays}d)`,
+            value: `<t:${Math.floor(accountAge.getTime() / 1000)}:f>\n<t:${Math.floor(accountAge.getTime() / 1000)}:R> · **${ageDays}d**`,
             inline: true,
           },
           {
             name: "👥 Miembros",
-            value: `\`${member.guild.memberCount}\``,
+            value: `\`${member.guild.memberCount.toLocaleString("es-ES")}\``,
             inline: true,
           },
         );
 
       if (settings.joinAlertDays > 0 && ageDays < settings.joinAlertDays) {
-        embed.addFields({
-          name: "⚠️ Alerta",
-          value: `Cuenta muy reciente (< ${settings.joinAlertDays} días)`,
-          inline: false,
-        });
+        embed
+          .setColor(0xf43f5e)
+          .addFields({
+            name: "⚠️ Alerta de cuenta nueva",
+            value: `Cuenta con menos de **${settings.joinAlertDays}** días · posible alt/raid`,
+            inline: false,
+          });
       }
 
       await sendModLog(client, member.guild.id, embed, {
@@ -653,7 +662,7 @@ export function registerServerLogs(client: Client) {
         const embed = baseLogEmbed(
           client,
           isKick ? "👢 Miembro expulsado (kick)" : "📤 Salida del servidor",
-          isKick ? COLORS.kick : COLORS.leave,
+          isKick ? COLORS.kick : COLORS.member_leave,
         )
           .setThumbnail(safeAvatar(user ?? undefined))
           .addFields(
@@ -735,15 +744,12 @@ export function registerServerLogs(client: Client) {
             newMember.id,
             12_000,
           );
-          const embed = baseLogEmbed(
-            client,
-            "⏳ Timeout aplicado",
-            COLORS.timeout,
-            {
-              description: "Un miembro fue aislado temporalmente.",
-              guildName: guild.name,
-            },
-          )
+          const embed = baseLogEmbed(client, "Timeout aplicado", COLORS.timeout, {
+            event: "timeout",
+            description: "Un miembro fue aislado temporalmente.",
+            guildName: guild.name,
+            guildIcon: guild.iconURL({ size: 64 }),
+          })
             .setThumbnail(safeAvatar(newMember.user))
             .addFields(
               {
@@ -782,12 +788,11 @@ export function registerServerLogs(client: Client) {
             newMember.id,
             12_000,
           );
-          const embed = baseLogEmbed(
-            client,
-            "✅ Timeout removido",
-            COLORS.untimeout,
-            { guildName: guild.name },
-          )
+          const embed = baseLogEmbed(client, "Timeout removido", COLORS.untimeout, {
+            event: "untimeout",
+            guildName: guild.name,
+            guildIcon: guild.iconURL({ size: 64 }),
+          })
             .setThumbnail(safeAvatar(newMember.user))
             .addFields(
               {
@@ -819,9 +824,13 @@ export function registerServerLogs(client: Client) {
           );
           const embed = baseLogEmbed(
             client,
-            "🏷️ Apodo actualizado",
-            COLORS.nick,
-            { guildName: guild.name },
+            "Apodo actualizado",
+            COLORS.member_nickname,
+            {
+              event: "member_nickname",
+              guildName: guild.name,
+              guildIcon: guild.iconURL({ size: 64 }),
+            },
           )
             .setThumbnail(safeAvatar(newMember.user))
             .addFields(
@@ -878,7 +887,7 @@ export function registerServerLogs(client: Client) {
             const embed = baseLogEmbed(
               client,
               "🎭 Roles actualizados",
-              COLORS.roles,
+              COLORS.member_roles,
               { guildName: guild.name },
             )
               .setThumbnail(safeAvatar(newMember.user))
@@ -930,7 +939,11 @@ export function registerServerLogs(client: Client) {
     try {
       if (!("guild" in channel) || !channel.guild) return;
       const ch = channel as GuildChannel;
-      const embed = baseLogEmbed(client, "📁 Canal creado", COLORS.channel).addFields(
+      const embed = baseLogEmbed(client, "Canal creado", COLORS.channel_create, {
+        event: "channel_create",
+        guildName: ch.guild.name,
+        guildIcon: ch.guild.iconURL({ size: 64 }),
+      }).addFields(
         {
           name: "Canal",
           value: channelLabel(ch),
@@ -952,11 +965,11 @@ export function registerServerLogs(client: Client) {
     try {
       if (!("guild" in channel) || !channel.guild) return;
       const ch = channel as NonThreadGuildBasedChannel;
-      const embed = baseLogEmbed(
-        client,
-        "🗑️ Canal eliminado",
-        COLORS.channel,
-      ).addFields(
+      const embed = baseLogEmbed(client, "Canal eliminado", COLORS.channel_delete, {
+        event: "channel_delete",
+        guildName: ch.guild.name,
+        guildIcon: ch.guild.iconURL({ size: 64 }),
+      }).addFields(
         {
           name: "Canal",
           value: channelLabel(ch),
@@ -977,18 +990,24 @@ export function registerServerLogs(client: Client) {
   // ── ROLE CREATE / DELETE ───────────────────────────────────────────────────
   client.on("roleCreate", async (role: Role) => {
     try {
-      const embed = baseLogEmbed(client, "🏷️ Rol creado", COLORS.role).addFields(
-        {
-          name: "Rol",
-          value: `${role} (\`${role.name}\` · \`${role.id}\`)`,
-          inline: false,
-        },
-        {
-          name: "Color",
-          value: `\`${role.hexColor}\``,
-          inline: true,
-        },
-      );
+      const embed = baseLogEmbed(client, "Rol creado", COLORS.role_create, {
+        event: "role_create",
+        guildName: role.guild.name,
+        guildIcon: role.guild.iconURL({ size: 64 }),
+      })
+        .setColor(role.color || COLORS.role_create)
+        .addFields(
+          {
+            name: "Rol",
+            value: `${role} (\`${role.name}\` · \`${role.id}\`)`,
+            inline: false,
+          },
+          {
+            name: "Color",
+            value: `\`${role.hexColor}\``,
+            inline: true,
+          },
+        );
       await sendModLog(client, role.guild.id, embed, { event: "role_create" });
     } catch (err) {
       logger.error({ err }, "serverLogs:roleCreate");
@@ -997,13 +1016,15 @@ export function registerServerLogs(client: Client) {
 
   client.on("roleDelete", async (role: Role) => {
     try {
-      const embed = baseLogEmbed(client, "🗑️ Rol eliminado", COLORS.role).addFields(
-        {
-          name: "Rol",
-          value: `\`${role.name}\` · \`${role.id}\``,
-          inline: false,
-        },
-      );
+      const embed = baseLogEmbed(client, "Rol eliminado", COLORS.role_delete, {
+        event: "role_delete",
+        guildName: role.guild.name,
+        guildIcon: role.guild.iconURL({ size: 64 }),
+      }).addFields({
+        name: "Rol",
+        value: `\`${role.name}\` · \`${role.id}\``,
+        inline: false,
+      });
       await sendModLog(client, role.guild.id, embed, { event: "role_delete" });
     } catch (err) {
       logger.error({ err }, "serverLogs:roleDelete");
@@ -1014,11 +1035,11 @@ export function registerServerLogs(client: Client) {
   client.on("inviteCreate", async (invite: Invite) => {
     try {
       if (!invite.guild) return;
-      const embed = baseLogEmbed(
-        client,
-        "🔗 Invitación creada",
-        COLORS.invite,
-      ).addFields(
+      const embed = baseLogEmbed(client, "Invitación creada", COLORS.invite_create, {
+        event: "invite_create",
+        guildName: invite.guild.name,
+        guildIcon: invite.guild.iconURL?.({ size: 64 }) ?? null,
+      }).addFields(
         {
           name: "Código",
           value: `[\`${invite.code}\`](https://discord.gg/${invite.code})`,
@@ -1052,11 +1073,10 @@ export function registerServerLogs(client: Client) {
   client.on("inviteDelete", async (invite: Invite) => {
     try {
       if (!invite.guild) return;
-      const embed = baseLogEmbed(
-        client,
-        "🔗 Invitación eliminada",
-        COLORS.invite,
-      ).addFields({
+      const embed = baseLogEmbed(client, "Invitación eliminada", COLORS.invite_delete, {
+        event: "invite_delete",
+        guildName: invite.guild.name,
+      }).addFields({
         name: "Código",
         value: `\`${invite.code}\``,
         inline: true,
@@ -1081,10 +1101,73 @@ export function registerServerLogs(client: Client) {
 
         const oldCh = oldState.channelId;
         const newCh = newState.channelId;
+
+        // Server mute / deaf (same channel still matters)
+        if (oldState.serverMute !== newState.serverMute) {
+          const embed = baseLogEmbed(
+            client,
+            newState.serverMute ? "Mute de servidor" : "Unmute de servidor",
+            COLORS.voice_server_mute,
+            {
+              event: "voice_server_mute",
+              guildName: guild.name,
+              guildIcon: guild.iconURL({ size: 64 }),
+            },
+          )
+            .setThumbnail(safeAvatar(member.user))
+            .addFields(
+              { name: "👤 Usuario", value: userField(member.user), inline: true },
+              {
+                name: "Estado",
+                value: newState.serverMute ? "`🔇 muteado`" : "`🔊 libre`",
+                inline: true,
+              },
+              {
+                name: "Canal",
+                value: newCh ? `<#${newCh}>` : oldCh ? `<#${oldCh}>` : "`—`",
+                inline: true,
+              },
+            );
+          await sendModLog(client, guild.id, embed, {
+            event: "voice_server_mute",
+            actorIsBot: member.user.bot,
+          });
+        }
+        if (oldState.serverDeaf !== newState.serverDeaf) {
+          const embed = baseLogEmbed(
+            client,
+            newState.serverDeaf ? "Sordo de servidor" : "Undeaf de servidor",
+            COLORS.voice_server_deaf,
+            {
+              event: "voice_server_deaf",
+              guildName: guild.name,
+              guildIcon: guild.iconURL({ size: 64 }),
+            },
+          )
+            .setThumbnail(safeAvatar(member.user))
+            .addFields(
+              { name: "👤 Usuario", value: userField(member.user), inline: true },
+              {
+                name: "Estado",
+                value: newState.serverDeaf ? "`🙉 sordo`" : "`👂 escucha`",
+                inline: true,
+              },
+            );
+          await sendModLog(client, guild.id, embed, {
+            event: "voice_server_deaf",
+            actorIsBot: member.user.bot,
+          });
+        }
+
+        // Channel transitions only below
         if (oldCh === newCh) return;
 
         if (!oldCh && newCh) {
-          const embed = baseLogEmbed(client, "🎙️ Entrada a voz", COLORS.voice)
+          const embed = baseLogEmbed(client, "Entrada a voz", COLORS.voice_join, {
+            event: "voice_join",
+            guildName: guild.name,
+            guildIcon: guild.iconURL({ size: 64 }),
+          })
             .setThumbnail(safeAvatar(member.user))
             .addFields(
               {
@@ -1103,7 +1186,11 @@ export function registerServerLogs(client: Client) {
             actorIsBot: member.user.bot,
           });
         } else if (oldCh && !newCh) {
-          const embed = baseLogEmbed(client, "🎙️ Salida de voz", COLORS.voice)
+          const embed = baseLogEmbed(client, "Salida de voz", COLORS.voice_leave, {
+            event: "voice_leave",
+            guildName: guild.name,
+            guildIcon: guild.iconURL({ size: 64 }),
+          })
             .setThumbnail(safeAvatar(member.user))
             .addFields(
               {
@@ -1122,11 +1209,11 @@ export function registerServerLogs(client: Client) {
             actorIsBot: member.user.bot,
           });
         } else if (oldCh && newCh) {
-          const embed = baseLogEmbed(
-            client,
-            "🎙️ Movimiento de voz",
-            COLORS.voice,
-          )
+          const embed = baseLogEmbed(client, "Movimiento de voz", COLORS.voice_move, {
+            event: "voice_move",
+            guildName: guild.name,
+            guildIcon: guild.iconURL({ size: 64 }),
+          })
             .setThumbnail(safeAvatar(member.user))
             .addFields(
               {
@@ -1156,7 +1243,229 @@ export function registerServerLogs(client: Client) {
     },
   );
 
+  // ── CHANNEL UPDATE ─────────────────────────────────────────────────────────
+  client.on("channelUpdate", async (oldCh, newCh) => {
+    try {
+      if (!("guild" in newCh) || !newCh.guild) return;
+      if (oldCh.isDMBased?.() || newCh.isDMBased?.()) return;
+      const o = oldCh as GuildChannel;
+      const n = newCh as GuildChannel;
+      const changes: string[] = [];
+      if (o.name !== n.name) {
+        changes.push(diffField(`#${o.name}`, `#${n.name}`));
+      }
+      if ("topic" in o && "topic" in n && o.topic !== n.topic) {
+        changes.push(
+          `**Tema:**\n${diffField(String(o.topic ?? "—"), String(n.topic ?? "—"))}`,
+        );
+      }
+      if ("nsfw" in o && "nsfw" in n && o.nsfw !== n.nsfw) {
+        changes.push(`**NSFW:** \`${o.nsfw}\` → \`${n.nsfw}\``);
+      }
+      if ("rateLimitPerUser" in o && "rateLimitPerUser" in n && o.rateLimitPerUser !== n.rateLimitPerUser) {
+        changes.push(
+          `**Slowmode:** \`${o.rateLimitPerUser}s\` → \`${n.rateLimitPerUser}s\``,
+        );
+      }
+      if (!changes.length) return;
+
+      const embed = baseLogEmbed(client, "Canal editado", COLORS.channel_update, {
+        event: "channel_update",
+        guildName: n.guild.name,
+        guildIcon: n.guild.iconURL({ size: 64 }),
+        description: changes.join("\n\n").slice(0, 3500),
+      }).addFields({
+        name: "Canal",
+        value: `${n} · \`${n.id}\``,
+        inline: false,
+      });
+      await sendModLog(client, n.guild.id, embed, { event: "channel_update" });
+    } catch (err) {
+      logger.error({ err }, "serverLogs:channelUpdate");
+    }
+  });
+
+  // ── ROLE UPDATE ────────────────────────────────────────────────────────────
+  client.on("roleUpdate", async (oldRole: Role, newRole: Role) => {
+    try {
+      const changes: string[] = [];
+      if (oldRole.name !== newRole.name) {
+        changes.push(diffField(oldRole.name, newRole.name));
+      }
+      if (oldRole.hexColor !== newRole.hexColor) {
+        changes.push(`**Color:** \`${oldRole.hexColor}\` → \`${newRole.hexColor}\``);
+      }
+      if (oldRole.hoist !== newRole.hoist) {
+        changes.push(`**Separado:** \`${oldRole.hoist}\` → \`${newRole.hoist}\``);
+      }
+      if (oldRole.mentionable !== newRole.mentionable) {
+        changes.push(
+          `**Mencionable:** \`${oldRole.mentionable}\` → \`${newRole.mentionable}\``,
+        );
+      }
+      if (oldRole.permissions.bitfield !== newRole.permissions.bitfield) {
+        changes.push("**Permisos:** cambiados");
+      }
+      if (!changes.length) return;
+
+      const embed = baseLogEmbed(client, "Rol editado", COLORS.role_update, {
+        event: "role_update",
+        guildName: newRole.guild.name,
+        guildIcon: newRole.guild.iconURL({ size: 64 }),
+        description: changes.join("\n"),
+      })
+        .setColor(newRole.color || COLORS.role_update)
+        .addFields({
+          name: "Rol",
+          value: `${newRole} · \`${newRole.id}\``,
+          inline: false,
+        });
+      await sendModLog(client, newRole.guild.id, embed, { event: "role_update" });
+    } catch (err) {
+      logger.error({ err }, "serverLogs:roleUpdate");
+    }
+  });
+
+  // ── THREADS ────────────────────────────────────────────────────────────────
+  client.on("threadCreate", async (thread: ThreadChannel) => {
+    try {
+      if (!thread.guild) return;
+      const embed = baseLogEmbed(client, "Hilo creado", COLORS.thread_create, {
+        event: "thread_create",
+        guildName: thread.guild.name,
+        guildIcon: thread.guild.iconURL({ size: 64 }),
+      }).addFields(
+        {
+          name: "Hilo",
+          value: `${thread} · \`${thread.name}\``,
+          inline: true,
+        },
+        {
+          name: "Padre",
+          value: thread.parentId ? `<#${thread.parentId}>` : "`—`",
+          inline: true,
+        },
+        {
+          name: "Creador",
+          value: thread.ownerId ? `<@${thread.ownerId}>` : "`—`",
+          inline: true,
+        },
+      );
+      await sendModLog(client, thread.guild.id, embed, {
+        event: "thread_create",
+      });
+    } catch (err) {
+      logger.error({ err }, "serverLogs:threadCreate");
+    }
+  });
+
+  client.on("threadDelete", async (thread: ThreadChannel) => {
+    try {
+      if (!thread.guild) return;
+      const embed = baseLogEmbed(client, "Hilo eliminado", COLORS.thread_delete, {
+        event: "thread_delete",
+        guildName: thread.guild.name,
+      }).addFields({
+        name: "Hilo",
+        value: `\`${thread.name}\` · \`${thread.id}\``,
+        inline: false,
+      });
+      await sendModLog(client, thread.guild.id, embed, {
+        event: "thread_delete",
+      });
+    } catch (err) {
+      logger.error({ err }, "serverLogs:threadDelete");
+    }
+  });
+
+  // ── EMOJIS ─────────────────────────────────────────────────────────────────
+  client.on("emojiCreate", async (emoji: GuildEmoji) => {
+    try {
+      const embed = baseLogEmbed(client, "Emoji creado", COLORS.emoji_create, {
+        event: "emoji_create",
+        guildName: emoji.guild.name,
+        guildIcon: emoji.guild.iconURL({ size: 64 }),
+      })
+        .setThumbnail(emoji.imageURL())
+        .addFields(
+          { name: "Nombre", value: `\`:${emoji.name}:\``, inline: true },
+          { name: "ID", value: `\`${emoji.id}\``, inline: true },
+          {
+            name: "Animado",
+            value: emoji.animated ? "`sí`" : "`no`",
+            inline: true,
+          },
+        );
+      await sendModLog(client, emoji.guild.id, embed, { event: "emoji_create" });
+    } catch (err) {
+      logger.error({ err }, "serverLogs:emojiCreate");
+    }
+  });
+
+  client.on("emojiDelete", async (emoji: GuildEmoji) => {
+    try {
+      const embed = baseLogEmbed(client, "Emoji eliminado", COLORS.emoji_delete, {
+        event: "emoji_delete",
+        guildName: emoji.guild.name,
+      }).addFields(
+        { name: "Nombre", value: `\`:${emoji.name}:\``, inline: true },
+        { name: "ID", value: `\`${emoji.id}\``, inline: true },
+      );
+      await sendModLog(client, emoji.guild.id, embed, { event: "emoji_delete" });
+    } catch (err) {
+      logger.error({ err }, "serverLogs:emojiDelete");
+    }
+  });
+
+  // ── BOOST ──────────────────────────────────────────────────────────────────
+  client.on(
+    "guildMemberUpdate",
+    async (
+      oldMember: GuildMember | PartialGuildMember,
+      newMember: GuildMember,
+    ) => {
+      try {
+        const was = Boolean(oldMember.premiumSince);
+        const nowBoost = Boolean(newMember.premiumSince);
+        if (was === nowBoost) return;
+
+        const embed = baseLogEmbed(
+          client,
+          nowBoost ? "Boost activado" : "Boost finalizado",
+          COLORS.member_boost,
+          {
+            event: "member_boost",
+            guildName: newMember.guild.name,
+            guildIcon: newMember.guild.iconURL({ size: 64 }),
+            description: nowBoost
+              ? `${newMember} impulsó el servidor 💎`
+              : `${newMember} ya no impulsa el servidor.`,
+          },
+        )
+          .setThumbnail(safeAvatar(newMember.user))
+          .addFields(
+            {
+              name: "👤 Usuario",
+              value: userField(newMember.user),
+              inline: true,
+            },
+            {
+              name: "💎 Boosts del server",
+              value: `\`${newMember.guild.premiumSubscriptionCount ?? 0}\``,
+              inline: true,
+            },
+          );
+        await sendModLog(client, newMember.guild.id, embed, {
+          event: "member_boost",
+          actorIsBot: newMember.user.bot,
+        });
+      } catch (err) {
+        logger.error({ err }, "serverLogs:memberBoost");
+      }
+    },
+  );
+
   logger.info(
-    "📡 Logs de servidor ampliados: mod · mensajes · miembros · canales · roles · invites · voz",
+    "📡 Logs de servidor v2: mod · mensajes · miembros · boost · canales · roles · hilos · emojis · invites · voz",
   );
 }
