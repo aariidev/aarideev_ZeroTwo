@@ -167,13 +167,31 @@ async function sendDevEmbed(embed, components = []) {
   return msg?.id ?? null;
 }
 
-async function editDevMessage(msgId, embed, components = []) {
-  if (!DEV_CHANNEL_ID || !msgId) return;
-  await discordRequest(
+async function editDevMessage(msgId, embed, components = [], channelId = DEV_CHANNEL_ID) {
+  if (!channelId || !msgId) return false;
+  const res = await discordRequest(
     "PATCH",
-    `/channels/${DEV_CHANNEL_ID}/messages/${msgId}`,
+    `/channels/${channelId}/messages/${msgId}`,
     { embeds: [embed], components },
   );
+  return res != null;
+}
+
+/** Reintenta editar el embed de estado (evita quedarse en "Reiniciando…") */
+async function editDevMessageRetry(
+  msgId,
+  embed,
+  components = [],
+  channelId = DEV_CHANNEL_ID,
+  attempts = 4,
+) {
+  for (let i = 0; i < attempts; i++) {
+    const ok = await editDevMessage(msgId, embed, components, channelId);
+    if (ok) return true;
+    await new Promise((r) => setTimeout(r, 400 * (i + 1)));
+  }
+  log("discord", `no pude editar mensaje ${msgId} tras ${attempts} intentos`, A.red);
+  return false;
 }
 
 // ── UI helpers ────────────────────────────────────────────────────────────────
@@ -330,10 +348,11 @@ async function notifyBuildError(stderr) {
   );
 }
 
-async function notifyRestarting() {
-  if (!notifyMsgId) return;
-  await editDevMessage(
-    notifyMsgId,
+async function notifyRestarting(msgId = notifyMsgId, channelId = DEV_CHANNEL_ID) {
+  const id = msgId || notifyMsgId;
+  if (!id) return;
+  await editDevMessageRetry(
+    id,
     baseEmbed({
       color: C.purple,
       title: "🔄 Reiniciando el núcleo…",
@@ -346,10 +365,15 @@ async function notifyRestarting() {
       footerExtra: `build #${buildSession} · restarting`,
     }),
     [],
+    channelId || DEV_CHANNEL_ID,
   );
 }
 
-async function notifyRestarted() {
+async function notifyRestarted(msgId = notifyMsgId, channelId = DEV_CHANNEL_ID) {
+  const id = msgId || notifyMsgId;
+  // Pequeña espera: el bot nuevo termina de arrancar y Discord asienta el update previo
+  await new Promise((r) => setTimeout(r, 600));
+
   const up =
     botStartedAt != null
       ? `arranque <t:${Math.floor(botStartedAt / 1000)}:R>`
@@ -383,12 +407,18 @@ async function notifyRestarted() {
     footerExtra: `build #${buildSession} · ready`,
   });
 
-  if (notifyMsgId) {
-    await editDevMessage(notifyMsgId, embed, []);
-    notifyMsgId = null;
-  } else {
-    await sendDevEmbed(embed);
+  const ch = channelId || DEV_CHANNEL_ID;
+  if (id) {
+    const ok = await editDevMessageRetry(id, embed, [], ch, 5);
+    if (ok) {
+      if (id === notifyMsgId) notifyMsgId = null;
+      log("discord", "embed actualizado → ONLINE", A.green);
+      return;
+    }
+    log("discord", "edit falló — enviando mensaje nuevo de éxito", A.amber);
   }
+  await sendDevEmbed(embed);
+  notifyMsgId = null;
 }
 
 async function notifyCancelled() {
@@ -457,10 +487,22 @@ function startBot() {
   botStartedAt = Date.now();
 
   botProcess.on("message", (message) => {
+    if (message?.type === "dev_reload_cancel") {
+      // El bot ya actualizó el embed a "pospuesto"
+      if (message.messageId) notifyMsgId = null;
+      pendingBuild = false;
+      log("ipc", "reload cancelado por el owner", A.amber);
+      return;
+    }
     if (message?.type !== "dev_reload_confirm") return;
     log("ipc", "dev_reload_confirm → reinicio", A.purple);
-    void notifyRestarting();
-    restartBot().catch(console.error);
+    // messageId del embed (por si el bot actualizó el mensaje vía interaction)
+    const msgId = message.messageId || notifyMsgId;
+    const chId = message.channelId || DEV_CHANNEL_ID;
+    if (message.messageId) notifyMsgId = message.messageId;
+    // IMPORTANTE: await restart en serie — si notifyRestarting no se espera,
+    // puede pisar el embed verde de "ONLINE" al llegar tarde (race).
+    restartBot({ messageId: msgId, channelId: chId }).catch(console.error);
   });
 
   botProcess.on("exit", (code, signal) => {
@@ -493,20 +535,32 @@ function killBot() {
   });
 }
 
-async function restartBot() {
+/**
+ * @param {{ messageId?: string | null, channelId?: string | null }} [opts]
+ */
+async function restartBot(opts = {}) {
   if (isRestarting) return;
   isRestarting = true;
+  const msgId = opts.messageId || notifyMsgId;
+  const chId = opts.channelId || DEV_CHANNEL_ID;
   log("bot", "reiniciando…", A.purple);
+
+  // 1) Embed "reiniciando" (el bot suele haberlo puesto ya con interaction.update)
+  await notifyRestarting(msgId, chId).catch(() => null);
+
+  // 2) Matar hijo y arrancar de nuevo
   await killBot();
   pendingBuild = false;
   isRestarting = false;
   startBot();
-  await notifyRestarted();
+
+  // 3) Esperar un poco a que el bot nuevo esté vivo y actualizar a ONLINE
+  await new Promise((r) => setTimeout(r, 1200));
+  await notifyRestarted(msgId, chId);
 }
 
 process.on("SIGUSR2", () => {
   log("signal", "SIGUSR2 → reinicio", A.purple);
-  void notifyRestarting();
   restartBot().catch(console.error);
 });
 

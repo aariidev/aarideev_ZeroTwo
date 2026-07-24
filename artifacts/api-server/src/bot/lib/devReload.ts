@@ -60,6 +60,9 @@ export async function handleDevReloadButton(
 
   const botIcon = interaction.client.user?.displayAvatarURL({ size: 64 });
 
+  const messageId = interaction.message?.id ?? null;
+  const channelId = interaction.channelId ?? null;
+
   if (customId === DEV_RELOAD_CANCEL) {
     await interaction.update({
       embeds: [
@@ -92,10 +95,17 @@ export async function handleDevReloadButton(
       ],
       components: [],
     });
+    if (typeof process.send === "function") {
+      process.send({
+        type: "dev_reload_cancel",
+        messageId,
+        channelId,
+      });
+    }
     return true;
   }
 
-  // confirm
+  // confirm — primero actualizamos el embed (interaction), luego avisamos al watcher
   await interaction.update({
     embeds: [
       new EmbedBuilder()
@@ -111,7 +121,7 @@ export async function handleDevReloadButton(
             "",
             `\`[${bar(55)}]\` *hot reload en curso*`,
             "",
-            "Si el watcher está activo, el bot volverá solo. ✨",
+            "El watcher actualizará este mensaje a **ONLINE** al terminar. ✨",
           ].join("\n"),
         )
         .addFields({
@@ -128,8 +138,20 @@ export async function handleDevReloadButton(
     components: [],
   });
 
+  // IPC al watcher (incluye messageId para que actualice este mismo embed a ONLINE)
   if (typeof process.send === "function") {
-    process.send({ type: "dev_reload_confirm" });
+    const sent = process.send({
+      type: "dev_reload_confirm",
+      messageId,
+      channelId,
+    });
+    // process.send puede ser sync false en buffer lleno; forzar un tick
+    if (sent === false) {
+      await new Promise<void>((resolve) => {
+        process.once("drain", () => resolve());
+        setTimeout(resolve, 200);
+      });
+    }
     return true;
   }
 
