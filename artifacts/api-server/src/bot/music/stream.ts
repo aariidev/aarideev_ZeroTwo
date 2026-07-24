@@ -13,9 +13,28 @@ import {
 import ffmpegStatic from "ffmpeg-static";
 import { logger } from "../../lib/logger.js";
 
+function repoRoot(): string {
+  // Prefer monorepo root (…/02) when running from artifacts/api-server
+  const cwd = process.cwd();
+  const candidates = [
+    path.resolve(cwd, "..", ".."),
+    path.resolve(cwd, ".."),
+    cwd,
+    "H:\\Discord\\02",
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(path.join(c, "bin", "yt-dlp.exe"))) return c;
+    if (fs.existsSync(path.join(c, "package.json")) && fs.existsSync(path.join(c, "artifacts")))
+      return c;
+  }
+  return cwd;
+}
+
 function findYtDlp(): string | null {
+  const root = repoRoot();
   const candidates = [
     process.env.YTDLP_PATH?.trim(),
+    path.join(root, "bin", "yt-dlp.exe"),
     path.join(process.cwd(), "bin", "yt-dlp.exe"),
     path.join(process.cwd(), "..", "bin", "yt-dlp.exe"),
     path.join(process.cwd(), "..", "..", "bin", "yt-dlp.exe"),
@@ -26,6 +45,61 @@ function findYtDlp(): string | null {
     if (fs.existsSync(c)) return c;
   }
   return null;
+}
+
+/** Dedicated temp for PyInstaller yt-dlp (avoids corrupt system TEMP + OOM extract). */
+function ensureYtDlpTemp(): string {
+  const dir =
+    process.env.YTDLP_TEMP?.trim() ||
+    path.join(repoRoot(), ".tmp", "ytdlp");
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+  } catch {
+    /* fallback to system temp */
+    return process.env.TEMP || process.env.TMP || dir;
+  }
+  return dir;
+}
+
+function spawnEnv(): NodeJS.ProcessEnv {
+  const tmp = ensureYtDlpTemp();
+  return {
+    ...process.env,
+    TEMP: tmp,
+    TMP: tmp,
+    TMPDIR: tmp,
+    // Reduce Python/PyInstaller extract pressure a bit
+    PYTHONUTF8: "1",
+  };
+}
+
+/** Fatal host errors — more format retries only make ENOMEM worse. */
+function isFatalHostError(err: unknown): boolean {
+  const e = err as { code?: string; message?: string; errno?: number };
+  const msg = String(e?.message ?? err);
+  const code = String(e?.code ?? "");
+  return (
+    code === "ENOMEM" ||
+    code === "UNKNOWN" ||
+    /ENOMEM|out of memory|VirtualAlloc|Failed to extract|inflateInit|PYI-|Cryptodome/i.test(
+      msg,
+    )
+  );
+}
+
+function friendlyStreamError(err: unknown): Error {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (/Failed to extract|inflateInit|PYI-|Cryptodome/i.test(msg)) {
+    return new Error(
+      "yt-dlp dañado o TEMP sin espacio. Reinstala `bin/yt-dlp.exe` y limpia `.tmp/ytdlp` / %TEMP%.",
+    );
+  }
+  if (/ENOMEM|spawn UNKNOWN|out of memory/i.test(msg)) {
+    return new Error(
+      "Sin memoria para lanzar yt-dlp/ffmpeg (ENOMEM). Cierra apps pesadas y reintenta.",
+    );
+  }
+  return err instanceof Error ? err : new Error(msg);
 }
 
 function findFfmpeg(): string {
@@ -169,12 +243,10 @@ export async function createTrackResource(
     "music: yt-dlp | ffmpeg → OggOpus",
   );
 
-  // Try several format strategies — after EJS, bestaudio/best usually works
+  // Prefer 1–2 strategies. Cascading 4 spawns under low RAM causes ENOMEM storms.
   const formatAttempts = [
     "bestaudio/best",
-    "bestaudio*",
     "140/251/250/249/bestaudio/best", // common m4a/webm audio itags
-    "18/22/best", // progressive mp4 fallback
   ];
 
   let lastErr: Error | null = null;
@@ -189,12 +261,18 @@ export async function createTrackResource(
         startSec,
       );
     } catch (err) {
-      lastErr = err instanceof Error ? err : new Error(String(err));
+      lastErr = friendlyStreamError(err);
       logger.warn(
-        { format, err: lastErr.message.slice(0, 220) },
+        { format, err: lastErr.message.slice(0, 280) },
         "music: format attempt failed",
       );
-      // If section seek fails, retry from start once
+
+      // Host/temp broken — more attempts only spawn more processes
+      if (isFatalHostError(err) || isFatalHostError(lastErr)) {
+        throw lastErr;
+      }
+
+      // If section seek fails, retry from start once (same format only)
       if (startSec > 0) {
         try {
           return await spawnPipeline(
@@ -206,7 +284,10 @@ export async function createTrackResource(
             0,
           );
         } catch (err2) {
-          lastErr = err2 instanceof Error ? err2 : new Error(String(err2));
+          lastErr = friendlyStreamError(err2);
+          if (isFatalHostError(err2) || isFatalHostError(lastErr)) {
+            throw lastErr;
+          }
         }
       }
     }
@@ -245,18 +326,24 @@ function spawnPipeline(
   ];
 
   return new Promise<StreamHandle>((resolve, reject) => {
-    const ytdlpProc: ChildProcessWithoutNullStreams = spawn(ytdlp, ytdlpArgs, {
-      stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true,
-    });
-    const ffmpegProc: ChildProcessWithoutNullStreams = spawn(
-      ffmpeg,
-      ffmpegArgs,
-      {
+    const env = spawnEnv();
+    let ytdlpProc: ChildProcessWithoutNullStreams;
+    let ffmpegProc: ChildProcessWithoutNullStreams;
+    try {
+      ytdlpProc = spawn(ytdlp, ytdlpArgs, {
+        stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true,
+        env,
+      }) as ChildProcessWithoutNullStreams;
+      ffmpegProc = spawn(ffmpeg, ffmpegArgs, {
         stdio: ["pipe", "pipe", "pipe"],
         windowsHide: true,
-      },
-    );
+        env,
+      }) as ChildProcessWithoutNullStreams;
+    } catch (err) {
+      reject(friendlyStreamError(err));
+      return;
+    }
 
     // Swallow EPIPE when the other side closes (skip/stop/end) — must not crash Node
     const ignorePipeError = (err: NodeJS.ErrnoException) => {
@@ -401,10 +488,10 @@ function spawnPipeline(
     };
 
     ytdlpProc.once("error", (e) => {
-      if (!settled) fail(`yt-dlp: ${e.message}`);
+      if (!settled) fail(friendlyStreamError(e).message);
     });
     ffmpegProc.once("error", (e) => {
-      if (!settled) fail(`ffmpeg: ${e.message}`);
+      if (!settled) fail(friendlyStreamError(e).message);
     });
     ffmpegProc.stdout.once("readable", () => ok());
 
@@ -421,11 +508,8 @@ function spawnPipeline(
     });
     ytdlpProc.once("close", (code) => {
       if (!settled && code && code !== 0) {
-        fail(
-          `yt-dlp exit ${code}: ${
-            ytdlpErr.trim().slice(0, 300) || "falló la descarga"
-          }`,
-        );
+        const raw = ytdlpErr.trim().slice(0, 400) || "falló la descarga";
+        fail(friendlyStreamError(new Error(`yt-dlp exit ${code}: ${raw}`)).message);
       }
     });
   });

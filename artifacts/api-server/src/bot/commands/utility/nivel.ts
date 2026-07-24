@@ -21,6 +21,11 @@ import {
   rankTitle,
   grantXp,
 } from "../../lib/levels.js";
+import {
+  formatAchievementList,
+  parseAchievementsJson,
+  ACHIEVEMENT_CATALOG,
+} from "../../lib/achievements.js";
 import { BOT_VERSION } from "../../lib/version.js";
 
 const PINK = 0xff2d6b;
@@ -41,6 +46,14 @@ const command: Command = {
     )
     .addSubcommand((s) =>
       s.setName("top").setDescription("Ranking de XP del servidor"),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("logros")
+        .setDescription("Ver logros de nivel desbloqueados")
+        .addUserOption((o) =>
+          o.setName("usuario").setDescription("Usuario (por defecto: tú)"),
+        ),
     )
     .addSubcommand((s) =>
       s
@@ -164,6 +177,52 @@ const command: Command = {
                 name: "🎙️ Minutos en voz",
                 value: `\`${user.voiceMinutes.toLocaleString("es-ES")}\``,
                 inline: true,
+              },
+              {
+                name: "🏅 Logros",
+                value: `\`${parseAchievementsJson((user as { achievements?: string }).achievements).length}\` / \`${ACHIEVEMENT_CATALOG.length}\` · \`/nivel logros\``,
+                inline: true,
+              },
+            )
+            .setFooter({ text: `Zero Two ${BOT_VERSION}` })
+            .setTimestamp(),
+        ],
+      });
+      return;
+    }
+
+    if (sub === "logros") {
+      const target = interaction.options.getUser("usuario") ?? interaction.user;
+      const user = await getUserLevel(guildId, target.id);
+      const unlocked = parseAchievementsJson(
+        (user as { achievements?: string }).achievements,
+      );
+      const { unlockedLines, lockedLines, unlockedCount } =
+        formatAchievementList(unlocked);
+
+      await interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(GOLD)
+            .setAuthor({
+              name: "Zero Two · Logros",
+              iconURL: client.user?.displayAvatarURL() ?? undefined,
+            })
+            .setTitle(`🏅 Logros de ${target.displayName}`)
+            .setThumbnail(target.displayAvatarURL({ size: 256 }))
+            .setDescription(
+              `**${unlockedCount}** / **${ACHIEVEMENT_CATALOG.length}** desbloqueados`,
+            )
+            .addFields(
+              {
+                name: "✅ Desbloqueados",
+                value: unlockedLines.slice(0, 1020),
+                inline: false,
+              },
+              {
+                name: "🔒 Bloqueados",
+                value: lockedLines.slice(0, 1020),
+                inline: false,
               },
             )
             .setFooter({ text: `Zero Two ${BOT_VERSION}` })
