@@ -312,6 +312,7 @@ async function fetchLiveFromSub(
     title?: string;
     url?: string;
     postLink?: string;
+    subreddit?: string;
     author?: string;
     ups?: number;
     nsfw?: boolean;
@@ -462,7 +463,9 @@ async function obtenerMeme(
     forcedSub && DARK_SUBS.has(forcedSub.toLowerCase())
       ? "dark"
       : categoryId;
-  const isDark = effectiveCat === "dark" || categoryMeta(effectiveCat).requiresDisclaimer;
+  const isDark =
+    effectiveCat === "dark" ||
+    Boolean(categoryMeta(effectiveCat).requiresDisclaimer);
 
   // Dark: probar todos los subs de la categoría (archivo + vivos)
   let trySubs: string[];
