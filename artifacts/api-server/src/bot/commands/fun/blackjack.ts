@@ -26,10 +26,9 @@ import {
   getBalance,
   deductBalance,
   addBalance,
-  hasItem,
-  useItem,
   recordGame,
   calculateBlackjackPayout,
+  consumeBlackjackPassives,
 } from "../../lib/economy.js";
 
 const command: Command = {
@@ -112,10 +111,11 @@ const command: Command = {
         return;
       }
 
-      const multiplierActive = await hasItem(guildId, userId, "multiplier");
-      const insuranceActive = await hasItem(guildId, userId, "insurance");
-      if (multiplierActive) await useItem(guildId, userId, "multiplier");
-      if (insuranceActive) await useItem(guildId, userId, "insurance");
+      const {
+        multiplierActive,
+        insuranceActive,
+        fullInsuranceActive,
+      } = await consumeBlackjackPassives(guildId, userId);
 
       const deck = createDeck();
       const playerHand = [deck.pop()!, deck.pop()!];
@@ -135,6 +135,7 @@ const command: Command = {
         startBalance: balanceAfterBet + bet,
         multiplierActive,
         insuranceActive,
+        fullInsuranceActive,
         startedAt: new Date(),
       };
       activeGames.set(userId, state);
@@ -147,6 +148,7 @@ const command: Command = {
           bet,
           multiplierActive,
           insuranceActive,
+          fullInsuranceActive,
         );
         const newBalance = await addBalance(guildId, userId, payout);
         await recordGame(guildId, userId, true, bet);

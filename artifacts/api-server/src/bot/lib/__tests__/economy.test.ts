@@ -129,6 +129,20 @@ describe("calculateBlackjackPayout", () => {
     });
   });
 
+  describe("con fullInsuranceActive", () => {
+    it("bust + seguro total: devuelve el 100% de la apuesta", () => {
+      expect(calculateBlackjackPayout("bust", 100, false, true, true)).toBe(100);
+    });
+
+    it("lose + seguro total: devuelve el 100%", () => {
+      expect(calculateBlackjackPayout("lose", 250, false, false, true)).toBe(250);
+    });
+
+    it("seguro total tiene prioridad sobre el 50%", () => {
+      expect(calculateBlackjackPayout("bust", 100, false, true, true)).toBe(100);
+    });
+  });
+
   // Casos extremos
 
   describe("casos extremos", () => {

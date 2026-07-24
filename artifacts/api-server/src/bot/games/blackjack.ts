@@ -36,6 +36,8 @@ export interface GameState {
   startBalance: number;
   multiplierActive: boolean;
   insuranceActive: boolean;
+  /** Seguro 100% (beta/dev) */
+  fullInsuranceActive?: boolean;
   finalBalance?: number;
   netResult?: number;
   netLabel?: string;
@@ -217,7 +219,11 @@ export function buildEmbed(
         value:
           [
             state.multiplierActive ? "🎰 ×2" : null,
-            state.insuranceActive ? "🛡 Seguro" : null,
+            state.fullInsuranceActive
+              ? "🧬 Seguro 100%"
+              : state.insuranceActive
+                ? "🛡 Seguro"
+                : null,
           ]
             .filter(Boolean)
             .join(" · ") || "*Ninguno*",

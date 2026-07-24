@@ -41,17 +41,21 @@ import {
   addBalance,
   recordGame,
   claimDaily,
-  hasItem,
   useItem,
   addItem,
   calculateBlackjackPayout,
   getBalance,
+  consumeBlackjackPassives,
 } from "../lib/economy.js";
-import { SHOP_ITEMS, ITEM_REWARDS } from "../lib/shop.js";
+import {
+  SHOP_ITEMS,
+  canAccessShopItem,
+  rollInstantReward,
+} from "../lib/shop.js";
 import { hasSpecialTreatment } from "../lib/specialUser.js";
 
 function buildNetLabel(status: string, state: GameState): string {
-  const { bet, multiplierActive, insuranceActive } = state;
+  const { bet, multiplierActive, insuranceActive, fullInsuranceActive } = state;
   if (status === "blackjack") {
     const net = multiplierActive ? Math.floor(bet * 3) : Math.floor(bet * 1.5);
     return `+**${net}** fichas${multiplierActive ? " (×2 Multiplicador)" : ""}`;
@@ -60,6 +64,9 @@ function buildNetLabel(status: string, state: GameState): string {
   if (status === "win" || status === "dealer_bust") {
     const net = multiplierActive ? bet * 2 : bet;
     return `+**${net}** fichas${multiplierActive ? " (×2 Multiplicador)" : ""}`;
+  }
+  if (fullInsuranceActive) {
+    return `±**0** fichas (🧬 Seguro total recuperó 100%)`;
   }
   return insuranceActive
     ? `-**${Math.floor(bet * 0.5)}** fichas (🛡 Seguro recuperó 50%)`
@@ -86,6 +93,7 @@ async function finishBlackjackRound(
     state.bet,
     state.multiplierActive,
     state.insuranceActive,
+    state.fullInsuranceActive ?? false,
   );
   if (payout > 0) await addBalance(state.guildId, state.userId, payout);
   const newBalance = await getBalance(state.guildId, state.userId);
@@ -166,10 +174,11 @@ async function startBlackjackRound(
     return;
   }
 
-  const multiplierActive = await hasItem(guildId, ownerId, "multiplier");
-  const insuranceActive = await hasItem(guildId, ownerId, "insurance");
-  if (multiplierActive) await useItem(guildId, ownerId, "multiplier");
-  if (insuranceActive) await useItem(guildId, ownerId, "insurance");
+  const {
+    multiplierActive,
+    insuranceActive,
+    fullInsuranceActive,
+  } = await consumeBlackjackPassives(guildId, ownerId);
 
   const deck = createDeck();
   const playerHand = [deck.pop()!, deck.pop()!];
@@ -189,6 +198,7 @@ async function startBlackjackRound(
     startBalance: balanceAfterBet + finalBet,
     multiplierActive,
     insuranceActive,
+    fullInsuranceActive,
     startedAt: new Date(),
   };
   activeGames.set(ownerId, state);
@@ -449,6 +459,22 @@ async function handleShop(interaction: Interaction): Promise<boolean> {
   const item = SHOP_ITEMS[itemId];
   if (!item) return false;
 
+  if (!canAccessShopItem(userId, item)) {
+    await interaction.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0xff2d6b)
+          .setDescription(
+            item.access === "owner"
+              ? "❌ Este ítem es **exclusivo de owners** (`OWNER_IDS`)."
+              : "❌ Este ítem es **exclusivo de beta testers**.",
+          ),
+      ],
+      ephemeral: true,
+    });
+    return true;
+  }
+
   const guildId = interaction.guild?.id ?? "";
   const { success, balance } = await deductBalance(guildId, userId, item.price);
 
@@ -534,14 +560,13 @@ async function handleInventory(interaction: Interaction): Promise<boolean> {
   const item = SHOP_ITEMS[itemId];
   if (!item || item.type !== "instant") return false;
 
-  const [min, max] = ITEM_REWARDS[itemId] ?? [0, 0];
   const used = await useItem(guildId, userId, itemId);
   if (!used) {
     await interaction.reply({ embeds: [new EmbedBuilder().setColor(0xff2d6b).setDescription("❌ No tienes ese ítem en tu inventario.")], ephemeral: true });
     return true;
   }
 
-  const reward = Math.floor(Math.random() * (max - min + 1)) + min;
+  const reward = rollInstantReward(itemId);
   const newBalance = await addBalance(guildId, userId, reward);
 
   await interaction.reply({
