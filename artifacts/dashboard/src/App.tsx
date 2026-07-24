@@ -15,6 +15,7 @@ import Logs from "@/pages/logs";
 import TicketsPage from "@/pages/tickets";
 import SettingsPage from "@/pages/settings";
 import AccountPage from "@/pages/account";
+import BetaPage from "@/pages/beta";
 import LoginPage from "@/pages/login";
 import NotFound from "@/pages/not-found";
 
@@ -41,6 +42,7 @@ function ProtectedRouter() {
           <Route path="/commands" component={Commands} />
           <Route path="/warns" component={Warns} />
           <Route path="/tickets" component={TicketsPage} />
+          <Route path="/beta" component={BetaPage} />
           <Route path="/logs" component={Logs} />
           <Route path="/dev" component={DevPanel} />
           <Route path="/account" component={AccountPage} />

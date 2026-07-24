@@ -11,6 +11,7 @@ import {
   FileText,
   Shield,
   Settings,
+  FlaskConical,
 } from "lucide-react";
 
 type NavLink = {
@@ -26,6 +27,7 @@ const ALL_NAV: NavLink[] = [
   { href: "/guilds", label: "Servers", icon: Server },
   { href: "/commands", label: "Commands", icon: Terminal },
   { href: "/warns", label: "Warnings", icon: AlertTriangle },
+  { href: "/beta", label: "Beta", icon: FlaskConical },
   { href: "/logs", label: "Logs", icon: FileText },
   { href: "/dev", label: "Dev", icon: Shield, ownerOnly: true },
   { href: "/settings", label: "Settings", icon: Settings },

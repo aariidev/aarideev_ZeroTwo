@@ -407,3 +407,81 @@ export async function installAutomodEverywhere(
   }
   return results;
 }
+
+export type GuildAutomodSnapshot = {
+  guildId: string;
+  guildName: string;
+  total: number;
+  ours: number;
+  enabled: number;
+  canManage: boolean;
+  rules: {
+    id: string;
+    name: string;
+    enabled: boolean;
+    ours: boolean;
+    trigger: string;
+  }[];
+};
+
+const TRIGGER_LABEL: Record<number, string> = {
+  1: "Palabras clave",
+  2: "Palabras spam (legacy)",
+  3: "Anti-spam",
+  4: "Preset Discord",
+  5: "Menciones",
+  6: "Palabras de miembro",
+};
+
+/**
+ * Estado de AutoMod solo en este servidor (para /automod status local).
+ */
+export async function getGuildAutomodSnapshot(
+  guild: Guild,
+): Promise<GuildAutomodSnapshot> {
+  const snap: GuildAutomodSnapshot = {
+    guildId: guild.id,
+    guildName: guild.name,
+    total: 0,
+    ours: 0,
+    enabled: 0,
+    canManage: canManageAutomod(guild),
+    rules: [],
+  };
+
+  if (!snap.canManage) return snap;
+
+  try {
+    const rules = await fetchRules(guild);
+    snap.total = rules.length;
+    for (const r of rules) {
+      const ours = isOurRule(r.name);
+      if (ours) snap.ours++;
+      if (r.enabled) snap.enabled++;
+      snap.rules.push({
+        id: r.id,
+        name: r.name,
+        enabled: r.enabled,
+        ours,
+        trigger: TRIGGER_LABEL[triggerNum(r)] ?? `tipo ${triggerNum(r)}`,
+      });
+    }
+    snap.rules.sort((a, b) => a.name.localeCompare(b.name, "es"));
+  } catch {
+    /* no access */
+  }
+
+  return snap;
+}
+
+/** Nombres del pack que intenta instalar Zero Two */
+export function automodPackNames(): string[] {
+  return [
+    `${AUTOMOD_PREFIX}Anti-spam`,
+    `${AUTOMOD_PREFIX}Menciones masivas`,
+    `${AUTOMOD_PREFIX}Invitaciones`,
+    `${AUTOMOD_PREFIX}Estafas`,
+    `${AUTOMOD_PREFIX}Filtros Discord (preset)`,
+    `${AUTOMOD_PREFIX}Links sospechosos`,
+  ];
+}
