@@ -6,15 +6,18 @@ import {
   ButtonStyle,
   ChatInputCommandInteraction,
   Client,
+  MessageFlags,
 } from "discord.js";
 import { Command } from "../../types.js";
 import { getInventory } from "../../lib/economy.js";
-import { SHOP_ITEMS } from "../../lib/shop.js";
+import { SHOP_ITEMS, accessBadge } from "../../lib/shop.js";
 
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("inventory")
-    .setDescription("🎒 Muestra tu inventario de ítems del casino") as SlashCommandBuilder,
+    .setDescription(
+      "🎒 Muestra tu inventario de ítems del casino",
+    ) as SlashCommandBuilder,
 
   cooldown: 5,
 
@@ -41,7 +44,7 @@ const command: Command = {
             .setThumbnail(interaction.user.displayAvatarURL())
             .setTimestamp(),
         ],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -55,7 +58,7 @@ const command: Command = {
       .setTitle(`🎒 Inventario de ${interaction.user.username}`)
       .setThumbnail(interaction.user.displayAvatarURL())
       .setFooter({
-        text: "Los ítems pasivos se activan solos en el próximo Blackjack · Los instantáneos se usan con el botón",
+        text: "Pasivos → próximo Blackjack · Instantáneos → botón Usar",
         iconURL: client.user?.displayAvatarURL(),
       })
       .setTimestamp();
@@ -64,12 +67,21 @@ const command: Command = {
 
     for (const row of owned) {
       const item = SHOP_ITEMS[row.itemId];
-      if (!item) continue;
-      const typeLabel = item.type === "passive" ? "🔄 Pasivo" : "⚡ Instantáneo";
+      if (!item) {
+        embed.addFields({
+          name: `❓ \`${row.itemId}\` ×${row.quantity}`,
+          value: "_Ítem desconocido (quizá de una versión anterior)_",
+          inline: false,
+        });
+        continue;
+      }
+      const typeLabel =
+        item.type === "passive" ? "🔄 Pasivo" : "⚡ Instantáneo";
+      const badge = accessBadge(item.access);
 
       embed.addFields({
         name: `${item.emoji} ${item.name} ×${row.quantity}`,
-        value: `${item.description}\n> ${typeLabel} · *${item.effect}*`,
+        value: `${item.description}\n> ${typeLabel} · ${badge} · *${item.effect}*`,
         inline: false,
       });
 
@@ -77,7 +89,11 @@ const command: Command = {
         instantButtons.push(
           new ButtonBuilder()
             .setCustomId(`inv_use:${interaction.user.id}:${item.id}`)
-            .setLabel(`Usar ${item.name}`)
+            .setLabel(
+              item.name.length > 18
+                ? `Usar ${item.name.slice(0, 16)}…`
+                : `Usar ${item.name}`,
+            )
             .setEmoji(item.emoji)
             .setStyle(ButtonStyle.Success),
         );
@@ -85,15 +101,19 @@ const command: Command = {
     }
 
     const rows: ActionRowBuilder<ButtonBuilder>[] = [];
-    for (let i = 0; i < instantButtons.length; i += 3) {
+    for (let i = 0; i < instantButtons.length && rows.length < 5; i += 5) {
       rows.push(
         new ActionRowBuilder<ButtonBuilder>().addComponents(
-          ...instantButtons.slice(i, i + 3),
+          ...instantButtons.slice(i, i + 5),
         ),
       );
     }
 
-    await interaction.reply({ embeds: [embed], components: rows });
+    await interaction.reply({
+      embeds: [embed],
+      components: rows,
+      flags: MessageFlags.Ephemeral,
+    });
   },
 };
 

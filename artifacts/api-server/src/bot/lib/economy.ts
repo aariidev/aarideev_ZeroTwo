@@ -243,6 +243,8 @@ export function calculateBlackjackPayout(
   bet: number,
   multiplierActive: boolean,
   insuranceActive: boolean,
+  /** Seguro beta/dev: devuelve el 100% de la apuesta en derrota */
+  fullInsuranceActive = false,
 ): number {
   if (status === "blackjack") {
     const net = Math.floor(bet * 1.5);
@@ -253,7 +255,56 @@ export function calculateBlackjackPayout(
     return multiplierActive ? bet * 3 : bet * 2;
   }
   if (status === "bust" || status === "lose") {
-    return insuranceActive ? Math.floor(bet * 0.5) : 0;
+    if (fullInsuranceActive) return bet;
+    if (insuranceActive) return Math.floor(bet * 0.5);
+    return 0;
   }
   return 0;
+}
+
+/** Consume 1 multi + 1 seguro del inventario (prioriza exclusivos). */
+export async function consumeBlackjackPassives(
+  guildId: string,
+  userId: string,
+): Promise<{
+  multiplierActive: boolean;
+  insuranceActive: boolean;
+  fullInsuranceActive: boolean;
+}> {
+  const {
+    MULTIPLIER_ITEM_IDS,
+    INSURANCE_ITEM_IDS,
+    FULL_INSURANCE_ITEM_IDS,
+  } = await import("./shop.js");
+
+  let multiplierActive = false;
+  for (const id of MULTIPLIER_ITEM_IDS) {
+    if (await hasItem(guildId, userId, id)) {
+      await useItem(guildId, userId, id);
+      multiplierActive = true;
+      break;
+    }
+  }
+
+  let fullInsuranceActive = false;
+  for (const id of FULL_INSURANCE_ITEM_IDS) {
+    if (await hasItem(guildId, userId, id)) {
+      await useItem(guildId, userId, id);
+      fullInsuranceActive = true;
+      break;
+    }
+  }
+
+  let insuranceActive = fullInsuranceActive;
+  if (!fullInsuranceActive) {
+    for (const id of INSURANCE_ITEM_IDS) {
+      if (await hasItem(guildId, userId, id)) {
+        await useItem(guildId, userId, id);
+        insuranceActive = true;
+        break;
+      }
+    }
+  }
+
+  return { multiplierActive, insuranceActive, fullInsuranceActive };
 }
