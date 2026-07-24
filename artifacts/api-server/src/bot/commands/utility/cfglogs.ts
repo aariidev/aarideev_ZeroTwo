@@ -1,3 +1,6 @@
+/**
+ * /cfglogs — canal de logs + vista bonita del catálogo de eventos.
+ */
 import {
   SlashCommandBuilder,
   EmbedBuilder,
@@ -5,6 +8,10 @@ import {
   ChannelType,
   ChatInputCommandInteraction,
   Client,
+  ActionRowBuilder,
+  StringSelectMenuBuilder,
+  ComponentType,
+  MessageFlags,
 } from "discord.js";
 import { Command } from "../../types.js";
 import {
@@ -12,24 +19,83 @@ import {
   getLogChannelId,
   LOG_CATEGORIES,
   LOG_EVENT_META,
+  LOG_EMOJI,
+  LOG_COLORS,
   removeLogChannel,
   setLogChannelId,
+  setLogEvents,
+  type LogEventKey,
 } from "../../lib/modlog.js";
+import { BOT_VERSION } from "../../lib/version.js";
+
+const PINK = 0xff2d6b;
+const GREEN = 0x22c55e;
+
+function statusEmbed(
+  client: Client,
+  guildId: string,
+  channelId: string | null,
+  events: LogEventKey[],
+  guildName?: string,
+) {
+  const enabled = new Set(events);
+  const lines = LOG_CATEGORIES.map((cat) => {
+    const parts = cat.events.map((ev) => {
+      const on = enabled.has(ev);
+      return `${on ? "🟢" : "⚫"} ${LOG_EMOJI[ev]} ${LOG_EVENT_META[ev].label}`;
+    });
+    return `**${cat.label}**\n${parts.join("\n")}`;
+  });
+
+  return new EmbedBuilder()
+    .setColor(channelId ? GREEN : PINK)
+    .setAuthor({
+      name: "Zero Two · Central de Logs",
+      iconURL: client.user?.displayAvatarURL() ?? undefined,
+    })
+    .setTitle(channelId ? "📡 Logs configurados" : "📡 Logs sin canal")
+    .setDescription(
+      [
+        channelId
+          ? `Canal: <#${channelId}>`
+          : "No hay canal. Usa `/cfglogs set`.",
+        "",
+        `Eventos activos: **${events.length}** / **${Object.keys(LOG_EVENT_META).length}**`,
+        guildName ? `Servidor: **${guildName}**` : null,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    )
+    .addFields(
+      lines.slice(0, 5).map((v, i) => ({
+        name: LOG_CATEGORIES[i]!.label,
+        value: v.replace(`**${LOG_CATEGORIES[i]!.label}**\n`, "") || "—",
+        inline: true,
+      })),
+    )
+    .setFooter({
+      text: `Zero Two ${BOT_VERSION} · Panel: elige categoría para activar TODOS sus eventos`,
+    })
+    .setTimestamp();
+}
 
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("cfglogs")
-    .setDescription("📡 Configura el canal de logs de moderación del servidor")
+    .setDescription("📡 Configura el canal y el catálogo de logs del servidor")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addSubcommand((sub) =>
       sub
         .setName("set")
-        .setDescription("Define el canal donde se enviarán los logs de acción")
+        .setDescription("Define el canal donde se enviarán los logs")
         .addChannelOption((opt) =>
           opt
             .setName("canal")
             .setDescription("Canal de destino para los logs")
-            .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
+            .addChannelTypes(
+              ChannelType.GuildText,
+              ChannelType.GuildAnnouncement,
+            )
             .setRequired(true),
         ),
     )
@@ -41,7 +107,17 @@ const command: Command = {
     .addSubcommand((sub) =>
       sub
         .setName("status")
-        .setDescription("Muestra el estado de la configuración de logs"),
+        .setDescription("Muestra canal + eventos activos (panel interactivo)"),
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName("enable-all")
+        .setDescription("Activa TODOS los eventos de log"),
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName("defaults")
+        .setDescription("Restaura el set de eventos por defecto (recomendado)"),
     ) as SlashCommandBuilder,
 
   cooldown: 5,
@@ -49,179 +125,170 @@ const command: Command = {
   async execute(interaction: ChatInputCommandInteraction, client: Client) {
     const sub = interaction.options.getSubcommand();
     const guildId = interaction.guild?.id ?? "";
+    if (!guildId) {
+      await interaction.reply({
+        content: "❌ Solo en servidores.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
 
     if (sub === "set") {
       const channel = interaction.options.getChannel("canal", true);
-
       await setLogChannelId(guildId, channel.id);
+      const settings = await getGuildLogSettings(guildId);
 
       await interaction.reply({
         embeds: [
           new EmbedBuilder()
-            .setColor(0x00ff9f)
+            .setColor(GREEN)
             .setAuthor({
-              name: "Central de Logs // Zero Two",
+              name: "Zero Two · Central de Logs",
               iconURL: client.user?.displayAvatarURL(),
             })
-            .setTitle("📡 Canal de Logs Configurado")
+            .setTitle("📡 Canal de logs configurado")
             .setDescription(
-              `Los registros de moderación ahora se enviarán a <#${channel.id}>.\n\n` +
-                `Para activar/desactivar eventos, filtros y alertas usa el **dashboard** → Servidores.`,
+              [
+                `Los registros se enviarán a <#${channel.id}>.`,
+                "",
+                "• `/cfglogs status` — ver y activar categorías",
+                "• Dashboard → Servidores — filtros finos (bots, canales ignorados…)",
+              ].join("\n"),
             )
             .addFields(
               { name: "📌 Canal", value: `<#${channel.id}>`, inline: true },
-              { name: "🆔 ID", value: `\`${channel.id}\``, inline: true },
               {
-                name: "🛡️ Configurado por",
-                value: `${interaction.user.tag}`,
+                name: "🔔 Eventos activos",
+                value: `\`${settings.events.length}\``,
+                inline: true,
+              },
+              {
+                name: "🛡️ Por",
+                value: `${interaction.user}`,
                 inline: true,
               },
             )
-            .setFooter({
-              text: "Eventos, bots, webhooks y más → dashboard",
-              iconURL: client.user?.displayAvatarURL(),
-            })
+            .setFooter({ text: `Zero Two ${BOT_VERSION}` })
             .setTimestamp(),
         ],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
+      return;
     }
 
     if (sub === "disable") {
       const existing = await getLogChannelId(guildId);
-
       if (!existing) {
         await interaction.reply({
           embeds: [
             new EmbedBuilder()
-              .setColor(0xff2d6b)
-              .setDescription(
-                "❌ No hay ningún canal de logs configurado para este servidor.",
-              ),
+              .setColor(PINK)
+              .setDescription("❌ No hay canal de logs configurado."),
           ],
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         return;
       }
-
       await removeLogChannel(guildId);
-
       await interaction.reply({
         embeds: [
           new EmbedBuilder()
-            .setColor(0xff2d6b)
-            .setAuthor({
-              name: "Central de Logs // Zero Two",
-              iconURL: client.user?.displayAvatarURL(),
-            })
-            .setTitle("🔕 Logs de Moderación Desactivados")
+            .setColor(PINK)
+            .setTitle("📡 Logs desactivados")
             .setDescription(
-              "El canal de logs ha sido eliminado de la configuración.\n" +
-                "Usa `/cfglogs set` para volver a activarlo.",
-            )
-            .setTimestamp(),
+              "Ya no se enviarán embeds al canal de logs. La configuración de eventos se conserva.",
+            ),
         ],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
+      return;
     }
 
-    if (sub === "status") {
-      const settings = await getGuildLogSettings(guildId);
+    if (sub === "enable-all") {
+      const all = Object.keys(LOG_EVENT_META) as LogEventKey[];
+      await setLogEvents(guildId, all);
+      await interaction.reply({
+        content: `✅ Activados **${all.length}** eventos de log.`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
 
-      if (!settings.channelId) {
-        await interaction.reply({
-          embeds: [
-            new EmbedBuilder()
-              .setColor(0xff9900)
-              .setAuthor({
-                name: "Central de Logs // Zero Two",
-                iconURL: client.user?.displayAvatarURL(),
-              })
-              .setTitle("📡 Estado del Canal de Logs")
-              .setDescription(
-                "⚠️ **Sin canal configurado.**\n" +
-                  "Usa `/cfglogs set` o el dashboard para asignar un canal.",
-              )
-              .setTimestamp(),
-          ],
-          ephemeral: true,
-        });
+    if (sub === "defaults") {
+      const { defaultLogEvents } = await import("../../lib/modlog.js");
+      await setLogEvents(guildId, defaultLogEvents());
+      await interaction.reply({
+        content: "✅ Eventos restaurados al set **recomendado** por defecto.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    // status + interactive category enable
+    const settings = await getGuildLogSettings(guildId);
+    const menu = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId(`cfglogs_cat:${interaction.user.id}`)
+        .setPlaceholder("Activar todos los eventos de una categoría…")
+        .addOptions(
+          LOG_CATEGORIES.map((c) => ({
+            label: c.label,
+            value: c.id,
+            description: `Activa ${c.events.length} eventos de ${c.label}`,
+            emoji: c.id === "moderation" ? "🛡️" : c.id === "messages" ? "💬" : c.id === "members" ? "👥" : c.id === "server" ? "🏠" : "🎙️",
+          })),
+        ),
+    );
+
+    const msg = await interaction.reply({
+      embeds: [
+        statusEmbed(
+          client,
+          guildId,
+          settings.channelId,
+          settings.events,
+          interaction.guild?.name,
+        ),
+      ],
+      components: [menu],
+      flags: MessageFlags.Ephemeral,
+      fetchReply: true,
+    });
+
+    const collector = msg.createMessageComponentCollector({
+      componentType: ComponentType.StringSelect,
+      time: 90_000,
+      filter: (i) => i.user.id === interaction.user.id,
+    });
+
+    collector.on("collect", async (sel) => {
+      const catId = sel.values[0];
+      const cat = LOG_CATEGORIES.find((c) => c.id === catId);
+      if (!cat) {
+        await sel.deferUpdate();
         return;
       }
-
-      const channel = interaction.guild?.channels.cache.get(settings.channelId);
-      const channelMention = channel
-        ? `<#${settings.channelId}>`
-        : `\`${settings.channelId}\` *(no encontrado)*`;
-
-      const eventLines = LOG_CATEGORIES.map((cat) => {
-        const active = cat.events.filter((k) => settings.events.includes(k));
-        const labels = active
-          .map((k) => LOG_EVENT_META[k].label)
-          .join(", ");
-        return `**${cat.label}** (${active.length}/${cat.events.length}): ${
-          labels || "—"
-        }`;
-      }).join("\n");
-
-      const ping =
-        settings.pingRoleId && interaction.guild?.roles.cache.has(settings.pingRoleId)
-          ? `<@&${settings.pingRoleId}>`
-          : settings.pingRoleId
-            ? `\`${settings.pingRoleId}\``
-            : "Ninguno";
-
-      await interaction.reply({
+      const current = await getGuildLogSettings(guildId);
+      const merged = [...new Set([...current.events, ...cat.events])];
+      await setLogEvents(guildId, merged);
+      const next = await getGuildLogSettings(guildId);
+      await sel.update({
         embeds: [
-          new EmbedBuilder()
-            .setColor(0x00ff9f)
-            .setAuthor({
-              name: "Central de Logs // Zero Two",
-              iconURL: client.user?.displayAvatarURL(),
-            })
-            .setTitle("📡 Estado de Logs del Servidor")
-            .addFields(
-              { name: "✅ Canal", value: channelMention, inline: true },
-              {
-                name: "📊 Eventos",
-                value: `\`${settings.events.length}\` activos`,
-                inline: true,
-              },
-              {
-                name: "🔔 Ping",
-                value: ping,
-                inline: true,
-              },
-              {
-                name: "🤖 Filtros",
-                value: [
-                  `Bots: ${settings.ignoreBots ? "ignorados" : "incluidos"}`,
-                  `Webhooks: ${settings.ignoreWebhooks ? "ignorados" : "incluidos"}`,
-                  `Adjuntos: ${settings.includeAttachments ? "sí" : "no"}`,
-                  `Alerta cuenta nueva: ${
-                    settings.joinAlertDays > 0
-                      ? `${settings.joinAlertDays}d`
-                      : "off"
-                  }`,
-                  `Canales ignorados: ${settings.ignoreChannels.length}`,
-                ].join("\n"),
-                inline: false,
-              },
-              {
-                name: "📋 Eventos por categoría",
-                value: eventLines.slice(0, 1024) || "—",
-                inline: false,
-              },
-            )
-            .setFooter({
-              text: "Ajusta eventos y filtros en el dashboard → Servidores",
-              iconURL: client.user?.displayAvatarURL(),
-            })
-            .setTimestamp(),
+          statusEmbed(
+            client,
+            guildId,
+            next.channelId,
+            next.events,
+            interaction.guild?.name,
+          ).setColor(LOG_COLORS[cat.events[0]!] ?? GREEN),
         ],
-        ephemeral: true,
+        components: [menu],
       });
-    }
+    });
+
+    collector.on("end", () => {
+      interaction.editReply({ components: [] }).catch(() => null);
+    });
   },
 };
 

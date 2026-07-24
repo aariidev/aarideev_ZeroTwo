@@ -32,17 +32,26 @@ export const LOG_EVENT_KEYS = [
   "member_leave",
   "member_roles",
   "member_nickname",
+  "member_boost",
   // Servidor
   "channel_create",
   "channel_delete",
+  "channel_update",
   "role_create",
   "role_delete",
+  "role_update",
   "invite_create",
   "invite_delete",
+  "thread_create",
+  "thread_delete",
+  "emoji_create",
+  "emoji_delete",
   // Voz
   "voice_join",
   "voice_leave",
   "voice_move",
+  "voice_server_mute",
+  "voice_server_deaf",
 ] as const;
 
 export type LogEventKey = (typeof LOG_EVENT_KEYS)[number];
@@ -118,6 +127,11 @@ export const LOG_EVENT_META: Record<
     category: "members",
     description: "Cambio de nickname",
   },
+  member_boost: {
+    label: "Boost Nitro",
+    category: "members",
+    description: "Inicio o fin de boost del servidor",
+  },
   channel_create: {
     label: "Canal creado",
     category: "server",
@@ -127,6 +141,11 @@ export const LOG_EVENT_META: Record<
     label: "Canal eliminado",
     category: "server",
     description: "Canal borrado",
+  },
+  channel_update: {
+    label: "Canal editado",
+    category: "server",
+    description: "Nombre, tema o tipo de canal",
   },
   role_create: {
     label: "Rol creado",
@@ -138,6 +157,11 @@ export const LOG_EVENT_META: Record<
     category: "server",
     description: "Rol borrado",
   },
+  role_update: {
+    label: "Rol editado",
+    category: "server",
+    description: "Nombre, color o permisos de un rol",
+  },
   invite_create: {
     label: "Invitación creada",
     category: "server",
@@ -147,6 +171,26 @@ export const LOG_EVENT_META: Record<
     label: "Invitación borrada",
     category: "server",
     description: "Invite eliminada o expirada",
+  },
+  thread_create: {
+    label: "Hilo creado",
+    category: "server",
+    description: "Nuevo hilo público o privado",
+  },
+  thread_delete: {
+    label: "Hilo eliminado",
+    category: "server",
+    description: "Hilo borrado",
+  },
+  emoji_create: {
+    label: "Emoji creado",
+    category: "server",
+    description: "Emoji personalizado añadido",
+  },
+  emoji_delete: {
+    label: "Emoji eliminado",
+    category: "server",
+    description: "Emoji personalizado borrado",
   },
   voice_join: {
     label: "Entrada a voz",
@@ -163,6 +207,83 @@ export const LOG_EVENT_META: Record<
     category: "voice",
     description: "Cambio de canal de voz",
   },
+  voice_server_mute: {
+    label: "Mute de servidor",
+    category: "voice",
+    description: "Mute/unmute forzado por staff",
+  },
+  voice_server_deaf: {
+    label: "Sordo de servidor",
+    category: "voice",
+    description: "Deaf/undeaf forzado por staff",
+  },
+};
+
+/** Colors used across embeds (category accent) */
+export const LOG_COLORS: Record<LogEventKey, number> = {
+  ban: 0xff2d6b,
+  unban: 0x22c55e,
+  kick: 0xef4444,
+  timeout: 0xf97316,
+  untimeout: 0x84cc16,
+  message_delete: 0xf59e0b,
+  message_edit: 0x3b82f6,
+  message_bulk_delete: 0xdc2626,
+  member_join: 0x00f5d4,
+  member_leave: 0x94a3b8,
+  member_roles: 0xa78bfa,
+  member_nickname: 0x38bdf8,
+  member_boost: 0xf472b6,
+  channel_create: 0x2dd4bf,
+  channel_delete: 0x0d9488,
+  channel_update: 0x14b8a6,
+  role_create: 0xc084fc,
+  role_delete: 0xa855f7,
+  role_update: 0xd8b4fe,
+  invite_create: 0xfbbf24,
+  invite_delete: 0xd97706,
+  thread_create: 0x67e8f9,
+  thread_delete: 0x06b6d4,
+  emoji_create: 0xfde047,
+  emoji_delete: 0xca8a04,
+  voice_join: 0x22d3ee,
+  voice_leave: 0x0891b2,
+  voice_move: 0x67e8f9,
+  voice_server_mute: 0xf43f5e,
+  voice_server_deaf: 0xe11d48,
+};
+
+export const LOG_EMOJI: Record<LogEventKey, string> = {
+  ban: "🔨",
+  unban: "✅",
+  kick: "👢",
+  timeout: "⏳",
+  untimeout: "🔓",
+  message_delete: "🗑️",
+  message_edit: "✏️",
+  message_bulk_delete: "🧹",
+  member_join: "📥",
+  member_leave: "📤",
+  member_roles: "🎭",
+  member_nickname: "🏷️",
+  member_boost: "💎",
+  channel_create: "📁",
+  channel_delete: "📂",
+  channel_update: "📝",
+  role_create: "✨",
+  role_delete: "💢",
+  role_update: "🎨",
+  invite_create: "🔗",
+  invite_delete: "⛓️‍💥",
+  thread_create: "🧵",
+  thread_delete: "✂️",
+  emoji_create: "😀",
+  emoji_delete: "😶",
+  voice_join: "🎙️",
+  voice_leave: "🔇",
+  voice_move: "🔀",
+  voice_server_mute: "🔇",
+  voice_server_deaf: "🙉",
 };
 
 /** @deprecated use LOG_EVENT_META — kept for older imports */
@@ -188,7 +309,13 @@ export const LOG_CATEGORIES: {
   {
     id: "members",
     label: "Miembros",
-    events: ["member_join", "member_leave", "member_roles", "member_nickname"],
+    events: [
+      "member_join",
+      "member_leave",
+      "member_roles",
+      "member_nickname",
+      "member_boost",
+    ],
   },
   {
     id: "server",
@@ -196,16 +323,28 @@ export const LOG_CATEGORIES: {
     events: [
       "channel_create",
       "channel_delete",
+      "channel_update",
       "role_create",
       "role_delete",
+      "role_update",
       "invite_create",
       "invite_delete",
+      "thread_create",
+      "thread_delete",
+      "emoji_create",
+      "emoji_delete",
     ],
   },
   {
     id: "voice",
     label: "Voz",
-    events: ["voice_join", "voice_leave", "voice_move"],
+    events: [
+      "voice_join",
+      "voice_leave",
+      "voice_move",
+      "voice_server_mute",
+      "voice_server_deaf",
+    ],
   },
 ];
 
@@ -233,11 +372,18 @@ export function defaultLogEvents(): LogEventKey[] {
     "unban",
     "kick",
     "timeout",
+    "untimeout",
     "message_delete",
     "message_edit",
     "message_bulk_delete",
     "member_join",
     "member_leave",
+    "member_roles",
+    "member_boost",
+    "channel_create",
+    "channel_delete",
+    "role_create",
+    "role_delete",
   ];
 }
 
@@ -511,29 +657,81 @@ export async function sendModLog(
   }
 }
 
-/** Base embed style for server monitoring logs */
+const CATEGORY_LABEL: Record<LogEventCategory, string> = {
+  moderation: "Moderación",
+  messages: "Mensajes",
+  members: "Miembros",
+  server: "Servidor",
+  voice: "Voz",
+};
+
+/**
+ * Base embed style for server monitoring logs.
+ * Prefer passing `event` for consistent colors/emojis.
+ */
 export function baseLogEmbed(
   client: Client,
   title: string,
   color: number,
-  opts?: { description?: string; guildName?: string },
+  opts?: {
+    description?: string;
+    guildName?: string;
+    event?: LogEventKey;
+    guildIcon?: string | null;
+  },
 ): EmbedBuilder {
+  const event = opts?.event;
+  const emoji = event ? LOG_EMOJI[event] : "📡";
+  const cat = event ? LOG_EVENT_META[event].category : null;
+  const resolvedColor = event ? LOG_COLORS[event] : color;
+  const prettyTitle = title.match(/^[^\w\s]/)
+    ? title
+    : `${emoji} ${title}`;
+
   const emb = new EmbedBuilder()
-    .setColor(color)
+    .setColor(resolvedColor)
     .setAuthor({
-      name: "Central de Logs // Zero Two",
-      iconURL: client.user?.displayAvatarURL() ?? undefined,
+      name: cat
+        ? `Zero Two Logs · ${CATEGORY_LABEL[cat]}`
+        : "Zero Two · Central de Logs",
+      iconURL: client.user?.displayAvatarURL({ size: 64 }) ?? undefined,
     })
-    .setTitle(title)
+    .setTitle(prettyTitle.slice(0, 256))
     .setTimestamp()
     .setFooter({
-      text: opts?.guildName
-        ? `${opts.guildName} · Zero Two Logs`
-        : "Sistema de Logs · Zero Two",
-      iconURL: client.user?.displayAvatarURL() ?? undefined,
+      text: [
+        opts?.guildName ?? "Zero Two",
+        event ? LOG_EVENT_META[event].label : "Logs",
+        event ? `id:${event}` : null,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+      iconURL:
+        opts?.guildIcon ??
+        client.user?.displayAvatarURL({ size: 32 }) ??
+        undefined,
     });
-  if (opts?.description) emb.setDescription(opts.description);
+
+  const bits: string[] = [];
+  if (cat) {
+    bits.push(`\`${CATEGORY_LABEL[cat]}\``);
+  }
+  if (opts?.description) bits.push(opts.description);
+  if (bits.length) emb.setDescription(bits.join("\n"));
+
   return emb;
+}
+
+/** Pretty inline field for “antes → después” diffs */
+export function diffField(before: string, after: string): string {
+  const b = truncate(before || "—", 200);
+  const a = truncate(after || "—", 200);
+  return `**Antes:** ${b}\n**Después:** ${a}`;
+}
+
+/** Tiny separator field for visual structure */
+export function spacerField() {
+  return { name: "\u200b", value: "\u200b", inline: false } as const;
 }
 
 export function userField(
