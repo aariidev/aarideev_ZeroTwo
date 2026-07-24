@@ -14,9 +14,7 @@ import { sendModLog } from "../../lib/modlog.js";
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("clearwarns")
-    .setDescription(
-      "🗑️ Limpia y formatea a cero el expediente de incidencias de un parásito",
-    )
+    .setDescription("🧹 Borra todas las advertencias de un usuario")
     .addUserOption((opt) =>
       opt
         .setName("usuario")

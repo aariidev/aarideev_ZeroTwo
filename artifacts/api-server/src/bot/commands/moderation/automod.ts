@@ -45,49 +45,37 @@ function bar(pct: number, len = 12): string {
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("automod")
-    .setDescription(
-      "🛡️ AutoMod Zero Two — pack de reglas, estado y progreso de insignia",
-    )
+    .setDescription("🛡️ AutoMod Zero Two — pack, estado y reglas")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addSubcommand((s) =>
       s
         .setName("setup")
-        .setDescription(
-          "Instala el pack de reglas AutoMod en este servidor (máx. 6)",
-        ),
+        .setDescription("📥 Instala el pack Zero Two (máx. 6 reglas)"),
     )
     .addSubcommand((s) =>
       s
         .setName("status")
-        .setDescription(
-          "Estado de AutoMod en este servidor (+ meta global si eres owner)",
-        ),
+        .setDescription("📊 Estado del pack en este servidor"),
     )
     .addSubcommand((s) =>
       s
         .setName("list")
-        .setDescription("Lista las reglas AutoMod activas en este servidor"),
+        .setDescription("📋 Lista las reglas AutoMod activas"),
     )
     .addSubcommand((s) =>
       s
         .setName("remove")
-        .setDescription(
-          "Quita solo las reglas creadas por Zero Two (ZT |) en este servidor",
-        ),
+        .setDescription("🗑️ Quita solo reglas ZT | de Zero Two"),
     )
     .addSubcommand((s) =>
       s
         .setName("sync-all")
-        .setDescription(
-          "[Owner] Instala el pack en todos los servidores donde el bot pueda",
-        ),
+        .setDescription("🌍 [Owner] Instala el pack en todos los guilds"),
     )
     .addSubcommand((s) =>
       s
         .setName("global")
-        .setDescription(
-          "[Owner] Progreso global hacia la insignia Uses AutoMod (100 reglas)",
-        ),
+        .setDescription("🏅 [Owner] Progreso insignia Uses AutoMod"),
     ) as SlashCommandBuilder,
 
   cooldown: 5,

@@ -10,9 +10,7 @@ import { logBotEvent } from "../../../lib/botLogger.js";
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("untimeout")
-    .setDescription(
-      "✅ Remueve prematuramente la cuarentena temporal de un parásito",
-    )
+    .setDescription("✅ Quita el timeout antes de tiempo")
     .addUserOption((opt) =>
       opt
         .setName("usuario")

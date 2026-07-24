@@ -16,7 +16,7 @@ import {
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("nowplaying")
-    .setDescription("🎵 Muestra la canción actual con controles"),
+    .setDescription("🎵 Canción actual con controles en vivo"),
   cooldown: 2,
 
   async execute(interaction: ChatInputCommandInteraction, client: Client) {

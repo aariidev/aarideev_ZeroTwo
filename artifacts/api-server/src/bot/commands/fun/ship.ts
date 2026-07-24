@@ -107,9 +107,7 @@ function tier(pct: number): {
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("ship")
-    .setDescription(
-      "💘 Mide la compatibilidad entre dos personas (o contigo y alguien)",
-    )
+    .setDescription("💘 Compatibilidad entre dos personas + ship name")
     .addUserOption((o) =>
       o
         .setName("usuario1")

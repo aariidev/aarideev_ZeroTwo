@@ -27,7 +27,7 @@ import {
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("warn")
-    .setDescription("⚠️ Sistema de advertencias — gestión completa del expediente")
+    .setDescription("⚠️ Advertencias — add, list, remove y clear")
     .addSubcommand((sub) =>
       sub
         .setName("add")

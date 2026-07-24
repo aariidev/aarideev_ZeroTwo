@@ -21,9 +21,7 @@ import { formatDuration } from "../../music/types.js";
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("continue")
-    .setDescription(
-      "▶️ Continúa la sesión de música guardada (después de reiniciar el bot)",
-    ),
+    .setDescription("▶️ Reanuda la sesión de música guardada"),
   cooldown: 3,
 
   async execute(interaction: ChatInputCommandInteraction, client: Client) {

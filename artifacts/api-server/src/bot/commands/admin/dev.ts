@@ -41,9 +41,7 @@ function withDevImage(embed: EmbedBuilder) {
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("dev")
-    .setDescription(
-      "🔧 Panel de desarrollador — gestión de economía [OWNER ONLY]",
-    )
+    .setDescription("👑 Panel owner — economía, ítems y herramientas dev")
     .addSubcommand((sub) =>
       sub
         .setName("give")

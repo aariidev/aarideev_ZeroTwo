@@ -10,7 +10,7 @@ import { Command } from "../../types.js";
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("ping")
-    .setDescription("🏓 Analiza la tasa de respuesta y sincronización de código"),
+    .setDescription("🏓 Latencia del bot y del WebSocket en tiempo real"),
 
   cooldown: 5,
 

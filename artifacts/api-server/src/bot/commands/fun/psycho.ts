@@ -15,7 +15,7 @@ const outcomes = [
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("psycho")
-    .setDescription("Test de cyberpsychosis estilo Edgerunners"),
+    .setDescription("💉 Test de cyberpsychosis estilo Edgerunners"),
   cooldown: 10,
   async execute(interaction: ChatInputCommandInteraction, client: Client) {
     const outcome = outcomes[Math.floor(Math.random() * outcomes.length)];

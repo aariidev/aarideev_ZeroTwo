@@ -15,7 +15,7 @@ const chromes = [
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("chrome")
-    .setDescription("Info o upgrade de cyberware estilo Edgerunners"),
+    .setDescription("🦾 Cyberware Edgerunners — info y upgrades"),
   cooldown: 8,
   async execute(interaction: ChatInputCommandInteraction, client: Client) {
     const chrome = chromes[Math.floor(Math.random() * chromes.length)];

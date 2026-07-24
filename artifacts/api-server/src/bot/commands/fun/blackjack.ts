@@ -34,7 +34,7 @@ import {
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("blackjack")
-    .setDescription("🃏 Juega una partida de Blackjack en el casino de ZeroTwo")
+    .setDescription("🃏 Blackjack del casino — apuesta y gana fichas")
     .addIntegerOption((opt) =>
       opt
         .setName("apuesta")

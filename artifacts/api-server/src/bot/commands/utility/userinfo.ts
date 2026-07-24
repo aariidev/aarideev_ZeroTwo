@@ -397,9 +397,7 @@ function menu(userId: string, selected: Section) {
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("userinfo")
-    .setDescription(
-      "👤 Ficha completa de un usuario — perfil, servidor y permisos",
-    )
+    .setDescription("👤 Ficha de un miembro — perfil, roles y permisos")
     .addUserOption((opt) =>
       opt
         .setName("usuario")

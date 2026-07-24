@@ -130,9 +130,7 @@ function controlRow(owner: boolean): ActionRowBuilder<ButtonBuilder> {
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("presence")
-    .setDescription(
-      "🎮 Preview de la rich presence de Zero Two (modo, slices y now playing)",
-    ),
+    .setDescription("🎮 Preview de la rich presence rotativa de Zero Two"),
 
   cooldown: 8,
 

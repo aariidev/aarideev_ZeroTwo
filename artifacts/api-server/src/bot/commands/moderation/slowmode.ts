@@ -11,9 +11,7 @@ import { logBotEvent } from "../../../lib/botLogger.js";
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("slowmode")
-    .setDescription(
-      "🐢 Modula el flujo temporal de datos limitando la velocidad de envío",
-    )
+    .setDescription("🐢 Activa o ajusta el modo lento del canal")
     .addIntegerOption((opt) =>
       opt
         .setName("segundos")

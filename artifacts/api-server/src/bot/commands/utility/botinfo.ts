@@ -433,9 +433,7 @@ async function buildSectionEmbed(
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("zerotwoinf")
-    .setDescription(
-      "⚙️ Información en vivo de Zero Two — menú con sistema, red y base de datos",
-    ),
+    .setDescription("⚙️ Info en vivo de Zero Two — sistema, red y base de datos"),
   cooldown: 5,
 
   async execute(interaction: ChatInputCommandInteraction, client: Client) {

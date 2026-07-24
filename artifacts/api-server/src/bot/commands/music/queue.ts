@@ -16,7 +16,7 @@ import {
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("queue")
-    .setDescription("📋 Muestra la cola de reproducción")
+    .setDescription("📋 Cola de reproducción — páginas y orden")
     .addIntegerOption((o) =>
       o
         .setName("pagina")

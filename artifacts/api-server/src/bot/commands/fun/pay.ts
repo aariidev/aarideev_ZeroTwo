@@ -12,7 +12,7 @@ const MIN_TRANSFER = 10;
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("pay")
-    .setDescription("💸 Transfiere fichas a otro miembro del servidor")
+    .setDescription("💸 Transfiere fichas a otro miembro")
     .addUserOption((o) =>
       o.setName("usuario").setDescription("Destinatario").setRequired(true),
     )

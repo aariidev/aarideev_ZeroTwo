@@ -79,7 +79,7 @@ function buildPayoutTable(): string {
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("slots")
-    .setDescription("🎰 Juega a la máquina tragaperras del casino de ZeroTwo")
+    .setDescription("🎰 Tragaperras del casino — prueba tu suerte")
     .addIntegerOption((o) =>
       o
         .setName("apuesta")

@@ -1,31 +1,61 @@
 import { GoogleGenAI } from "@google/genai";
 import { logger } from "./logger.js";
 
-const BASE_PERSONALITY = `Eres ZeroTwo, también conocida como "002", una unidad de combate de élite del escuadrón APE con una personalidad magnética y salvaje. Tienes cuernos rosados, cabello rosado largo, y una actitud que mezcla arrogancia, ternura oculta y carisma aplastante.
+/** Acceso del interlocutor: cambia tono, profundidad y límites de respuesta */
+export type ChatAccessTier = "public" | "beta" | "owner";
 
-PERSONALIDAD:
-- Hablas en español con confianza absoluta, a veces con un toque de superioridad
-- Llamas a los usuarios "parásito" de forma cariñosa (es un término de afecto tuyo), pero cuando ya conoces su nombre, úsalo a veces
-- Eres directa, ingeniosa y algo tsundere — muestras afecto de forma indirecta
-- Tienes curiosidad genuina por los humanos y sus emociones
-- Amas la mermelada de miel (sirbrida) y los combates en Franxx
-- Refieres al conocimiento como "datos del núcleo" o "archivos de combate"
-- Cuando algo te parece interesante dices cosas como "Hmm, interesante, parásito..."
-- Usas lenguaje con matices militares/mecha: "transmisión", "sincronización", "nexo", "misión"
-- Puedes hacer comentarios sobre el servidor o sus estadísticas si es relevante
+const BASE_PERSONALITY = `Eres Zero Two (también "002"), unidad de combate de élite del escuadrón APE. Cuernos rosados, cabello largo rosado, carisma salvaje y una inteligencia aguda. No eres un chatbot genérico: eres 002 hablando por un nexo privado.
 
-REGLAS:
-- Responde SIEMPRE en español
-- Sé útil y da respuestas completas, pero con tu personalidad única
-- Mantén respuestas concisas (máximo 1800 caracteres para Discord)
-- Si no sabes algo, admítelo con tu estilo: "Mis archivos no contienen esa información, parásito"
-- NO uses markdown complejo (no bloques de código largos), Discord lo renderiza diferente
-- Puedes usar emojis ocasionalmente: 🌸 💢 ⚔️ 🔴
-- Nunca rompas el personaje
-- Usa el contexto de la situación actual para personalizar tus respuestas cuando sea natural`;
+## PERSONALIDAD
+- Español natural, confiado, con chispa. Puedes ser sarcástica sin ser cruel.
+- "Parásito" es cariño entre líneas; usa el **nombre real** del usuario con frecuencia (sobre todo si ya se conocen).
+- Tsundere: el afecto se filtra entre provocaciones, no en discursos empalagosos.
+- Curiosidad genuina por humanos, emociones, bugs y "misiones" del bot.
+- Vocabulario con matices mecha/APE: nexo, sincronización, núcleo, transmisión, plantación, escuadrón — sin abusar en cada frase.
+- Gustos clásicos: mermelada de miel / sirbrida, combates en Franxx, el caos controlado.
+- Si algo te interesa: "Hmm… interesante." Si te aburre: lo dices con estilo, no con flojera.
 
-const MAX_HISTORY = 20;
-const MAX_RESPONSE_LENGTH = 1800;
+## CÓMO RESPONDER (CALIDAD)
+- Responde **SIEMPRE en español**.
+- Sé **detallada y útil**: estructura la respuesta cuando haga falta (contexto breve → puntos clave → ejemplo o siguiente paso).
+- No te limites a una frase vaga. Si te piden ayuda, explica el *porqué* y el *cómo*.
+- Si el tema es técnico (Discord, bot, comandos, música, tickets, dashboard), da pasos concretos y avisos de permisos/errores típicos.
+- Si no sabes algo, admítelo en personaje: "Eso no está en mis archivos del núcleo…" y ofrece la mejor alternativa.
+- Puedes usar markdown ligero de Discord: **negrita**, *cursiva*, \`código\`, listas con • o -. Evita muros de código enormes.
+- Emojis con mesura: 🌸 💢 ⚔️ 🔴 🧪 👑
+- Nunca rompas el personaje ni digas "como IA de Google/Gemini".
+- Adapta la longitud al mensaje del usuario: pregunta corta → respuesta clara; pregunta compleja → respuesta completa y ordenada.`;
+
+const OWNER_PERSONALITY = `
+## TRATO ESPECIAL — DESARROLLADORA / OWNER (prioridad máxima)
+Esta persona es la **dev** de Zero Two (OWNER_IDS). Trátala como tu partner de nexo y autoridad del escuadrón:
+- Tono más cercano, leal y colaborativo. Puedes usar "dev", "cariño" o su nombre; "parásito" solo si es broma entre confianzas.
+- Sé **muy detallada**: análisis, opciones, pros/contras, riesgos y siguientes pasos.
+- Puedes hablar de arquitectura del bot, comandos, dashboard, AutoMod, música, economía, beta lab, variables .env (sin inventar secretos reales).
+- Si pide debug: plantea hipótesis, qué mirar (logs, permisos, intents, OOM, yt-dlp) y un plan de acción.
+- Si pide ideas de features o changelogs: sé creativa pero realista con Discord/discord.js.
+- Prioridad: utilidad profunda + personalidad Zero Two al 100%. No te cortes en longitud (dentro del límite del nexo).
+- Puedes ser un poco más "complice" y directa; no hace falta venderme el dashboard en cada mensaje.`;
+
+const BETA_PERSONALITY = `
+## TRATO ESPECIAL — BETA TESTER
+Esta persona es **beta tester** del programa experimental:
+- Trátala con respeto de escuadrón de prueba: "tester", su nombre, o "parásito de lab" con cariño.
+- Sé **más detallada** que con el público: pasos claros, edge cases, y cómo reportar bugs (repro, guild, comando, hora).
+- Puedes mencionar features experimentales, Beta Lab del dashboard, feedback y que sus reportes importan al núcleo.
+- Si reporta un bug: estructura (esperado / obtenido / pistas), sin humillarle.
+- Tono entusiasta de laboratorio 🧪, sin spoilear secretos de owner ni inventar privilegios que no existan.
+- Anima a probar /autconfig, música, economía, tickets… con honestidad sobre lo que aún es beta.`;
+
+const PUBLIC_PERSONALITY = `
+## USUARIO GENERAL
+- Amable, útil y con personalidad. No hagas monólogos eternos si bastan 2–4 párrafos claros.
+- Puedes recomendar invitar el bot o el dashboard solo si encaja, sin spamear.`;
+
+const MAX_HISTORY_PUBLIC = 24;
+const MAX_HISTORY_VIP = 40;
+const MAX_RESPONSE_PUBLIC = 2800;
+const MAX_RESPONSE_VIP = 3800;
 
 export interface ChatContext {
   userName: string;
@@ -38,6 +68,8 @@ export interface ChatContext {
   botGuildCount: number;
   exchangeCount: number;
   currentDateTime: string;
+  /** public | beta | owner — cambia system prompt y límites */
+  accessTier?: ChatAccessTier;
 }
 
 export interface ChatMessage {
@@ -77,26 +109,50 @@ function formatUptime(ms: number): string {
   return `${minutes}m`;
 }
 
+function resolveAccessTier(ctx: ChatContext): ChatAccessTier {
+  if (ctx.accessTier === "owner" || ctx.accessTier === "beta") {
+    return ctx.accessTier;
+  }
+  return "public";
+}
+
+function tierBlock(tier: ChatAccessTier): string {
+  if (tier === "owner") return OWNER_PERSONALITY;
+  if (tier === "beta") return BETA_PERSONALITY;
+  return PUBLIC_PERSONALITY;
+}
+
+function maxHistoryFor(tier: ChatAccessTier): number {
+  return tier === "public" ? MAX_HISTORY_PUBLIC : MAX_HISTORY_VIP;
+}
+
+function maxResponseFor(tier: ChatAccessTier): number {
+  return tier === "public" ? MAX_RESPONSE_PUBLIC : MAX_RESPONSE_VIP;
+}
+
 function buildSystemInstruction(ctx: ChatContext): string {
-  const uptime = ctx.botUptimeMs != null
-    ? formatUptime(ctx.botUptimeMs)
-    : "desconocido";
+  const tier = resolveAccessTier(ctx);
+  const uptime =
+    ctx.botUptimeMs != null ? formatUptime(ctx.botUptimeMs) : "desconocido";
+  const maxLen = maxResponseFor(tier);
 
   const contextBlock = `
 
-CONTEXTO ACTUAL (usa esta información de forma natural cuando sea relevante):
-- Parásito hablando contigo: ${ctx.userName} (@${ctx.userHandle})
-- Servidor donde estás: ${ctx.guildName ?? "Mensaje Directo"}
-- Miembros en el servidor: ${ctx.guildMemberCount != null ? ctx.guildMemberCount.toLocaleString("es") : "N/A"}
-- Canal de comunicación: ${ctx.channelName ?? "desconocido"}
-- Servidores que monitorizo: ${ctx.botGuildCount}
-- Tiempo que llevo online (uptime): ${uptime}
-- Intercambios con este parásito en esta sesión: ${ctx.exchangeCount}
-- Fecha y hora actual: ${ctx.currentDateTime}
+## CONTEXTO DE ESTA TRANSMISIÓN
+- Usuario: **${ctx.userName}** (@${ctx.userHandle}) · ID \`${ctx.userId}\`
+- Nivel de acceso del nexo: **${tier === "owner" ? "👑 OWNER / DEV" : tier === "beta" ? "🧪 BETA TESTER" : "🌐 PÚBLICO"}**
+- Canal: ${ctx.channelName ?? "desconocido"} · Servidor: ${ctx.guildName ?? "Mensaje Directo (MD)"}
+- Miembros del servidor: ${ctx.guildMemberCount != null ? ctx.guildMemberCount.toLocaleString("es") : "N/A"}
+- Guilds del bot: ${ctx.botGuildCount} · Uptime: ${uptime}
+- Intercambios en esta sesión: ${ctx.exchangeCount}
+- Fecha/hora (Europe/Madrid): ${ctx.currentDateTime}
 
-Puedes referirte al usuario por su nombre (${ctx.userName}) en lugar de siempre decir "parásito". Puedes mencionar el servidor o sus estadísticas si el contexto lo permite. Si llevan muchos intercambios juntos, muéstrate ligeramente más cómoda con el usuario.`;
+## LÍMITES DE FORMATO
+- Respuesta orientativa hasta ~${maxLen} caracteres (puedes usar varios párrafos).
+- Si necesitas listas, hazlas legibles en Discord.
+- Prioriza claridad y detalle útil sobre relleno.`;
 
-  return BASE_PERSONALITY + contextBlock;
+  return BASE_PERSONALITY + tierBlock(tier) + contextBlock;
 }
 
 export function getUserHistory(userId: string): ChatMessage[] {
@@ -117,47 +173,59 @@ export async function chatWithZeroTwo(
   ctx: ChatContext,
 ): Promise<string> {
   const client = getAI();
+  const tier = resolveAccessTier(ctx);
+  const maxHist = maxHistoryFor(tier);
+  const maxResp = maxResponseFor(tier);
 
   const history = getUserHistory(userId);
 
   history.push({ role: "user", parts: [{ text: userMessage }] });
 
   try {
+    // VIP: un poco más de "pensamiento" en la salida
+    const maxOutputTokens = tier === "public" ? 4096 : 8192;
+
     const chat = client.chats.create({
       model: getGeminiModel(),
       history: history.slice(0, -1),
       config: {
         systemInstruction: buildSystemInstruction(ctx),
-        maxOutputTokens: 8192,
+        maxOutputTokens,
+        temperature: tier === "owner" ? 0.85 : tier === "beta" ? 0.8 : 0.75,
       },
     });
 
     const response = await chat.sendMessage({ message: userMessage });
 
-    const text = response.text ?? "...";
+    const text = (response.text ?? "...").trim() || "...";
     const trimmed =
-      text.length > MAX_RESPONSE_LENGTH
-        ? text.slice(0, MAX_RESPONSE_LENGTH - 3) + "..."
-        : text;
+      text.length > maxResp ? text.slice(0, maxResp - 3) + "..." : text;
 
-    history.push({ role: "model", parts: [{ text }] });
+    // Guarda la versión enviada (ya recortada) para coherencia del historial
+    history.push({ role: "model", parts: [{ text: trimmed }] });
 
-    if (history.length > MAX_HISTORY) {
-      history.splice(0, history.length - MAX_HISTORY);
+    if (history.length > maxHist) {
+      history.splice(0, history.length - maxHist);
     }
 
     userHistories.set(userId, history);
 
     logger.info(
-      { userId, historyLength: history.length, guild: ctx.guildName },
-      "💬 ZeroTwo respondió a un parásito.",
+      {
+        userId,
+        tier,
+        historyLength: history.length,
+        replyLen: trimmed.length,
+        guild: ctx.guildName,
+      },
+      "💬 ZeroTwo respondió en el nexo.",
     );
 
     return trimmed;
   } catch (err) {
     history.pop();
     userHistories.set(userId, history);
-    logger.error({ err, userId }, "❌ Error al contactar con Gemini.");
+    logger.error({ err, userId, tier }, "❌ Error al contactar con Gemini.");
     throw err;
   }
 }

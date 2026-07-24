@@ -29,9 +29,7 @@ import { canRequestMusic } from "../../music/permissions.js";
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("play")
-    .setDescription(
-      "🎵 Reproduce música — YouTube, Spotify (track/album/playlist) o búsqueda",
-    )
+    .setDescription("▶️ Reproduce YouTube o Spotify (track, álbum, playlist)")
     .addStringOption((o) =>
       o
         .setName("query")

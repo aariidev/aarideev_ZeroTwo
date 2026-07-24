@@ -9,20 +9,53 @@ import {
   chatWithZeroTwo,
   clearUserHistory,
   getUserHistory,
+  type ChatAccessTier,
   type ChatContext,
 } from "../../lib/gemini.js";
 import { logger } from "../../lib/logger.js";
 import { devState } from "../../lib/devState.js";
+import { ownerUserIds } from "../lib/specialUser.js";
+import { isBetaTester } from "../lib/betatesters.js";
 
-/** Simple per-user cooldown (ms) for DMs */
+/** Simple per-user cooldown (ms) for DMs — VIP más rápido */
 const DM_COOLDOWN_MS = 2500;
+const DM_COOLDOWN_VIP_MS = 900;
 const lastDmAt = new Map<string, number>();
 const PINK = 0xff2d6b;
 const CYAN = 0x00f5d4;
 const RED = 0xef4444;
+const GOLD = 0xfbbf24;
+const PURPLE = 0xa78bfa;
 
-/** ~1 in 4 replies include a soft CTA */
+/** Soft CTA: menos frecuente en VIP */
 const PROMO_CHANCE = 0.28;
+const PROMO_CHANCE_BETA = 0.1;
+const PROMO_CHANCE_OWNER = 0.04;
+
+function resolveDmAccessTier(userId: string): ChatAccessTier {
+  if (ownerUserIds().includes(userId)) return "owner";
+  if (isBetaTester(userId)) return "beta";
+  return "public";
+}
+
+function promoChanceFor(tier: ChatAccessTier): number {
+  if (tier === "owner") return PROMO_CHANCE_OWNER;
+  if (tier === "beta") return PROMO_CHANCE_BETA;
+  return PROMO_CHANCE;
+}
+
+function embedColorFor(tier: ChatAccessTier): number {
+  if (tier === "owner") return GOLD;
+  if (tier === "beta") return PURPLE;
+  return PINK;
+}
+
+function titleFor(tier: ChatAccessTier, continuation: boolean): string {
+  if (continuation) return "🌸 Continuación…";
+  if (tier === "owner") return "👑 Zero Two · Nexo Dev";
+  if (tier === "beta") return "🧪 Zero Two · Nexo Beta";
+  return "🌸 Zero Two · Respuesta del núcleo";
+}
 
 const RESET_PHRASES = new Set([
   "reset",
@@ -69,8 +102,8 @@ function supportUrl(): string | null {
 
 type PromoTip = { name: string; value: string };
 
-function pickPromo(client: Client): PromoTip | null {
-  if (Math.random() > PROMO_CHANCE) return null;
+function pickPromo(client: Client, tier: ChatAccessTier = "public"): PromoTip | null {
+  if (Math.random() > promoChanceFor(tier)) return null;
 
   const dash = dashboardUrl();
   const invite = inviteUrl(client);
@@ -174,7 +207,10 @@ export function registerDmChat(client: Client): void {
           return;
         }
 
-        if (devState.current.maintenanceMode) {
+        const accessTier = resolveDmAccessTier(message.author.id);
+
+        // Owners / beta pueden hablar con el núcleo aunque haya mantenimiento
+        if (devState.current.maintenanceMode && accessTier === "public") {
           const msg =
             devState.current.maintenanceMessage?.slice(0, 4000) ||
             "🔧 Estoy en mantenimiento, parásito. Vuelve en un rato. 🌸";
@@ -189,17 +225,25 @@ export function registerDmChat(client: Client): void {
 
         const now = Date.now();
         const last = lastDmAt.get(message.author.id) ?? 0;
-        if (now - last < DM_COOLDOWN_MS) return;
+        const cooldown =
+          accessTier === "public" ? DM_COOLDOWN_MS : DM_COOLDOWN_VIP_MS;
+        if (now - last < cooldown) return;
         lastDmAt.set(message.author.id, now);
 
         const lower = content.toLowerCase();
         if (RESET_PHRASES.has(lower)) {
           clearUserHistory(message.author.id);
+          const resetLine =
+            accessTier === "owner"
+              ? "Archivos del nexo **dev** purgados. ¿Nueva misión, cariño?"
+              : accessTier === "beta"
+                ? "Sesión de lab reiniciada, tester. ¿Otro experimento? 🧪"
+                : "💢 Archivos de conversación borrados.\n¿Empezamos de cero, parásito?";
           await replyEmbeds(message, [
             baseEmbed(client, "Zero Two · Nexo reiniciado")
               .setColor(CYAN)
               .setDescription(
-                "💢 Archivos de conversación borrados.\n¿Empezamos de cero, parásito?\n\n_Escribe lo que quieras — sigo en el nexo privado._",
+                `${resetLine}\n\n_Escribe lo que quieras — sigo en el nexo privado._`,
               )
               .setFooter({
                 text: "Tip: escribe «reset» cuando quieras limpiar el historial",
@@ -234,6 +278,7 @@ export function registerDmChat(client: Client): void {
             minute: "2-digit",
             timeZone: "Europe/Madrid",
           }),
+          accessTier,
         };
 
         const typingTimer = setInterval(() => {
@@ -241,9 +286,11 @@ export function registerDmChat(client: Client): void {
         }, 8000);
 
         try {
+          // VIP pueden mandar mensajes más largos al núcleo
+          const inputCap = accessTier === "public" ? 2000 : 3500;
           const reply = await chatWithZeroTwo(
             message.author.id,
-            content.slice(0, 2000),
+            content.slice(0, inputCap),
             ctx,
           );
           clearInterval(typingTimer);
@@ -255,13 +302,12 @@ export function registerDmChat(client: Client): void {
           const exchanges = Math.floor(
             getUserHistory(message.author.id).length / 2,
           );
-          const promo = pickPromo(client);
+          const promo = pickPromo(client, accessTier);
+          const color = embedColorFor(accessTier);
 
           const embeds = chunks.map((chunk, i) => {
-            const emb = baseEmbed(
-              client,
-              i === 0 ? "🌸 Zero Two · Respuesta del núcleo" : "🌸 Continuación…",
-            )
+            const emb = baseEmbed(client, titleFor(accessTier, i > 0))
+              .setColor(color)
               .setThumbnail(message.author.displayAvatarURL({ size: 128 }))
               .setDescription(chunk);
 
@@ -283,9 +329,15 @@ export function registerDmChat(client: Client): void {
                   value: promo.value.slice(0, 1020),
                 });
               }
+              const tierTag =
+                accessTier === "owner"
+                  ? "👑 Dev"
+                  : accessTier === "beta"
+                    ? "🧪 Beta"
+                    : "MD";
               emb.setFooter({
                 text: [
-                  "📨 MD",
+                  `📨 ${tierTag}`,
                   `💬 ${exchanges} intercambio${exchanges !== 1 ? "s" : ""}`,
                   "«reset» para limpiar",
                 ].join(" · "),
@@ -322,6 +374,6 @@ export function registerDmChat(client: Client): void {
   );
 
   logger.info(
-    "💬 DMs con Gemini activos (embeds only · promos ocasionales dashboard/invite)",
+    "💬 DMs con Gemini activos (detalle ↑ · trato especial owner/beta · embeds)",
   );
 }

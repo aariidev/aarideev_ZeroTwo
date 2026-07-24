@@ -18,7 +18,7 @@ import {
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("cfgembed")
-    .setDescription("🎨 Constructor interactivo de embeds personalizados")
+    .setDescription("🎨 Constructor visual de embeds personalizados")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
     .addChannelOption((opt) =>
       opt

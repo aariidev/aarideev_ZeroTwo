@@ -12,7 +12,7 @@ import { canControlMusic } from "../../music/permissions.js";
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("remove")
-    .setDescription("🗑️ Quita una pista de la cola por su número")
+    .setDescription("🗑️ Quita una pista de la cola por posición")
     .addIntegerOption((o) =>
       o
         .setName("posicion")

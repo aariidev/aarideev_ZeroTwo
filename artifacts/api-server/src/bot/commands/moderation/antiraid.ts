@@ -25,51 +25,54 @@ const AMBER = 0xf59e0b;
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("antiraid")
-    .setDescription("🛡️ Protección contra raids (joins masivos)")
+    .setDescription("🚨 Antiraid — frena joins masivos automáticamente")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addSubcommand((s) =>
-      s.setName("status").setDescription("Ver configuración y estado"),
+      s.setName("status").setDescription("📊 Ver configuración y estado actual"),
     )
     .addSubcommand((s) =>
       s
         .setName("toggle")
-        .setDescription("Activar o desactivar antiraid")
+        .setDescription("🔛 Activar o desactivar el antiraid")
         .addBooleanOption((o) =>
-          o.setName("activar").setDescription("true = on").setRequired(true),
+          o
+            .setName("activar")
+            .setDescription("✅ true = ON · false = OFF")
+            .setRequired(true),
         ),
     )
     .addSubcommand((s) =>
       s
         .setName("config")
-        .setDescription("Ajustar umbral, ventana y acción")
+        .setDescription("⚙️ Ajustar umbral, ventana y acción")
         .addIntegerOption((o) =>
           o
             .setName("umbral")
-            .setDescription("Joins para disparar (2–50)")
+            .setDescription("👥 Joins para disparar (2–50)")
             .setMinValue(2)
             .setMaxValue(50),
         )
         .addIntegerOption((o) =>
           o
             .setName("ventana")
-            .setDescription("Segundos de la ventana (10–600)")
+            .setDescription("⏱️ Segundos de la ventana (10–600)")
             .setMinValue(10)
             .setMaxValue(600),
         )
         .addStringOption((o) =>
           o
             .setName("accion")
-            .setDescription("Qué hacer con el join sospechoso")
+            .setDescription("⚡ Qué hacer con el join sospechoso")
             .addChoices(
-              { name: "Kick", value: "kick" },
-              { name: "Ban", value: "ban" },
-              { name: "Solo alerta", value: "none" },
+              { name: "👢 Kick", value: "kick" },
+              { name: "🔨 Ban", value: "ban" },
+              { name: "🔔 Solo alerta", value: "none" },
             ),
         )
         .addChannelOption((o) =>
           o
             .setName("logs")
-            .setDescription("Canal de alertas antiraid")
+            .setDescription("📡 Canal de alertas antiraid")
             .addChannelTypes(ChannelType.GuildText),
         ),
     ) as SlashCommandBuilder,

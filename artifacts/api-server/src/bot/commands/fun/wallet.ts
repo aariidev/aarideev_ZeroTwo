@@ -13,7 +13,7 @@ import { getEconomy, claimDaily } from "../../lib/economy.js";
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("wallet")
-    .setDescription("💳 Consulta tu saldo, estadísticas y reclama tu recompensa diaria")
+    .setDescription("💳 Tu saldo, stats y daily del casino")
     .addUserOption((opt) =>
       opt
         .setName("usuario")

@@ -46,6 +46,7 @@ import giveroleCmd from "./commands/moderation/giverole.js";
 
 // Fun
 import eightballCmd from "./commands/fun/8ball.js";
+import memeCmd from "./commands/fun/meme.js";
 import pokerCmd from "./commands/fun/poker.js";
 import shipCmd from "./commands/fun/ship.js";
 import blackjackCmd from "./commands/fun/blackjack.js";
@@ -109,6 +110,7 @@ const ALL_COMMANDS = [
   autconfigCmd,
   giveroleCmd,
   eightballCmd,
+  memeCmd,
   pokerCmd,
   shipCmd,
   blackjackCmd,

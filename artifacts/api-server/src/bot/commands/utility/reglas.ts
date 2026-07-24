@@ -95,7 +95,10 @@ async function executeRules(
 }
 
 const reglasCmd: Command = {
-  data: buildData("reglas", "📖 Muestra las reglas generales del servidor (ES)"),
+  data: buildData(
+    "reglas",
+    "📖 Embed de reglas del servidor (ES) — opcional: publicar en un canal",
+  ),
   cooldown: 8,
   async execute(interaction, client) {
     await executeRules(interaction, client, "es");
@@ -103,7 +106,10 @@ const reglasCmd: Command = {
 };
 
 const rulesCmd: Command = {
-  data: buildData("rules", "📖 Show the general server rules (EN)"),
+  data: buildData(
+    "rules",
+    "📖 Server rules embed (EN) — optional: post to a channel",
+  ),
   cooldown: 8,
   async execute(interaction, client) {
     await executeRules(interaction, client, "en");

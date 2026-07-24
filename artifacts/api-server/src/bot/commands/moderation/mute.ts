@@ -24,7 +24,7 @@ const parseDuration = (str: string): number | null => {
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("mute")
-    .setDescription("🔇 Silencia a un parásito restringiendo su comunicación")
+    .setDescription("🔇 Silencia a un miembro por un tiempo")
     .addUserOption((opt) =>
       opt
         .setName("usuario")

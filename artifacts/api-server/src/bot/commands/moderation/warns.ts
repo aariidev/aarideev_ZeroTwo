@@ -12,9 +12,7 @@ import { formatWarnTimestamp, listWarns } from "../../lib/warns.js";
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("warns")
-    .setDescription(
-      "📋 Extrae el expediente disciplinario completo de un parásito",
-    )
+    .setDescription("📜 Consulta el expediente de warns de un usuario")
     .addUserOption((opt) =>
       opt
         .setName("usuario")

@@ -4,6 +4,10 @@
  */
 import { Router, type Request, type Response } from "express";
 import {
+  EmbedBuilder,
+  type TextChannel,
+} from "discord.js";
+import {
   isBetaTester,
   getAllBetatesters,
   addBetaTester,
@@ -14,10 +18,23 @@ import {
 import { isBotOwner } from "../lib/guildAccess.js";
 import { logger } from "../lib/logger.js";
 import { BOT_VERSION } from "../bot/lib/version.js";
+import { getBotClient } from "./bot.js";
+import type { SessionUser } from "../lib/session.js";
 
 const router = Router();
 
-/** Feedback en memoria (últimos N); también va a logs */
+/** Canal por defecto: inbox de feedback Beta Lab (override con BETA_FEEDBACK_CHANNEL_ID) */
+const DEFAULT_FEEDBACK_CHANNEL_ID = "1443091711038587051";
+
+function feedbackChannelId(): string {
+  return (
+    process.env.BETA_FEEDBACK_CHANNEL_ID?.trim() ||
+    process.env.DEV_LOG_CHANNEL_ID?.trim() ||
+    DEFAULT_FEEDBACK_CHANNEL_ID
+  );
+}
+
+/** Feedback en memoria (últimos N); también va a logs + canal Discord */
 const FEEDBACK_MAX = 100;
 const feedbackLog: Array<{
   id: string;
@@ -28,6 +45,118 @@ const feedbackLog: Array<{
   type: string;
   submittedAt: string;
 }> = [];
+
+const TYPE_META: Record<
+  string,
+  { label: string; emoji: string; color: number }
+> = {
+  bug: { label: "Bug", emoji: "🐛", color: 0xef4444 },
+  feature: { label: "Feature", emoji: "✨", color: 0xa78bfa },
+  suggestion: { label: "Idea", emoji: "💡", color: 0xfbbf24 },
+  general: { label: "General", emoji: "💬", color: 0x22d3ee },
+};
+
+function discordAvatarUrl(user: SessionUser | undefined, userId: string): string {
+  if (user?.avatar) {
+    const ext = user.avatar.startsWith("a_") ? "gif" : "png";
+    return `https://cdn.discordapp.com/avatars/${userId}/${user.avatar}.${ext}?size=128`;
+  }
+  // Default Discord avatar
+  const idx = Number((BigInt(userId) >> 22n) % 6n);
+  return `https://cdn.discordapp.com/embed/avatars/${idx}.png`;
+}
+
+async function postFeedbackEmbed(entry: {
+  id: string;
+  userId: string;
+  username?: string;
+  title: string;
+  description: string;
+  type: string;
+  submittedAt: string;
+}, sessionUser?: SessionUser): Promise<void> {
+  const client = getBotClient();
+  if (!client?.isReady()) {
+    logger.warn("Beta feedback: bot no listo — embed no enviado al canal");
+    return;
+  }
+
+  const channelId = feedbackChannelId();
+  try {
+    const ch = await client.channels.fetch(channelId);
+    if (!ch || !ch.isTextBased() || ch.isDMBased()) {
+      logger.warn({ channelId }, "Beta feedback: canal inválido o sin texto");
+      return;
+    }
+
+    const meta = TYPE_META[entry.type] ?? TYPE_META.general!;
+    const name =
+      entry.username ||
+      sessionUser?.globalName ||
+      sessionUser?.username ||
+      "Usuario";
+    const avatar = discordAvatarUrl(sessionUser, entry.userId);
+    const dash =
+      process.env.DASHBOARD_URL?.replace(/\/$/, "") ||
+      process.env.PUBLIC_APP_URL?.replace(/\/$/, "") ||
+      "";
+
+    const embed = new EmbedBuilder()
+      .setColor(meta.color)
+      .setAuthor({
+        name: `${name} · Beta Lab`,
+        iconURL: avatar,
+      })
+      .setTitle(`${meta.emoji} ${entry.title}`.slice(0, 256))
+      .setDescription(
+        entry.description.length > 3900
+          ? `${entry.description.slice(0, 3900)}…`
+          : entry.description,
+      )
+      .addFields(
+        {
+          name: "Tipo",
+          value: `${meta.emoji} **${meta.label}**`,
+          inline: true,
+        },
+        {
+          name: "Tester",
+          value: `<@${entry.userId}>\n\`${entry.userId}\``,
+          inline: true,
+        },
+        {
+          name: "ID",
+          value: `\`${entry.id}\``,
+          inline: true,
+        },
+      )
+      .setThumbnail(avatar)
+      .setFooter({
+        text: `Zero Two ${BOT_VERSION} · Beta Lab feedback`,
+        iconURL: client.user?.displayAvatarURL({ size: 64 }),
+      })
+      .setTimestamp(new Date(entry.submittedAt));
+
+    if (dash) {
+      embed.addFields({
+        name: "Dashboard",
+        value: `[Abrir Beta Lab](${dash}/beta)`,
+        inline: false,
+      });
+    }
+
+    await (ch as TextChannel).send({ embeds: [embed] });
+    logger.info(
+      { channelId, feedbackId: entry.id },
+      "🧪 Beta feedback publicado en canal",
+    );
+  } catch (err) {
+    logger.warn(
+      { err, channelId },
+      "No se pudo enviar embed de beta feedback al canal",
+    );
+  }
+}
 
 function requireBeta(req: Request, res: Response): string | null {
   const userId = req.sessionUser?.id;
@@ -188,6 +317,9 @@ router.post("/feedback", (req: Request, res: Response) => {
     { userId, title, type, feedbackId: entry.id },
     "🧪 Beta feedback recibido",
   );
+
+  // Embed bonito al canal de inbox (no bloquea la respuesta HTTP)
+  void postFeedbackEmbed(entry, req.sessionUser);
 
   res.status(201).json({ success: true, feedback: entry });
 });

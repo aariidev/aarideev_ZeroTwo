@@ -35,79 +35,86 @@ const GREEN = 0x22c55e;
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("nivel")
-    .setDescription("📊 Niveles y experiencia del servidor")
+    .setDescription("📊 Niveles y XP — progreso, top y logros")
     .addSubcommand((s) =>
       s
         .setName("ver")
-        .setDescription("Ver tu nivel o el de otro usuario")
+        .setDescription("👀 Ver tu nivel o el de otro usuario")
         .addUserOption((o) =>
-          o.setName("usuario").setDescription("Usuario (por defecto: tú)"),
+          o
+            .setName("usuario")
+            .setDescription("👤 Usuario (por defecto: tú)"),
         ),
     )
     .addSubcommand((s) =>
-      s.setName("top").setDescription("Ranking de XP del servidor"),
+      s.setName("top").setDescription("🏆 Ranking de XP del servidor"),
     )
     .addSubcommand((s) =>
       s
         .setName("logros")
-        .setDescription("Ver logros de nivel desbloqueados")
+        .setDescription("🎖️ Logros de nivel desbloqueados")
         .addUserOption((o) =>
-          o.setName("usuario").setDescription("Usuario (por defecto: tú)"),
+          o
+            .setName("usuario")
+            .setDescription("👤 Usuario (por defecto: tú)"),
         ),
     )
     .addSubcommand((s) =>
       s
         .setName("config")
-        .setDescription("Configurar el sistema de niveles (admin)")
+        .setDescription("⚙️ Configurar el sistema de niveles (admin)")
         .addBooleanOption((o) =>
-          o.setName("activar").setDescription("Activar / desactivar XP"),
+          o.setName("activar").setDescription("🔛 Activar / desactivar XP"),
         )
         .addIntegerOption((o) =>
           o
             .setName("xp_min")
-            .setDescription("XP mínimo por mensaje")
+            .setDescription("📉 XP mínimo por mensaje")
             .setMinValue(1)
             .setMaxValue(100),
         )
         .addIntegerOption((o) =>
           o
             .setName("xp_max")
-            .setDescription("XP máximo por mensaje")
+            .setDescription("📈 XP máximo por mensaje")
             .setMinValue(1)
             .setMaxValue(200),
         )
         .addIntegerOption((o) =>
           o
             .setName("cooldown")
-            .setDescription("Cooldownoldown entre XP de mensajes (segundos)")
+            .setDescription("⏱️ Cooldown entre XP de mensajes (s)")
             .setMinValue(10)
             .setMaxValue(600),
         )
         .addIntegerOption((o) =>
           o
             .setName("voz_xp")
-            .setDescription("XP por minuto en voz")
+            .setDescription("🎙️ XP por minuto en voz")
             .setMinValue(0)
             .setMaxValue(50),
         )
         .addChannelOption((o) =>
           o
             .setName("anuncios")
-            .setDescription("Canal fijo de level-up (opcional)")
+            .setDescription("📢 Canal fijo de level-up (opcional)")
             .addChannelTypes(ChannelType.GuildText),
         ),
     )
     .addSubcommand((s) =>
       s
         .setName("dar")
-        .setDescription("[Admin] Dar XP a un usuario")
+        .setDescription("✨ [Admin] Otorgar XP a un usuario")
         .addUserOption((o) =>
-          o.setName("usuario").setDescription("Objetivo").setRequired(true),
+          o
+            .setName("usuario")
+            .setDescription("👤 Objetivo")
+            .setRequired(true),
         )
         .addIntegerOption((o) =>
           o
             .setName("cantidad")
-            .setDescription("XP a otorgar")
+            .setDescription("🔢 XP a otorgar")
             .setRequired(true)
             .setMinValue(1)
             .setMaxValue(100_000),

@@ -242,9 +242,7 @@ function bestHand(seven: Card[]): { best: Card[]; rank: HandRank } {
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("poker")
-    .setDescription(
-      "🃏 Mano de póker Texas Hold'em (diversión) — hole cards + flop/turn/river",
-    )
+    .setDescription("🃏 Poker Texas Hold'em — mano, flop y showdown")
     .addUserOption((o) =>
       o
         .setName("rival")

@@ -11,9 +11,7 @@ import { logBotEvent } from "../../../lib/botLogger.js";
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("lock")
-    .setDescription(
-      "🔒 Cierra los canales de texto bloqueando el envío de transmisiones",
-    )
+    .setDescription("🔒 Bloquea el envío de mensajes en el canal")
     .addStringOption((opt) =>
       opt.setName("motivo").setDescription("Causa del bloqueo del sector"),
     )

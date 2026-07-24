@@ -300,9 +300,7 @@ async function applyMutedOverwrites(
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("autconfig")
-    .setDescription(
-      "⚙️ Auto-configura el servidor: colores, AutoMod, antiraid, logs y niveles",
-    )
+    .setDescription("⚙️ Setup del servidor — colores, AutoMod, antiraid y más")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addChannelOption((o) =>
       o

@@ -12,7 +12,7 @@ import { canControlMusic } from "../../music/permissions.js";
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("leave")
-    .setDescription("🚪 Desconecta el bot del canal de voz"),
+    .setDescription("🚪 Sale del canal de voz"),
   cooldown: 2,
 
   async execute(interaction: ChatInputCommandInteraction) {

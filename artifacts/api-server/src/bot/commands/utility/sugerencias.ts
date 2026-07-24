@@ -25,7 +25,7 @@ const GREEN = 0x22c55e;
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("sugerencias")
-    .setDescription("💡 Sistema de sugerencias del servidor")
+    .setDescription("💡 Buzón de sugerencias — propone ideas al servidor")
     .addSubcommand((s) =>
       s
         .setName("crear")

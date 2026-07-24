@@ -23,7 +23,7 @@ const GREEN = 0x22c55e;
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("musicpanel")
-    .setDescription("🎛️ Configura el panel fijo de música del servidor")
+    .setDescription("🎛️ Panel fijo de música del servidor")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addSubcommand((sub) =>
       sub
