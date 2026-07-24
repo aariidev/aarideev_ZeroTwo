@@ -29,6 +29,8 @@ const META: Record<
   sugerencias:{ emoji: "💡", category: "Utilidad", usage: "/sugerencias <crear|set|logs|status|lista|toggle>" },
   nivel:      { emoji: "📊", category: "Utilidad", usage: "/nivel <ver|top|logros|config|dar>" },
   welcome:    { emoji: "🌸", category: "Utilidad", usage: "/welcome <status|set|toggle|autorole|test>", permission: "Gestionar Servidor" },
+  reglas:     { emoji: "📖", category: "Utilidad", usage: "/reglas [canal]" },
+  rules:      { emoji: "📖", category: "Utilidad", usage: "/rules [channel]" },
   cfgembed:   { emoji: "🎨", category: "Utilidad", usage: "/cfgembed [canal]", permission: "Gestionar Mensajes" },
   cfglogs:    { emoji: "📋", category: "Utilidad", usage: "/cfglogs <set|disable|status>", permission: "Gestionar Servidor" },
   ticket:     { emoji: "🎫", category: "Utilidad", usage: "/ticket <setup|panel|close|claim|add|remove|status>", permission: "Ver subcomandos" },
@@ -52,6 +54,7 @@ const META: Record<
   logs:       { emoji: "📋", category: "Moderación", usage: "/logs <ver|buscar|borrar>", permission: "Silenciar Miembros" },
   automod:    { emoji: "🛡️", category: "Moderación", usage: "/automod <setup|status|list|remove|global|sync-all>", permission: "Gestionar Servidor" },
   antiraid:   { emoji: "🚨", category: "Moderación", usage: "/antiraid <status|toggle|config>", permission: "Gestionar Servidor" },
+  autconfig:  { emoji: "⚙️", category: "Moderación", usage: "/autconfig [canal_logs]… → pregunta panel colores con reacciones", permission: "Administrador" },
 
   // ── Diversión ───────────────────────────────────────────────────────────────
   "8ball":  { emoji: "🎱", category: "Diversión", usage: "/8ball <pregunta>" },

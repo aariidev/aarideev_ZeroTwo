@@ -60,14 +60,45 @@ $env:NODE_ENV = "development"
 # Avoid hard-fail on ignored lifecycle scripts during filter runs
 $env:npm_config_strict_dep_builds = "false"
 
-# VS Code Dev Tunnel (optional) — set host without protocol for Vite HMR
+# Load DASHBOARD_URL / TUNNEL_HOST from root .env if present
+$envFile = "H:\Discord\02\.env"
+if (Test-Path -LiteralPath $envFile) {
+  Get-Content $envFile | ForEach-Object {
+    if ($_ -match '^\s*(DASHBOARD_URL|TUNNEL_HOST|PUBLIC_APP_URL)\s*=\s*(.*)$') {
+      $key = $matches[1]
+      $val = $matches[2].Trim().Trim('"').Trim("'")
+      if ($val -and -not [Environment]::GetEnvironmentVariable($key, "Process")) {
+        [System.Environment]::SetEnvironmentVariable($key, $val, "Process")
+      }
+    }
+  }
+}
+
+# VS Code Dev Tunnel — host without protocol for Vite HMR (wss://…:443)
 if (-not $env:TUNNEL_HOST) {
-  $env:TUNNEL_HOST = "zj4nchh4-5173.uks1.devtunnels.ms"
+  $fromDash = $env:DASHBOARD_URL
+  if (-not $fromDash) { $fromDash = $env:PUBLIC_APP_URL }
+  if ($fromDash -and $fromDash -match 'devtunnels\.ms') {
+    $env:TUNNEL_HOST = ($fromDash -replace '^https?://', '' -replace '/+$', '')
+  } else {
+    $env:TUNNEL_HOST = "zj4nchh4-5173.uks1.devtunnels.ms"
+  }
+}
+
+$publicUrl = if ($env:DASHBOARD_URL) {
+  $env:DASHBOARD_URL.TrimEnd("/")
+} else {
+  "https://$($env:TUNNEL_HOST)"
 }
 
 Write-Host ""
-Write-Host "URL: http://localhost:5173/" -ForegroundColor Cyan
-Write-Host "API proxy -> http://localhost:8080" -ForegroundColor DarkGray
+Write-Host "Local:  http://localhost:5173/" -ForegroundColor Cyan
+Write-Host "Public: $publicUrl/" -ForegroundColor Magenta
+Write-Host "HMR:    wss://$($env:TUNNEL_HOST) (TUNNEL_HOST)" -ForegroundColor DarkGray
+Write-Host "API proxy -> http://localhost:8080  (/api via tunnel)" -ForegroundColor DarkGray
+Write-Host ""
+Write-Host "Discord OAuth redirect (Portal):" -ForegroundColor Yellow
+Write-Host "  $publicUrl/api/auth/discord/callback" -ForegroundColor Yellow
 Write-Host ""
 
 # Prefer direct vite (skips full monorepo install gate); fallback to filter run

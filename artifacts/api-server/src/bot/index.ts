@@ -23,6 +23,7 @@ import betaCmd from "./commands/utility/beta.js";
 import sugerenciasCmd from "./commands/utility/sugerencias.js";
 import nivelCmd from "./commands/utility/nivel.js";
 import welcomeCmd from "./commands/utility/welcome.js";
+import reglasCmd, { rulesCmd } from "./commands/utility/reglas.js";
 
 // Moderation
 import banCmd from "./commands/moderation/ban.js";
@@ -40,6 +41,7 @@ import lockCmd from "./commands/moderation/lock.js";
 import unlockCmd from "./commands/moderation/unlock.js";
 import logsCmd from "./commands/moderation/logs.js";
 import automodCmd from "./commands/moderation/automod.js";
+import autconfigCmd from "./commands/moderation/autconfig.js";
 import giveroleCmd from "./commands/moderation/giverole.js";
 
 // Fun
@@ -87,6 +89,8 @@ const ALL_COMMANDS = [
   sugerenciasCmd,
   nivelCmd,
   welcomeCmd,
+  reglasCmd,
+  rulesCmd,
   banCmd,
   antiraidCmd,
   kickCmd,
@@ -102,6 +106,7 @@ const ALL_COMMANDS = [
   unlockCmd,
   logsCmd,
   automodCmd,
+  autconfigCmd,
   giveroleCmd,
   eightballCmd,
   pokerCmd,
@@ -151,12 +156,15 @@ export async function startBot() {
       GatewayIntentBits.MessageContent,
       GatewayIntentBits.GuildVoiceStates,
       GatewayIntentBits.GuildInvites,
+      // Color reaction roles panel
+      GatewayIntentBits.GuildMessageReactions,
       // Private messages → Gemini chat
       GatewayIntentBits.DirectMessages,
     ],
     partials: [
       Partials.Channel, // required to receive DMs
       Partials.Message,
+      Partials.Reaction, // uncached reactions on color panel
       Partials.GuildMember,
       Partials.User,
     ],
@@ -210,6 +218,10 @@ export async function startBot() {
   const { registerSuggestionButtons } = await import(
     "./events/suggestionButtons.js"
   );
+  const {
+    registerColorRoleReactions,
+    warmColorPanelIndex,
+  } = await import("./lib/colorRolesPanel.js");
 
   // Server monitoring logs (ban, unban, delete, edit, join, leave/kick)
   registerServerLogs(client);
@@ -220,6 +232,16 @@ export async function startBot() {
   registerLevels(client);
   registerWelcome(client);
   registerSuggestionButtons(client);
+  // Color self-assign via reaction panel (/autconfig)
+  registerColorRoleReactions(client);
+  // Warm panel index after first ready (also on reconnect handled below)
+  client.once("clientReady", () => {
+    void warmColorPanelIndex(client);
+  });
+  // discord.js v14 may still emit `ready`
+  client.once("ready", () => {
+    void warmColorPanelIndex(client);
+  });
   // Cap competing music bots when enabled per guild
   const { registerMusicBotCap } = await import("./music/capBots.js");
   registerMusicBotCap(client);
