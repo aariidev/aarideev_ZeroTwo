@@ -10,9 +10,7 @@ import { logBotEvent } from "../../../lib/botLogger.js";
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("unban")
-    .setDescription(
-      "🔓 Revoca un ban estructural permitiendo el re-ingreso de una ID",
-    )
+    .setDescription("🔓 Revoca un ban por ID de usuario")
     .addStringOption((opt) =>
       opt
         .setName("userid")

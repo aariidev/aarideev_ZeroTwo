@@ -13,9 +13,7 @@ import { sendModLog } from "../../lib/modlog.js";
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("giverole")
-    .setDescription(
-      "🎖️ Asigna o retira un rol a un miembro del escuadrón",
-    )
+    .setDescription("🎖️ Da o quita un rol a un miembro")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
     .addUserOption((opt) =>
       opt

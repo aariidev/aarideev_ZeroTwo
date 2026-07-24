@@ -19,9 +19,7 @@ function msToHM(ms: number): string {
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("daily")
-    .setDescription(
-      "🎁 Reclama tu recompensa diaria de fichas. ¡Mantén la racha para bonificaciones!",
-    ) as SlashCommandBuilder,
+    .setDescription("🎁 Recompensa diaria de fichas — ¡mantén la racha!") as SlashCommandBuilder,
 
   cooldown: 3,
 

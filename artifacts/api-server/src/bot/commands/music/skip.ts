@@ -12,7 +12,7 @@ import { canControlMusic } from "../../music/permissions.js";
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("skip")
-    .setDescription("⏭️ Salta la canción actual"),
+    .setDescription("⏭️ Salta a la siguiente canción"),
   cooldown: 2,
 
   async execute(interaction: ChatInputCommandInteraction) {

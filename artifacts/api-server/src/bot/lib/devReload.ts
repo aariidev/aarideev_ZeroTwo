@@ -1,29 +1,35 @@
 /**
- * devReload.ts — Maneja los botones "Reiniciar" / "Cancelar" que envía
- * el watcher externo (scripts/dev-watch.mjs) cuando detecta cambios en el código.
- *
- * El watcher arranca el bot como proceso hijo. Cuando hay una build lista,
- * manda un embed con dos botones al canal DEV_LOG_CHANNEL_ID.
- * Este módulo responde a esos botones:
- *   - dev_reload_confirm  → avisa al watcher por IPC (o señal fallback), que reinicia el bot
- *   - dev_reload_cancel   → descarta la build pendiente
+ * Botones del watcher (scripts/dev-watch.mjs):
+ *   dev_reload_confirm → reiniciar
+ *   dev_reload_cancel  → posponer
  */
 import {
   ButtonInteraction,
   EmbedBuilder,
   MessageFlags,
 } from "discord.js";
+import { BOT_VERSION } from "./version.js";
 
-/** IDs de los botones que emite el watcher */
 export const DEV_RELOAD_CONFIRM = "dev_reload_confirm";
 export const DEV_RELOAD_CANCEL = "dev_reload_cancel";
 
+const PINK = 0xff2d6b;
+const GREEN = 0x22c55e;
+const AMBER = 0xf59e0b;
+const PURPLE = 0xa78bfa;
+const SLATE = 0x64748b;
+
 function isOwner(userId: string): boolean {
   return (process.env.OWNER_IDS ?? "")
-    .split(",")
+    .split(/[,\s]+/)
     .map((s) => s.trim())
     .filter(Boolean)
     .includes(userId);
+}
+
+function bar(pct: number, len = 10): string {
+  const f = Math.round((Math.min(100, Math.max(0, pct)) / 100) * len);
+  return "█".repeat(f) + "░".repeat(Math.max(0, len - f));
 }
 
 export async function handleDevReloadButton(
@@ -37,22 +43,51 @@ export async function handleDevReloadButton(
     return false;
   }
 
-  // Solo el owner puede pulsar estos botones
   if (!isOwner(interaction.user.id)) {
     await interaction.reply({
-      content: "❌ Solo la desarrolladora puede controlar los reloads.",
+      embeds: [
+        new EmbedBuilder()
+          .setColor(PINK)
+          .setTitle("🚫 Acceso denegado")
+          .setDescription(
+            "Solo la **desarrolladora** (`OWNER_IDS`) puede controlar los reloads del watcher.",
+          ),
+      ],
       flags: MessageFlags.Ephemeral,
     });
     return true;
   }
 
+  const botIcon = interaction.client.user?.displayAvatarURL({ size: 64 });
+
   if (customId === DEV_RELOAD_CANCEL) {
     await interaction.update({
       embeds: [
         new EmbedBuilder()
-          .setColor(0xff2d6b)
-          .setTitle("🚫 Reload Cancelado")
-          .setDescription("La build está lista pero el bot **no se reiniciará**.\nPuedes reiniciar manualmente cuando quieras.")
+          .setColor(SLATE)
+          .setAuthor({
+            name: "Zero Two · Dev Watcher",
+            iconURL: botIcon,
+          })
+          .setTitle("⏳ Reload pospuesto")
+          .setDescription(
+            [
+              "La build **sigue compilada** en disco, pero el bot **no se reinició**.",
+              "",
+              "Sigue editando con calma. Cuando guardes de nuevo, te avisaré otra vez. 🌸",
+              "",
+              "> Tip: también puedes reiniciar el proceso a mano si lo prefieres.",
+            ].join("\n"),
+          )
+          .addFields({
+            name: "👤 Por",
+            value: `<@${interaction.user.id}>`,
+            inline: true,
+          })
+          .setFooter({
+            text: `Zero Two ${BOT_VERSION} · deferred`,
+            iconURL: botIcon,
+          })
           .setTimestamp(),
       ],
       components: [],
@@ -60,13 +95,34 @@ export async function handleDevReloadButton(
     return true;
   }
 
-  // dev_reload_confirm → avisar al watcher
+  // confirm
   await interaction.update({
     embeds: [
       new EmbedBuilder()
-        .setColor(0xffa500)
-        .setTitle("🔄 Reiniciando bot...")
-        .setDescription("Aplicando la nueva build. El bot volverá en unos segundos. 🌸")
+        .setColor(PURPLE)
+        .setAuthor({
+          name: "Zero Two · Dev Watcher",
+          iconURL: botIcon,
+        })
+        .setTitle("🔄 Reiniciando el núcleo…")
+        .setDescription(
+          [
+            "Aplicando la nueva build. El proceso se reciclará en un momento.",
+            "",
+            `\`[${bar(55)}]\` *hot reload en curso*`,
+            "",
+            "Si el watcher está activo, el bot volverá solo. ✨",
+          ].join("\n"),
+        )
+        .addFields({
+          name: "👤 Confirmado por",
+          value: `<@${interaction.user.id}>`,
+          inline: true,
+        })
+        .setFooter({
+          text: `Zero Two ${BOT_VERSION} · restarting`,
+          iconURL: botIcon,
+        })
         .setTimestamp(),
     ],
     components: [],
@@ -78,17 +134,18 @@ export async function handleDevReloadButton(
   }
 
   const parentPid = process.ppid;
-  const canSignalParent = parentPid && parentPid !== 1 && process.platform !== "win32";
+  const canSignalParent =
+    parentPid && parentPid !== 1 && process.platform !== "win32";
   if (canSignalParent) {
     try {
       process.kill(parentPid, "SIGUSR2");
       return true;
     } catch {
-      // Fall through to local restart when signals are not available.
+      /* fall through */
     }
   }
 
-  // Fallback: reiniciar el propio proceso (solo si no hay watcher/IPC)
+  // Fallback: salir y confiar en un supervisor externo
   setTimeout(() => process.exit(0), 500);
 
   return true;

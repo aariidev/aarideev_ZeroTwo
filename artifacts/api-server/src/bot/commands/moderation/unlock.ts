@@ -11,9 +11,7 @@ import { logBotEvent } from "../../../lib/botLogger.js";
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("unlock")
-    .setDescription(
-      "🔓 Levanta el cierre de seguridad permitiendo transmisiones normales",
-    )
+    .setDescription("🔓 Desbloquea el canal para hablar de nuevo")
     .addBooleanOption((opt) =>
       opt
         .setName("global")

@@ -12,9 +12,7 @@ import { sendModLog } from "../../lib/modlog.js";
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("kick")
-    .setDescription(
-      "👢 Expulsa de forma inmediata a un parásito fuera de la plantación",
-    )
+    .setDescription("👢 Expulsa a un miembro del servidor")
     .addUserOption((opt) =>
       opt
         .setName("usuario")

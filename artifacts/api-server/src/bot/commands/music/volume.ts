@@ -12,7 +12,7 @@ import { canControlMusic } from "../../music/permissions.js";
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("volume")
-    .setDescription("🔊 Cambia el volumen del bot (0–150)")
+    .setDescription("🔊 Volumen del bot (0–150)")
     .addIntegerOption((o) =>
       o
         .setName("nivel")

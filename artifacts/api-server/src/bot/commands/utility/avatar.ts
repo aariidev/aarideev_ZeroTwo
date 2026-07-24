@@ -12,7 +12,7 @@ import { Command } from "../../types.js";
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("avatar")
-    .setDescription("🖼️ Renderiza el archivo visual de perfil de un parásito")
+    .setDescription("🖼️ Avatar a tamaño completo de un usuario (o el tuyo)")
     .addUserOption((opt) =>
       opt.setName("usuario").setDescription("Sujeto a escanear"),
     ),

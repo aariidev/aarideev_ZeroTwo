@@ -16,7 +16,7 @@ import { canControlMusic } from "../../music/permissions.js";
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("stop")
-    .setDescription("⏹️ Detiene la reproducción y vacía la cola"),
+    .setDescription("⏹️ Detiene la música y limpia la cola"),
   cooldown: 2,
 
   async execute(interaction: ChatInputCommandInteraction) {

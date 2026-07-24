@@ -47,11 +47,11 @@ const configGroup = new SlashCommandSubcommandGroupBuilder()
   .addSubcommand((s) =>
     s
       .setName("close-policy")
-      .setDescription("¿Quién puede cerrar tickets?")
+      .setDescription("🔐 ¿Quién puede cerrar tickets?")
       .addStringOption((o) =>
         o
           .setName("politica")
-          .setDescription("Política de cierre")
+          .setDescription("📋 Política de cierre")
           .setRequired(true)
           .addChoices(
             { name: "Dueño o staff (por defecto)", value: "both" },
@@ -181,32 +181,35 @@ const configGroup = new SlashCommandSubcommandGroupBuilder()
 
 const builder = new SlashCommandBuilder()
   .setName("ticket")
-  .setDescription("🎫 Sistema de tickets de soporte")
+  .setDescription("🎫 Tickets de soporte — panel, claim, close y setup")
   .addSubcommand((s) =>
     s
       .setName("setup")
-      .setDescription("Configura el sistema de tickets (admin)")
+      .setDescription("🛠️ Configura categoría, staff y logs (admin)")
       .addChannelOption((o) =>
         o
           .setName("categoria")
-          .setDescription("Categoría Discord donde se crearán los tickets")
+          .setDescription("📁 Categoría donde se crearán los tickets")
           .addChannelTypes(ChannelType.GuildCategory)
           .setRequired(true),
       )
       .addRoleOption((o) =>
-        o.setName("staff").setDescription("Rol principal de staff").setRequired(true),
+        o
+          .setName("staff")
+          .setDescription("🛡️ Rol principal de staff")
+          .setRequired(true),
       )
       .addChannelOption((o) =>
         o
           .setName("logs")
-          .setDescription("Canal de logs/transcripts (opcional)")
+          .setDescription("📡 Canal de logs y transcripts (opcional)")
           .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
           .setRequired(false),
       )
       .addIntegerOption((o) =>
         o
           .setName("max_abiertos")
-          .setDescription("Máximo de tickets abiertos por usuario (1-5)")
+          .setDescription("🔢 Máx. tickets abiertos por usuario (1–5)")
           .setMinValue(1)
           .setMaxValue(5)
           .setRequired(false),
@@ -214,7 +217,7 @@ const builder = new SlashCommandBuilder()
       .addIntegerOption((o) =>
         o
           .setName("borrar_tras")
-          .setDescription("Segundos antes de borrar al cerrar (0 = no borrar)")
+          .setDescription("⏱️ Segundos antes de borrar al cerrar (0 = no)")
           .setMinValue(0)
           .setMaxValue(300)
           .setRequired(false),
@@ -224,11 +227,11 @@ const builder = new SlashCommandBuilder()
   .addSubcommand((s) =>
     s
       .setName("panel")
-      .setDescription("Publica el panel para abrir tickets")
+      .setDescription("📌 Publica el panel para abrir tickets")
       .addChannelOption((o) =>
         o
           .setName("canal")
-          .setDescription("Canal donde publicar (default: actual)")
+          .setDescription("📢 Canal donde publicar (por defecto: este)")
           .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
           .setRequired(false),
       ),
@@ -236,25 +239,42 @@ const builder = new SlashCommandBuilder()
   .addSubcommand((s) =>
     s
       .setName("close")
-      .setDescription("Cierra el ticket del canal actual")
+      .setDescription("🔒 Cierra el ticket de este canal")
       .addStringOption((o) =>
-        o.setName("razon").setDescription("Motivo del cierre").setRequired(false),
+        o
+          .setName("razon")
+          .setDescription("📝 Motivo del cierre")
+          .setRequired(false),
       ),
   )
-  .addSubcommand((s) => s.setName("claim").setDescription("Reclama el ticket"))
+  .addSubcommand((s) =>
+    s.setName("claim").setDescription("✋ Reclama este ticket como staff"),
+  )
   .addSubcommand((s) =>
     s
       .setName("add")
-      .setDescription("Añade un usuario al ticket")
-      .addUserOption((o) => o.setName("usuario").setDescription("Usuario a añadir").setRequired(true)),
+      .setDescription("➕ Añade un usuario al ticket")
+      .addUserOption((o) =>
+        o
+          .setName("usuario")
+          .setDescription("👤 Usuario a añadir")
+          .setRequired(true),
+      ),
   )
   .addSubcommand((s) =>
     s
       .setName("remove")
-      .setDescription("Quita un usuario del ticket")
-      .addUserOption((o) => o.setName("usuario").setDescription("Usuario a quitar").setRequired(true)),
+      .setDescription("➖ Quita un usuario del ticket")
+      .addUserOption((o) =>
+        o
+          .setName("usuario")
+          .setDescription("👤 Usuario a quitar")
+          .setRequired(true),
+      ),
   )
-  .addSubcommand((s) => s.setName("status").setDescription("Muestra la configuración de tickets"));
+  .addSubcommand((s) =>
+    s.setName("status").setDescription("📊 Muestra la config actual de tickets"),
+  );
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function adminOnly(interaction: ChatInputCommandInteraction): boolean {

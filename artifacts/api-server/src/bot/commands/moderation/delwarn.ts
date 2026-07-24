@@ -14,7 +14,7 @@ import { sendModLog } from "../../lib/modlog.js";
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("delwarn")
-    .setDescription("🗑️ Elimina una advertencia concreta por su folio (#id)")
+    .setDescription("🗑️ Elimina una advertencia por su folio #id")
     .addIntegerOption((opt) =>
       opt
         .setName("id")

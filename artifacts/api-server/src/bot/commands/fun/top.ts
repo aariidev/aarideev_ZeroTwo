@@ -14,7 +14,7 @@ const RANK_COLORS = [0xffd700, 0xc0c0c0, 0xcd7f32];
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("top")
-    .setDescription("🏆 Ranking de fichas del servidor — los 10 más ricos del casino")
+    .setDescription("🏆 Ranking de los más ricos del servidor")
     .addStringOption((o) =>
       o
         .setName("tipo")

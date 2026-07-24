@@ -15,9 +15,7 @@ import { SHOP_ITEMS, accessBadge } from "../../lib/shop.js";
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("inventory")
-    .setDescription(
-      "🎒 Muestra tu inventario de ítems del casino",
-    ) as SlashCommandBuilder,
+    .setDescription("🎒 Inventario de ítems — usa cajas y power-ups") as SlashCommandBuilder,
 
   cooldown: 5,
 

@@ -34,9 +34,7 @@ function sectionTitle(access: ShopAccess): string {
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("shop")
-    .setDescription(
-      "🏪 Tienda del casino — ítems públicos, beta y dev",
-    ) as SlashCommandBuilder,
+    .setDescription("🏪 Tienda del casino — cajas, multi y exclusivos") as SlashCommandBuilder,
 
   cooldown: 5,
 

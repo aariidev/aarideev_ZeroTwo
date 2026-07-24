@@ -47,48 +47,46 @@ function ephemeralReply(
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("beta")
-    .setDescription(
-      "🧪 Programa beta — features experimentales y acceso de testers",
-    )
+    .setDescription("🧪 Programa beta — features de lab, status y feedback")
     .addSubcommand((sub) =>
       sub
         .setName("info")
-        .setDescription("ℹ️ Qué es el programa de beta testers"),
+        .setDescription("ℹ️ Qué es el programa beta de Zero Two"),
     )
     .addSubcommand((sub) =>
       sub
         .setName("status")
-        .setDescription("🪪 Tu estado en el programa beta"),
+        .setDescription("🪪 Tu estado — ¿eres beta o dev?"),
     )
     .addSubcommand((sub) =>
       sub
         .setName("features")
-        .setDescription("🎯 Features experimentales (solo beta testers)"),
+        .setDescription("🎯 Features experimentales del lab (beta)"),
     )
     .addSubcommand((sub) =>
       sub
         .setName("feedback")
-        .setDescription("💬 Cómo reportar bugs o mandar feedback"),
+        .setDescription("💬 Cómo reportar bugs o ideas al lab"),
     )
     .addSubcommand((sub) =>
       sub
         .setName("manage")
-        .setDescription("👥 Gestionar beta testers (solo owner)")
+        .setDescription("👥 Gestionar testers (solo owner)")
         .addStringOption((o) =>
           o
             .setName("action")
-            .setDescription("Acción")
+            .setDescription("⚡ Acción a realizar")
             .setRequired(true)
             .addChoices(
-              { name: "Añadir", value: "add" },
-              { name: "Quitar", value: "remove" },
-              { name: "Listar", value: "list" },
+              { name: "➕ Añadir", value: "add" },
+              { name: "➖ Quitar", value: "remove" },
+              { name: "📋 Listar", value: "list" },
             ),
         )
         .addUserOption((o) =>
           o
             .setName("usuario")
-            .setDescription("Usuario (add / remove)")
+            .setDescription("👤 Usuario (add / remove)")
             .setRequired(false),
         ),
     ) as SlashCommandBuilder,

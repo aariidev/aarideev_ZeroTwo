@@ -23,9 +23,7 @@ const DURATIONS: Record<string, number> = {
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("timeout")
-    .setDescription(
-      "⏱️ Restringe la actividad de un parásito mediante un aislamiento temporal",
-    )
+    .setDescription("⏳ Aísla temporalmente a un miembro (timeout)")
     .addUserOption((opt) =>
       opt
         .setName("usuario")

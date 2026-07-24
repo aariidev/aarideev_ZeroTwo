@@ -16,7 +16,7 @@ import {
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("chat")
-    .setDescription("💬 Abre un nexo de comunicación directo con ZeroTwo")
+    .setDescription("💬 Habla con Zero Two (Gemini) en el nexo")
     .addSubcommand((sub) =>
       sub
         .setName("mensaje")

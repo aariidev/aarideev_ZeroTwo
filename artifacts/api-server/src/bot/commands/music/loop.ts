@@ -12,7 +12,7 @@ import { canControlMusic } from "../../music/permissions.js";
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("loop")
-    .setDescription("🔁 Cambia el modo de loop: off → track → queue"),
+    .setDescription("🔁 Loop: off → pista → cola"),
   cooldown: 2,
 
   async execute(interaction: ChatInputCommandInteraction) {

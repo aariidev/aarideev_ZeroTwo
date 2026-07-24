@@ -11,9 +11,7 @@ import { logBotEvent } from "../../../lib/botLogger.js";
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("purge")
-    .setDescription(
-      "🧹 Ejecuta una limpieza masiva de datos corruptos en el canal actual",
-    )
+    .setDescription("🧼 Borra mensajes del canal (máx. 14 días)")
     .addIntegerOption((opt) =>
       opt
         .setName("cantidad")

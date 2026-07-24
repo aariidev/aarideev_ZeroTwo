@@ -14,9 +14,7 @@ import { addWarn, listWarns } from "../../lib/warns.js";
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("warn")
-    .setDescription(
-      "⚠️ Registra una advertencia formal en el expediente de un parásito",
-    )
+    .setDescription("⚠️ Advertencias — add, list, remove y clear")
     .addUserOption((opt) =>
       opt
         .setName("usuario")

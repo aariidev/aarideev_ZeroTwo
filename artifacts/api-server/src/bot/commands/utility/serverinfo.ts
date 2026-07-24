@@ -531,9 +531,7 @@ function menu(userId: string, selected: Section) {
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("serverinfo")
-    .setDescription(
-      "🏠 Reporte del servidor — miembros, canales, seguridad y assets",
-    ),
+    .setDescription("🏠 Informe del servidor — miembros, canales y seguridad"),
   cooldown: 8,
 
   async execute(interaction: ChatInputCommandInteraction, client: Client) {

@@ -10,9 +10,7 @@ import { Command } from "../../types.js";
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("unmute")
-    .setDescription(
-      "🔊 Restablece los privilegios de voz y texto de un parásito",
-    )
+    .setDescription("🔊 Quita el silencio a un miembro")
     .addUserOption((opt) =>
       opt
         .setName("usuario")

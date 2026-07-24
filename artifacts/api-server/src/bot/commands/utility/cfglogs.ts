@@ -82,7 +82,7 @@ function statusEmbed(
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("cfglogs")
-    .setDescription("📡 Configura el canal y el catálogo de logs del servidor")
+    .setDescription("📡 Canal y catálogo de logs del servidor")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addSubcommand((sub) =>
       sub

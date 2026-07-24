@@ -12,7 +12,7 @@ import { canControlMusic } from "../../music/permissions.js";
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("shuffle")
-    .setDescription("🔀 Mezcla la cola de reproducción"),
+    .setDescription("🔀 Mezcla la cola al azar"),
   cooldown: 2,
 
   async execute(interaction: ChatInputCommandInteraction) {

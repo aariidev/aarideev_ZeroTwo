@@ -4,7 +4,8 @@ import { fileURLToPath } from "node:url";
 import { AttachmentBuilder } from "discord.js";
 
 const FILE_MAP: Record<string, string> = {
-  main: "rizYS.jpg",
+  /** Solo el menú principal de /help (antes rizYS.jpg / banner 2.3.0) */
+  main: "KVZXR.jpg",
   Utilidad: "rizYS.jpg",
   Moderación: "moderation.jpg",
   Diversión: "fun.jpg",

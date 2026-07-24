@@ -15,7 +15,7 @@ const gigs = [
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("gig")
-    .setDescription("Consigue un gig en Night City estilo Edgerunners"),
+    .setDescription("🌃 Consigue un gig en Night City"),
   cooldown: 10,
   async execute(interaction: ChatInputCommandInteraction, client: Client) {
     const gig = gigs[Math.floor(Math.random() * gigs.length)];

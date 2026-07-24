@@ -32,7 +32,7 @@ const META: Record<
   reglas:     { emoji: "📖", category: "Utilidad", usage: "/reglas [canal]" },
   rules:      { emoji: "📖", category: "Utilidad", usage: "/rules [channel]" },
   cfgembed:   { emoji: "🎨", category: "Utilidad", usage: "/cfgembed [canal]", permission: "Gestionar Mensajes" },
-  cfglogs:    { emoji: "📋", category: "Utilidad", usage: "/cfglogs <set|disable|status>", permission: "Gestionar Servidor" },
+  cfglogs:    { emoji: "📡", category: "Utilidad", usage: "/cfglogs <set|disable|status>", permission: "Gestionar Servidor" },
   ticket:     { emoji: "🎫", category: "Utilidad", usage: "/ticket <setup|panel|close|claim|add|remove|status>", permission: "Ver subcomandos" },
 
   // ── Moderación ──────────────────────────────────────────────────────────────
@@ -58,6 +58,7 @@ const META: Record<
 
   // ── Diversión ───────────────────────────────────────────────────────────────
   "8ball":  { emoji: "🎱", category: "Diversión", usage: "/8ball <pregunta>" },
+  meme:     { emoji: "😂", category: "Diversión", usage: "/meme <ver|config|status>" },
   poker:    { emoji: "🃏", category: "Diversión", usage: "/poker [rival]" },
   ship:     { emoji: "💘", category: "Diversión", usage: "/ship [usuario1] <usuario2>" },
 
@@ -112,7 +113,7 @@ const CATEGORY_EMOJI: Record<string, string> = {
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("help")
-    .setDescription("📋 Muestra el panel de comandos del sistema Zero Two")
+    .setDescription("📋 Panel de comandos Zero Two — explora módulos y usos")
     .addStringOption((opt) =>
       opt
         .setName("comando")

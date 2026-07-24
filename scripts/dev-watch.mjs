@@ -1,20 +1,11 @@
 /**
- * dev-watch.mjs — Watcher de desarrollo para Zero Two Bot
+ * dev-watch.mjs — Watcher de desarrollo Zero Two
  *
  * Uso:
  *   node scripts/dev-watch.mjs
  *
- * Qué hace:
- *  1. Compila el código una vez al arrancar
- *  2. Arranca el bot como proceso hijo
- *  3. Vigila cambios en src/ con debounce de 1.5s
- *  4. Cuando detecta cambios, compila en segundo plano
- *  5. Si la build es exitosa, manda un embed al canal DEV_LOG_CHANNEL_ID
- *     con botones "✅ Reiniciar ahora" / "❌ Cancelar"
- *  6. Cuando el bot confirma (IPC o SIGUSR2), mata el hijo y lo reinicia
- *
- * Variables de entorno necesarias (en .env):
- *   DISCORD_TOKEN, DEV_LOG_CHANNEL_ID, OWNER_IDS
+ * Notifica en Discord (DEV_LOG_CHANNEL_ID) con embeds cyberpunk
+ * y botones Reiniciar / Cancelar.
  */
 
 import fs from "node:fs";
@@ -29,7 +20,7 @@ const SRC_DIR = path.join(API_DIR, "src");
 const BUILD_SCRIPT = path.join(API_DIR, "build.mjs");
 const ENV_PATH = path.join(ROOT, ".env");
 
-// ── Cargar .env ───────────────────────────────────────────────────────────────
+// ── .env ──────────────────────────────────────────────────────────────────────
 function loadEnv() {
   if (!fs.existsSync(ENV_PATH)) return;
   for (const line of fs.readFileSync(ENV_PATH, "utf8").split(/\r?\n/)) {
@@ -48,21 +39,54 @@ loadEnv();
 
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN ?? "";
 const DEV_CHANNEL_ID = process.env.DEV_LOG_CHANNEL_ID ?? "";
-const BOT_COLOR_OK = 0x57f287;
-const BOT_COLOR_WARN = 0xffa500;
-const BOT_COLOR_ERR = 0xff2d6b;
 
-// ── Estado global ─────────────────────────────────────────────────────────────
+// Zero Two palette
+const C = {
+  pink: 0xff2d6b,
+  cyan: 0x22d3ee,
+  green: 0x22c55e,
+  amber: 0xf59e0b,
+  red: 0xef4444,
+  purple: 0xa78bfa,
+  slate: 0x64748b,
+};
+
+// ── ANSI consola ──────────────────────────────────────────────────────────────
+const A = {
+  reset: "\x1b[0m",
+  dim: "\x1b[2m",
+  bold: "\x1b[1m",
+  pink: "\x1b[38;2;255;45;107m",
+  cyan: "\x1b[38;2;34;211;238m",
+  green: "\x1b[38;2;34;197;94m",
+  amber: "\x1b[38;2;245;158;11m",
+  red: "\x1b[38;2;239;68;68m",
+  purple: "\x1b[38;2;167;139;250m",
+};
+
+function log(tag, msg, color = A.cyan) {
+  const t = new Date().toLocaleTimeString("es-ES", { hour12: false });
+  console.log(
+    `${A.dim}${t}${A.reset} ${color}${A.bold}[watch]${A.reset} ${A.dim}${tag}${A.reset} ${msg}`,
+  );
+}
+
+// ── Estado ────────────────────────────────────────────────────────────────────
 let botProcess = null;
-let pendingBuild = false;   // hay una build lista esperando confirmación
-let buildTimer = null;      // debounce timer
-let notifyMsgId = null;     // ID del mensaje de Discord con los botones
+let pendingBuild = false;
+let buildTimer = null;
+let notifyMsgId = null;
 let isRestarting = false;
+let buildSession = 0;
+let botStartedAt = null;
+/** @type {{ id: string, username: string, avatar: string | null } | null} */
+let botUser = null;
 
-// ── Discord REST mínimo (sin discord.js, solo fetch) ─────────────────────────
+// ── Discord REST ──────────────────────────────────────────────────────────────
 const API = "https://discord.com/api/v10";
 
 async function discordRequest(method, endpoint, body) {
+  if (!DISCORD_TOKEN) return null;
   const res = await fetch(`${API}${endpoint}`, {
     method,
     headers: {
@@ -73,34 +97,309 @@ async function discordRequest(method, endpoint, body) {
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    console.error(`[discord] ${method} ${endpoint} → ${res.status}: ${text.slice(0, 200)}`);
+    log(
+      "discord",
+      `${method} ${endpoint} → ${res.status}: ${text.slice(0, 160)}`,
+      A.red,
+    );
     return null;
   }
+  if (res.status === 204) return null;
   return res.json().catch(() => null);
+}
+
+async function loadBotUser() {
+  const me = await discordRequest("GET", "/users/@me");
+  if (me?.id) {
+    botUser = {
+      id: me.id,
+      username: me.username ?? "Zero Two",
+      avatar: me.avatar ?? null,
+    };
+  }
+}
+
+function botAvatarUrl(size = 128) {
+  if (!botUser) return undefined;
+  if (botUser.avatar) {
+    const ext = botUser.avatar.startsWith("a_") ? "gif" : "png";
+    return `https://cdn.discordapp.com/avatars/${botUser.id}/${botUser.avatar}.${ext}?size=${size}`;
+  }
+  return `https://cdn.discordapp.com/embed/avatars/0.png`;
+}
+
+function baseEmbed(opts) {
+  const {
+    color = C.pink,
+    title,
+    description,
+    fields = [],
+    footerExtra = "",
+  } = opts;
+  const avatar = botAvatarUrl(64);
+  return {
+    color,
+    author: {
+      name: "Zero Two · Dev Watcher",
+      icon_url: avatar,
+    },
+    title,
+    description,
+    fields: fields.filter(Boolean).slice(0, 25),
+    thumbnail: avatar ? { url: botAvatarUrl(128) } : undefined,
+    timestamp: new Date().toISOString(),
+    footer: {
+      text: footerExtra
+        ? `🌸 Zero Two Dev · ${footerExtra}`
+        : "🌸 Zero Two Dev · Watcher",
+      icon_url: avatar,
+    },
+  };
 }
 
 async function sendDevEmbed(embed, components = []) {
   if (!DEV_CHANNEL_ID) return null;
-  const msg = await discordRequest("POST", `/channels/${DEV_CHANNEL_ID}/messages`, {
-    embeds: [embed],
-    components,
-  });
+  const msg = await discordRequest(
+    "POST",
+    `/channels/${DEV_CHANNEL_ID}/messages`,
+    { embeds: [embed], components },
+  );
   return msg?.id ?? null;
 }
 
 async function editDevMessage(msgId, embed, components = []) {
   if (!DEV_CHANNEL_ID || !msgId) return;
-  await discordRequest("PATCH", `/channels/${DEV_CHANNEL_ID}/messages/${msgId}`, {
-    embeds: [embed],
-    components,
+  await discordRequest(
+    "PATCH",
+    `/channels/${DEV_CHANNEL_ID}/messages/${msgId}`,
+    { embeds: [embed], components },
+  );
+}
+
+// ── UI helpers ────────────────────────────────────────────────────────────────
+function formatFileList(files, max = 12) {
+  const list = files.slice(0, max).map((f) => {
+    const name = f.replace(/\\/g, "/");
+    let icon = "📄";
+    if (name.includes("/commands/")) icon = "⚡";
+    else if (name.includes("/events/")) icon = "📡";
+    else if (name.includes("/music/")) icon = "🎵";
+    else if (name.includes("/lib/")) icon = "🧩";
+    else if (name.includes("/routes/")) icon = "🌐";
+    else if (name.endsWith(".ts")) icon = "💠";
+    return `${icon} \`${name}\``;
   });
+  const extra =
+    files.length > max ? `\n*…y ${files.length - max} más*` : "";
+  return list.join("\n") + extra || "_sin detalle_";
+}
+
+function reloadButtons() {
+  return [
+    {
+      type: 1,
+      components: [
+        {
+          type: 2,
+          style: 3,
+          label: "Reiniciar ahora",
+          emoji: { name: "🔄" },
+          custom_id: "dev_reload_confirm",
+        },
+        {
+          type: 2,
+          style: 2,
+          label: "Más tarde",
+          emoji: { name: "⏳" },
+          custom_id: "dev_reload_cancel",
+        },
+      ],
+    },
+  ];
+}
+
+function bar(pct, len = 10) {
+  const f = Math.round((Math.min(100, Math.max(0, pct)) / 100) * len);
+  return "█".repeat(f) + "░".repeat(Math.max(0, len - f));
+}
+
+// ── Notificaciones ────────────────────────────────────────────────────────────
+async function notifyWatcherOnline() {
+  await sendDevEmbed(
+    baseEmbed({
+      color: C.cyan,
+      title: "👁️ Watcher en línea",
+      description: [
+        "El nexo de desarrollo está **activo** y vigilando el código.",
+        "",
+        "```ansi",
+        "\u001b[0;36m● watching\u001b[0m  artifacts/api-server/src/**",
+        "\u001b[0;35m● notify\u001b[0m    canal dev logs",
+        "\u001b[0;32m● bot\u001b[0m       arrancando…",
+        "```",
+        "Cuando detecte cambios y compile bien, te pediré confirmación para reiniciar. 🌸",
+      ].join("\n"),
+      fields: [
+        {
+          name: "📁 Root",
+          value: `\`${path.basename(ROOT)}\``,
+          inline: true,
+        },
+        {
+          name: "📡 Canal",
+          value: DEV_CHANNEL_ID ? `<#${DEV_CHANNEL_ID}>` : "`—`",
+          inline: true,
+        },
+        {
+          name: "🧠 PID",
+          value: `\`${process.pid}\``,
+          inline: true,
+        },
+      ],
+      footerExtra: "session start",
+    }),
+  );
+}
+
+async function notifyBuildReady(changedFiles) {
+  buildSession += 1;
+  const n = changedFiles.length;
+  const embed = baseEmbed({
+    color: C.amber,
+    title: "✨ Build lista — ¿Reiniciar el bot?",
+    description: [
+      "He sincronizado el núcleo con tus últimos cambios.",
+      "Pulsa **Reiniciar ahora** para aplicarlos, o **Más tarde** si sigues editando.",
+      "",
+      `> Sesión de build \`#${buildSession}\` · **${n}** archivo${n === 1 ? "" : "s"}`,
+    ].join("\n"),
+    fields: [
+      {
+        name: "📝 Archivos tocados",
+        value: formatFileList(changedFiles),
+        inline: false,
+      },
+      {
+        name: "⚙️ Estado",
+        value: [
+          `\`[${bar(100)}]\` **100%** compile OK`,
+          "Bot actual: **online** (pendiente de reload)",
+        ].join("\n"),
+        inline: false,
+      },
+    ],
+    footerExtra: `build #${buildSession} · awaiting confirm`,
+  });
+
+  if (notifyMsgId) {
+    await editDevMessage(notifyMsgId, embed, reloadButtons());
+    return;
+  }
+  notifyMsgId = await sendDevEmbed(embed, reloadButtons());
+}
+
+async function notifyBuildError(stderr) {
+  const text = String(stderr || "Sin detalle").slice(0, 1600);
+  const isOom =
+    /1455|out of memory|ENOMEM|VirtualAlloc|heap/i.test(text) ||
+    !String(stderr || "").trim();
+
+  await sendDevEmbed(
+    baseEmbed({
+      color: C.red,
+      title: "💥 Fallo de compilación",
+      description: isOom
+        ? [
+            "El compilador no dejó un log claro — suele ser **OOM** en Windows.",
+            "",
+            "**Qué probar**",
+            "1. Cierra Chrome / apps pesadas",
+            "2. `node artifacts/api-server/build.mjs`",
+            "3. Reinicia el PC o sube el pagefile",
+          ].join("\n")
+        : "esbuild rechazó la build. Revisa el log:",
+      fields: [
+        {
+          name: "📜 Log",
+          value: `\`\`\`\n${text || "— vacío —"}\n\`\`\``,
+          inline: false,
+        },
+      ],
+      footerExtra: "build failed",
+    }),
+  );
+}
+
+async function notifyRestarting() {
+  if (!notifyMsgId) return;
+  await editDevMessage(
+    notifyMsgId,
+    baseEmbed({
+      color: C.purple,
+      title: "🔄 Reiniciando el núcleo…",
+      description: [
+        "Aplicando la nueva build.",
+        "El proceso hijo se detendrá y volverá a subir en unos segundos.",
+        "",
+        `\`[${bar(60)}]\` *hot reload en curso*`,
+      ].join("\n"),
+      footerExtra: `build #${buildSession} · restarting`,
+    }),
+    [],
+  );
+}
+
+async function notifyRestarted() {
+  const up =
+    botStartedAt != null
+      ? `arranque <t:${Math.floor(botStartedAt / 1000)}:R>`
+      : "recién online";
+
+  const embed = baseEmbed({
+    color: C.green,
+    title: "✅ Bot reiniciado · nexo estable",
+    description: [
+      "La build se aplicó con éxito. Zero Two vuelve a estar **online**. 🌸",
+      "",
+      `> Build \`#${buildSession}\` · ${up}`,
+    ].join("\n"),
+    fields: [
+      {
+        name: "🟢 Estado",
+        value: "`ONLINE`",
+        inline: true,
+      },
+      {
+        name: "📦 Sesión",
+        value: `\`#${buildSession}\``,
+        inline: true,
+      },
+      {
+        name: "👁️ Watcher",
+        value: "`activo`",
+        inline: true,
+      },
+    ],
+    footerExtra: `build #${buildSession} · ready`,
+  });
+
+  if (notifyMsgId) {
+    await editDevMessage(notifyMsgId, embed, []);
+    notifyMsgId = null;
+  } else {
+    await sendDevEmbed(embed);
+  }
+}
+
+async function notifyCancelled() {
+  // handled mostly by bot's devReload; watcher may clear pending
+  pendingBuild = false;
 }
 
 // ── Build ─────────────────────────────────────────────────────────────────────
 function runBuild() {
   return new Promise((resolve) => {
-    console.log("[watch] 🔨 Compilando...");
-    // Low-memory defaults for Windows (esbuild is Go; OOM → errno 1455)
+    log("build", "compilando…", A.amber);
     const env = {
       ...process.env,
       ESBUILD_DISABLE_SOURCEMAP: process.env.ESBUILD_SOURCEMAP ? "0" : "1",
@@ -125,14 +424,13 @@ function runBuild() {
     proc.stdout.on("data", (d) => {
       const s = d.toString();
       stdout += s;
-      process.stdout.write(s);
+      process.stdout.write(`${A.dim}${s}${A.reset}`);
     });
     proc.stderr.on("data", (d) => {
       const s = d.toString();
       stderr += s;
-      process.stderr.write(s);
+      process.stderr.write(`${A.red}${s}${A.reset}`);
     });
-
     proc.on("error", (err) => {
       resolve({
         ok: false,
@@ -140,112 +438,36 @@ function runBuild() {
         stderr: `${stderr}\n[spawn error] ${err.message}`,
       });
     });
-
     proc.on("close", (code) => {
       resolve({ ok: code === 0, stdout, stderr, code });
     });
   });
 }
 
-// ── Notificación Discord ──────────────────────────────────────────────────────
-async function notifyBuildReady(changedFiles) {
-  // Si ya hay una notificación previa sin responder, editarla
-  if (notifyMsgId) {
-    await editDevMessage(notifyMsgId, {
-      color: BOT_COLOR_WARN,
-      title: "🔨 Nueva build lista (actualizada)",
-      description:
-        `**Archivos modificados:**\n\`\`\`\n${changedFiles.slice(0, 10).join("\n")}\n\`\`\`\n` +
-        `¿Deseas reiniciar el bot ahora?`,
-      timestamp: new Date().toISOString(),
-      footer: { text: "Zero Two Dev · Watcher" },
-    }, reloadButtons());
-    return;
-  }
-
-  notifyMsgId = await sendDevEmbed(
-    {
-      color: BOT_COLOR_WARN,
-      title: "🔨 Build lista — ¿Reiniciar bot?",
-      description:
-        `**Archivos modificados:**\n\`\`\`\n${changedFiles.slice(0, 10).join("\n")}\n\`\`\`\n` +
-        `Pulsa **Reiniciar ahora** para aplicar los cambios, o **Cancelar** para ignorarlos.`,
-      timestamp: new Date().toISOString(),
-      footer: { text: "Zero Two Dev · Watcher" },
-    },
-    reloadButtons(),
-  );
-}
-
-function reloadButtons() {
-  return [
-    {
-      type: 1, // ACTION_ROW
-      components: [
-        {
-          type: 2, // BUTTON
-          style: 3, // SUCCESS (green)
-          label: "✅ Reiniciar ahora",
-          custom_id: "dev_reload_confirm",
-        },
-        {
-          type: 2,
-          style: 4, // DANGER (red)
-          label: "❌ Cancelar",
-          custom_id: "dev_reload_cancel",
-        },
-      ],
-    },
-  ];
-}
-
-async function notifyBuildError(stderr) {
-  const text = String(stderr || "Sin detalle").slice(0, 1800);
-  await sendDevEmbed({
-    color: BOT_COLOR_ERR,
-    title: "❌ Error de compilación",
-    description: `\`\`\`\n${text}\n\`\`\``,
-    timestamp: new Date().toISOString(),
-    footer: { text: "Zero Two Dev · Watcher" },
-  });
-}
-
-async function notifyRestarted() {
-  // Editar el mensaje de confirmación si existe
-  if (notifyMsgId) {
-    await editDevMessage(notifyMsgId, {
-      color: BOT_COLOR_OK,
-      title: "✅ Bot reiniciado correctamente",
-      description: "El bot ha aplicado la nueva build y está online. 🌸",
-      timestamp: new Date().toISOString(),
-      footer: { text: "Zero Two Dev · Watcher" },
-    });
-    notifyMsgId = null;
-  }
-}
-
-// ── Control del proceso hijo ──────────────────────────────────────────────────
+// ── Proceso bot ───────────────────────────────────────────────────────────────
 function startBot() {
   if (botProcess) return;
-  console.log("[watch] 🚀 Arrancando bot...");
+  log("bot", "arrancando proceso hijo…", A.green);
 
   botProcess = spawn("node", ["--enable-source-maps", "./dist/index.mjs"], {
     cwd: API_DIR,
     stdio: ["inherit", "inherit", "inherit", "ipc"],
     env: { ...process.env, NODE_ENV: "development" },
   });
+  botStartedAt = Date.now();
 
   botProcess.on("message", (message) => {
     if (message?.type !== "dev_reload_confirm") return;
-    console.log("[watch] 📨 IPC dev_reload_confirm recibido → reiniciando bot");
+    log("ipc", "dev_reload_confirm → reinicio", A.purple);
+    void notifyRestarting();
     restartBot().catch(console.error);
   });
 
   botProcess.on("exit", (code, signal) => {
     botProcess = null;
-    if (isRestarting) return; // reinicio controlado, no loguear como error
+    if (isRestarting) return;
     if (code !== 0 && signal !== "SIGTERM") {
-      console.error(`[watch] ⚠️  Bot salió con código ${code} / señal ${signal}`);
+      log("bot", `salió code=${code} signal=${signal}`, A.red);
     }
   });
 }
@@ -260,9 +482,12 @@ function killBot() {
     botProcess = null;
     proc.once("exit", resolve);
     proc.kill("SIGTERM");
-    // Forzar si no muere en 8s
     setTimeout(() => {
-      try { proc.kill("SIGKILL"); } catch { }
+      try {
+        proc.kill("SIGKILL");
+      } catch {
+        /* */
+      }
       resolve();
     }, 8000);
   });
@@ -271,7 +496,7 @@ function killBot() {
 async function restartBot() {
   if (isRestarting) return;
   isRestarting = true;
-  console.log("[watch] 🔄 Reiniciando bot...");
+  log("bot", "reiniciando…", A.purple);
   await killBot();
   pendingBuild = false;
   isRestarting = false;
@@ -279,13 +504,13 @@ async function restartBot() {
   await notifyRestarted();
 }
 
-// ── SIGUSR2: señal de "confirmar reload" que manda devReload.ts ───────────────
 process.on("SIGUSR2", () => {
-  console.log("[watch] 📨 SIGUSR2 recibido → reiniciando bot");
+  log("signal", "SIGUSR2 → reinicio", A.purple);
+  void notifyRestarting();
   restartBot().catch(console.error);
 });
 
-// ── Watcher de archivos ───────────────────────────────────────────────────────
+// ── File watch ────────────────────────────────────────────────────────────────
 const changedSinceLastBuild = new Set();
 let building = false;
 
@@ -299,80 +524,104 @@ function scheduleRebuild(filePath) {
 
     const files = [...changedSinceLastBuild];
     changedSinceLastBuild.clear();
-    console.log(`[watch] 📝 Cambios detectados:\n  ${files.join("\n  ")}`);
+    log(
+      "fs",
+      `cambios (${files.length})\n${files.map((f) => `     · ${f}`).join("\n")}`,
+      A.cyan,
+    );
 
     const result = await runBuild();
 
     if (!result.ok) {
-      console.error("[watch] ❌ Build fallida");
+      log("build", "FALLIDA", A.red);
       const detail = (result.stderr || result.stdout || "").trim();
       if (!detail) {
-        console.error(
-          "[watch] Sin salida del compilador — suele ser OOM (VirtualAlloc / errno 1455).\n" +
-            "  1) Cierra Firefox/Chrome/apps pesadas\n" +
-            "  2) node artifacts/api-server/build.mjs\n" +
-            "  3) Si sigue fallando, reinicia el PC o aumenta el pagefile",
+        log(
+          "hint",
+          "Sin salida — posible OOM 1455. Cierra apps y reintenta.",
+          A.amber,
         );
       } else {
-        console.error("[watch] ── error ──\n" + detail.slice(-3000));
+        console.error(detail.slice(-3000));
       }
       await notifyBuildError(
         detail ||
-          "Sin stderr (posible out of memory / errno 1455). Cierra apps y reintenta el build.",
+          "Sin stderr (posible OOM / errno 1455). Cierra apps y reintenta.",
       ).catch(console.error);
       building = false;
       return;
     }
 
-    console.log("[watch] ✅ Build exitosa — esperando confirmación en Discord");
+    log("build", "OK — esperando confirmación en Discord", A.green);
     pendingBuild = true;
     await notifyBuildReady(files).catch(console.error);
     building = false;
-  }, 1500); // debounce 1.5s
+  }, 1500);
 }
 
 function watchRecursive(dir) {
-  // fs.watch con recursive está soportado en Windows
-  fs.watch(dir, { recursive: true }, (eventType, filename) => {
+  fs.watch(dir, { recursive: true }, (_eventType, filename) => {
     if (!filename) return;
-    // Solo archivos TypeScript/JS fuente
     if (!/\.(ts|js|mjs)$/.test(filename)) return;
-    // Ignorar la carpeta dist y node_modules
-    if (filename.startsWith("dist") || filename.includes("node_modules")) return;
-
-    const full = path.join(dir, filename);
-    scheduleRebuild(full);
+    if (filename.startsWith("dist") || filename.includes("node_modules"))
+      return;
+    scheduleRebuild(path.join(dir, filename));
   });
-  console.log(`[watch] 👀 Vigilando cambios en ${path.relative(ROOT, dir)}/`);
+  log("fs", `vigilando ${path.relative(ROOT, dir)}/`, A.cyan);
 }
 
-// ── Señales de apagado ────────────────────────────────────────────────────────
 async function shutdown(signal) {
-  console.log(`\n[watch] ${signal} recibido — apagando...`);
+  console.log();
+  log("sys", `${signal} — apagando…`, A.amber);
+  if (DEV_CHANNEL_ID) {
+    await sendDevEmbed(
+      baseEmbed({
+        color: C.slate,
+        title: "💤 Watcher detenido",
+        description:
+          "El nexo de desarrollo se ha cerrado. El bot hijo también se detuvo.",
+        footerExtra: "session end",
+      }),
+    ).catch(() => null);
+  }
   await killBot();
   process.exit(0);
 }
-process.on("SIGINT", () => shutdown("SIGINT"));
-process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => void shutdown("SIGINT"));
+process.on("SIGTERM", () => void shutdown("SIGTERM"));
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 console.log(`
-════════════════════════════════════════════
-  Zero Two Dev Watcher
-  Root: ${ROOT}
-  Canal notificaciones: ${DEV_CHANNEL_ID || "(no configurado — solo consola)"}
-════════════════════════════════════════════
+${A.pink}╔══════════════════════════════════════════════════════╗
+${A.pink}║${A.reset}  ${A.bold}${A.cyan}✦ Zero Two${A.reset} ${A.dim}·${A.reset} ${A.pink}Dev Watcher${A.reset}                       ${A.pink}║
+${A.pink}║${A.reset}  ${A.dim}hot-reload · embeds · esbuild${A.reset}                    ${A.pink}║
+${A.pink}╠══════════════════════════════════════════════════════╣
+${A.pink}║${A.reset}  ${A.dim}root${A.reset}   ${ROOT.padEnd(42).slice(0, 42)}  ${A.pink}║
+${A.pink}║${A.reset}  ${A.dim}canal${A.reset}  ${(DEV_CHANNEL_ID || "— no configurado —").padEnd(42).slice(0, 42)}  ${A.pink}║
+${A.pink}╚══════════════════════════════════════════════════════╝${A.reset}
 `);
 
-// Build inicial
-console.log("[watch] 🔨 Build inicial...");
+if (!DISCORD_TOKEN) {
+  log("warn", "DISCORD_TOKEN vacío — embeds desactivados", A.amber);
+}
+if (!DEV_CHANNEL_ID) {
+  log("warn", "DEV_LOG_CHANNEL_ID vacío — solo consola", A.amber);
+}
+
+await loadBotUser();
+if (botUser) log("discord", `conectado como ${botUser.username}`, A.green);
+
+log("build", "build inicial…", A.amber);
 const initial = await runBuild();
 if (!initial.ok) {
-  console.error("[watch] ❌ Build inicial fallida:");
+  log("build", "build inicial FALLIDA", A.red);
   console.error(initial.stderr);
   process.exit(1);
 }
-console.log("[watch] ✅ Build inicial OK");
+log("build", "build inicial OK", A.green);
 
 startBot();
 watchRecursive(SRC_DIR);
+await notifyWatcherOnline().catch(() => null);
+
+log("sys", "listo — edita src/ y confirma reloads en Discord 🌸", A.pink);

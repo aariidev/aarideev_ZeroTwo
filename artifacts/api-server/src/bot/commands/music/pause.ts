@@ -17,7 +17,7 @@ import { canControlMusic } from "../../music/permissions.js";
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("pause")
-    .setDescription("⏸️ Pausa / reanuda la reproducción"),
+    .setDescription("⏸️ Pausa o reanuda la reproducción"),
   cooldown: 2,
 
   async execute(interaction: ChatInputCommandInteraction) {

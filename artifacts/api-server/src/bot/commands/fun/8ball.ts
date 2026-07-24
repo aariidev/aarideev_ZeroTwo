@@ -31,7 +31,7 @@ const RESPONSES = {
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("8ball")
-    .setDescription("🎱 Somete una duda al núcleo analítico de Zero Two")
+    .setDescription("🎱 Pregunta al núcleo — sí, no o misterio")
     .addStringOption((opt) =>
       opt
         .setName("pregunta")

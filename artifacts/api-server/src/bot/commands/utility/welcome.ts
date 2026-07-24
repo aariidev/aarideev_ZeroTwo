@@ -28,54 +28,61 @@ const GREEN = 0x22c55e;
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("welcome")
-    .setDescription("🌸 Mensajes de bienvenida, despedida y autoroles")
+    .setDescription("🌸 Bienvenida y despedida — mensajes y autoroles")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addSubcommand((s) =>
-      s.setName("status").setDescription("Ver configuración actual"),
+      s.setName("status").setDescription("📊 Ver configuración actual"),
     )
     .addSubcommand((s) =>
       s
         .setName("toggle")
-        .setDescription("Activar o desactivar el sistema")
+        .setDescription("🔛 Activar o desactivar bienvenida/despedida")
         .addBooleanOption((o) =>
-          o.setName("activar").setDescription("true = on").setRequired(true),
+          o
+            .setName("activar")
+            .setDescription("✅ true = ON · false = OFF")
+            .setRequired(true),
         ),
     )
     .addSubcommand((s) =>
       s
         .setName("set")
-        .setDescription("Configurar canales y mensajes")
+        .setDescription("⚙️ Configurar canales y mensajes")
         .addChannelOption((o) =>
           o
             .setName("canal")
-            .setDescription("Canal de bienvenida")
+            .setDescription("📥 Canal de bienvenida")
             .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement),
         )
         .addChannelOption((o) =>
           o
             .setName("despedida")
-            .setDescription("Canal de leave (por defecto = bienvenida)")
+            .setDescription("📤 Canal de despedida (default = bienvenida)")
             .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement),
         )
         .addStringOption((o) =>
           o
             .setName("mensaje")
-            .setDescription("Plantilla welcome: {user} {username} {server} {memberCount} {accountAge}")
+            .setDescription(
+              "🌸 Plantilla: {user} {username} {server} {memberCount}",
+            )
             .setMaxLength(1500),
         )
         .addStringOption((o) =>
           o
             .setName("mensaje_leave")
-            .setDescription("Plantilla leave")
+            .setDescription("👋 Plantilla de despedida")
             .setMaxLength(1500),
         )
         .addBooleanOption((o) =>
-          o.setName("embed").setDescription("Usar embed en welcome (default true)"),
+          o
+            .setName("embed")
+            .setDescription("📦 Usar embed en welcome (default: sí)"),
         )
         .addBooleanOption((o) =>
           o
             .setName("embed_leave")
-            .setDescription("Usar embed en leave (default true)"),
+            .setDescription("📦 Usar embed en leave (default: sí)"),
         ),
     )
     .addSubcommand((s) =>

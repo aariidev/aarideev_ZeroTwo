@@ -29,9 +29,7 @@ const EVENT_EMOJI: Record<string, string> = {
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("logs")
-    .setDescription(
-      "📋 Central de Diagnóstico: Revisa el historial operativo de sanciones",
-    )
+    .setDescription("📋 Historial de sanciones y acciones del bot")
     .addSubcommand((sub) =>
       sub
         .setName("ver")

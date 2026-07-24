@@ -12,7 +12,7 @@ import { canControlMusic } from "../../music/permissions.js";
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("clear")
-    .setDescription("🗑️ Vacía la cola (la canción actual sigue sonando)"),
+    .setDescription("🧹 Vacía la cola (sigue la canción actual)"),
   cooldown: 2,
 
   async execute(interaction: ChatInputCommandInteraction) {

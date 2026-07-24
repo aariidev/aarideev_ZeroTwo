@@ -12,22 +12,20 @@ import { sendModLog } from "../../lib/modlog.js";
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("ban")
-    .setDescription(
-      "🔨 Termina de forma definitiva la conexión de un parásito con la plantación",
-    )
+    .setDescription("🔨 Banea a un miembro y limpia mensajes recientes")
     .addUserOption((opt) =>
       opt
         .setName("usuario")
-        .setDescription("Objetivo a banear")
+        .setDescription("👤 Miembro a banear")
         .setRequired(true),
     )
     .addStringOption((opt) =>
-      opt.setName("motivo").setDescription("Razón de la purga total"),
+      opt.setName("motivo").setDescription("📝 Motivo del ban"),
     )
     .addIntegerOption((opt) =>
       opt
         .setName("dias")
-        .setDescription("Días de historial de chat a limpiar (0-7)")
+        .setDescription("🧹 Días de mensajes a borrar (0–7)")
         .setMinValue(0)
         .setMaxValue(7),
     ),
