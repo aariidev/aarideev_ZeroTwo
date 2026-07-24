@@ -279,6 +279,7 @@ export class GuildMusicSession {
       }
       this.suppressIdleAdvance = false;
       void this.persist(true); // queue finished — clear snapshot
+      this.syncPresenceTrack();
       await this.announceIdle();
       return;
     }
@@ -373,6 +374,7 @@ export class GuildMusicSession {
       } else {
         await this.announceNowPlaying();
       }
+      this.syncPresenceTrack();
     } catch (err) {
       logger.error({ err, title: track.title }, "music:playTrack failed");
 
@@ -460,24 +462,32 @@ export class GuildMusicSession {
     this.suppressIdleAdvance = false;
     void this.persist(true); // clear DB snapshot
     void this.refreshPanel();
+    this.syncPresenceTrack();
   }
 
   pause(): boolean {
     const ok = this.player.pause(true);
     void this.refreshPanel();
+    this.syncPresenceTrack();
     return ok;
   }
 
   resume(): boolean {
     const ok = this.player.unpause();
     void this.refreshPanel();
+    this.syncPresenceTrack();
     return ok;
   }
 
   setVolume(v: number): number {
     this.volume = Math.max(0, Math.min(150, Math.floor(v)));
     // resource volume is 0–1; allow boost up to 1.5 mapped as min(1.5, vol/100) but discordjs caps often at 1
-    this.resource?.volume?.setVolume(Math.min(1.5, this.volume / 100));
+    try {
+      this.resource?.volume?.setVolume(Math.min(1.5, this.volume / 100));
+    } catch {
+      /* volume transformer may be missing on some streams */
+    }
+    void this.persist(false);
     void this.refreshPanel();
     return this.volume;
   }
@@ -489,6 +499,7 @@ export class GuildMusicSession {
   cycleLoop(): LoopMode {
     this.loop =
       this.loop === "off" ? "track" : this.loop === "track" ? "queue" : "off";
+    void this.refreshPanel();
     return this.loop;
   }
 
@@ -549,6 +560,14 @@ export class GuildMusicSession {
     this.connection = null;
     musicManager.drop(this.guildId);
     void this.refreshPanel();
+  }
+
+  private syncPresenceTrack(): void {
+    try {
+      musicManager.notifyPresenceTrackChange(this.client);
+    } catch {
+      /* presence optional */
+    }
   }
 
   private async refreshPanel(): Promise<void> {
@@ -628,6 +647,16 @@ export class GuildMusicSession {
   }
 }
 
+/** Snapshot for Discord rich presence (no circular deps if presence imports this). */
+export type MusicPresenceSnapshot = {
+  sessions: number;
+  /** First playing track title across guilds, if any */
+  nowPlayingTitle: string | null;
+  /** Guild name of that track, if available */
+  nowPlayingGuild: string | null;
+  paused: boolean;
+};
+
 class MusicManager {
   private sessions = new Map<string, GuildMusicSession>();
 
@@ -639,12 +668,35 @@ class MusicManager {
     return this.sessions.get(guildId);
   }
 
+  /** Live music info for presence rotation (cheap, cache-local). */
+  presenceSnapshot(client?: Client | null): MusicPresenceSnapshot {
+    let nowPlayingTitle: string | null = null;
+    let nowPlayingGuild: string | null = null;
+    let paused = false;
+
+    for (const s of this.sessions.values()) {
+      if (!s.current) continue;
+      nowPlayingTitle = s.current.title;
+      paused = s.paused;
+      nowPlayingGuild =
+        client?.guilds.cache.get(s.guildId)?.name ?? null;
+      break;
+    }
+
+    return {
+      sessions: this.sessions.size,
+      nowPlayingTitle,
+      nowPlayingGuild,
+      paused,
+    };
+  }
+
   getOrCreate(guildId: string, client: Client): GuildMusicSession {
     let s = this.sessions.get(guildId);
     if (!s) {
       s = new GuildMusicSession(guildId, client);
       this.sessions.set(guildId, s);
-      this.syncPresenceCount(client);
+      this.syncPresence(client);
     }
     return s;
   }
@@ -653,7 +705,12 @@ class MusicManager {
     // Grab client from an existing session before deleting
     const anySession = [...this.sessions.values()][0];
     this.sessions.delete(guildId);
-    this.syncPresenceCount((anySession as unknown as { client: Client })?.client);
+    this.syncPresence((anySession as unknown as { client: Client })?.client);
+  }
+
+  /** Call when track/pause state changes so presence shows the real song. */
+  notifyPresenceTrackChange(client?: Client): void {
+    this.syncPresence(client);
   }
 
   /** Persist every live session (call on process exit / restart). */
@@ -665,11 +722,14 @@ class MusicManager {
     await Promise.allSettled(tasks);
   }
 
-  private syncPresenceCount(client?: Client): void {
+  private syncPresence(client?: Client): void {
     try {
-      void import("../lib/presence.js").then(({ setMusicSessionCount }) => {
-        setMusicSessionCount(client ?? null, this.sessions.size);
-      });
+      const snap = this.presenceSnapshot(client ?? null);
+      void import("../lib/presence.js").then(
+        ({ setMusicPresenceFromSnapshot }) => {
+          setMusicPresenceFromSnapshot(client ?? null, snap);
+        },
+      );
     } catch {
       /* optional */
     }

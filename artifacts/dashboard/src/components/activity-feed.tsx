@@ -36,8 +36,8 @@ const MOD_COMMANDS = new Set([
 
 const FUN_COMMANDS = new Set([
   "8ball",
-  "coinflip",
-  "roll",
+  "poker",
+  "ship",
   "blackjack",
   "wallet",
   "shop",

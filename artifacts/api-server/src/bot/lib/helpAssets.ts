@@ -11,7 +11,7 @@ const FILE_MAP: Record<string, string> = {
   Casino: "casino.jpg",
   /** Dev / owner panel embeds */
   dev: "dev.jpg",
-  /** Minijuegos: 8ball, coinflip, roll… */
+  /** Minijuegos: 8ball, poker, ship… */
   fun: "fun.jpg",
   info: "info02.jpg",
 };
