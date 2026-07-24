@@ -40,6 +40,17 @@ function withBanner(embed: EmbedBuilder): EmbedBuilder {
   return embed;
 }
 
+/** Visual volume bar (0–150 mapped to 0–10 blocks; 100% = full “normal”). */
+export function volumeBar(volumePercent: number): string {
+  const v = Math.max(0, Math.min(150, Math.floor(volumePercent)));
+  const total = 10;
+  // Map 0–100 to full bar; 100–150 stays full with boost marker
+  const filled = Math.round((Math.min(100, v) / 100) * total);
+  const bar = "█".repeat(filled) + "░".repeat(Math.max(0, total - filled));
+  const boost = v > 100 ? " ⚡" : "";
+  return `\`${bar}\` \`${v}%\`${boost}`;
+}
+
 /** Progress bar (visual only; no live seek unless position provided). */
 function progressBar(positionSec: number | null, durationSec: number): string {
   const total = 14;
@@ -125,7 +136,7 @@ export function nowPlayingEmbed(
       },
       {
         name: "🔊 Volumen",
-        value: `\`${opts.volume}%\``,
+        value: volumeBar(opts.volume),
         inline: true,
       },
       {
@@ -701,7 +712,7 @@ export function musicPanelEmbed(
       },
       {
         name: "🔊 Volumen",
-        value: `\`${opts.volume}%\``,
+        value: volumeBar(opts.volume),
         inline: true,
       },
       {

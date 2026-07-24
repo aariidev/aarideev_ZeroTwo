@@ -15,7 +15,7 @@ const CATEGORY_MAP: Record<string, string> = {
   ping: "utility", avatar: "utility", serverinfo: "utility", userinfo: "utility", help: "utility",
   ban: "moderation", kick: "moderation", mute: "moderation", unmute: "moderation",
   warn: "moderation", warns: "moderation", clearwarns: "moderation", purge: "moderation",
-  "8ball": "fun", coinflip: "fun", roll: "fun",
+  "8ball": "fun", poker: "fun", ship: "fun",
 };
 
 const CATEGORY_COLORS: Record<string, string> = {

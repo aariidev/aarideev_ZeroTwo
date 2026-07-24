@@ -1,3 +1,9 @@
+/**
+ * /automod — pack de reglas AutoMod de Zero Two.
+ *
+ * setup / status / remove / list → ManageGuild (este servidor)
+ * sync-all / global             → solo OWNER_IDS
+ */
 import {
   SlashCommandBuilder,
   ChatInputCommandInteraction,
@@ -12,7 +18,11 @@ import {
   installAutomodEverywhere,
   installAutomodPack,
   removeAutomodPack,
+  getGuildAutomodSnapshot,
+  automodPackNames,
+  AUTOMOD_PREFIX,
 } from "../../lib/automod.js";
+import { BOT_VERSION } from "../../lib/version.js";
 
 const PINK = 0xff2d6b;
 const CYAN = 0x22d3ee;
@@ -27,11 +37,16 @@ function isOwner(userId: string): boolean {
     .includes(userId);
 }
 
+function bar(pct: number, len = 12): string {
+  const filled = Math.round((Math.min(100, Math.max(0, pct)) / 100) * len);
+  return "█".repeat(filled) + "░".repeat(Math.max(0, len - filled));
+}
+
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("automod")
     .setDescription(
-      "🛡️ AutoMod de Zero Two — reglas + progreso hacia la insignia de Discord",
+      "🛡️ AutoMod Zero Two — pack de reglas, estado y progreso de insignia",
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addSubcommand((s) =>
@@ -45,13 +60,20 @@ const command: Command = {
       s
         .setName("status")
         .setDescription(
-          "Cuenta reglas AutoMod (meta: 100 en total para la insignia de la app)",
+          "Estado de AutoMod en este servidor (+ meta global si eres owner)",
         ),
     )
     .addSubcommand((s) =>
       s
+        .setName("list")
+        .setDescription("Lista las reglas AutoMod activas en este servidor"),
+    )
+    .addSubcommand((s) =>
+      s
         .setName("remove")
-        .setDescription("Quita solo las reglas creadas por Zero Two en este servidor"),
+        .setDescription(
+          "Quita solo las reglas creadas por Zero Two (ZT |) en este servidor",
+        ),
     )
     .addSubcommand((s) =>
       s
@@ -59,59 +81,163 @@ const command: Command = {
         .setDescription(
           "[Owner] Instala el pack en todos los servidores donde el bot pueda",
         ),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("global")
+        .setDescription(
+          "[Owner] Progreso global hacia la insignia Uses AutoMod (100 reglas)",
+        ),
     ) as SlashCommandBuilder,
 
   cooldown: 5,
 
   async execute(interaction: ChatInputCommandInteraction, client: Client) {
-    if (!isOwner(interaction.user.id)) {
+    const sub = interaction.options.getSubcommand();
+    const owner = isOwner(interaction.user.id);
+    const botIcon = client.user?.displayAvatarURL({ size: 64 });
+
+    // Owner-only global ops
+    if ((sub === "sync-all" || sub === "global") && !owner) {
       await interaction.reply({
-        content: "❌ Solo el dev del bot puede usar esto.",
+        content:
+          "❌ `sync-all` y `global` son exclusivos del owner del bot (`OWNER_IDS`).",
         flags: MessageFlags.Ephemeral,
       });
       return;
     }
 
-    const sub = interaction.options.getSubcommand();
+    // Guild required for local ops
+    if (
+      (sub === "setup" ||
+        sub === "status" ||
+        sub === "list" ||
+        sub === "remove") &&
+      !interaction.guild
+    ) {
+      await interaction.reply({
+        content: "❌ Este subcomando solo funciona dentro de un servidor.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
 
+    // ── status (local + optional global tip) ────────────────────────────────
     if (sub === "status") {
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-      const { total, ours, byGuild } = await countAutomodRules(client);
-      const target = 100;
-      const pct = Math.min(100, Math.round((total / target) * 100));
-      const barLen = 12;
-      const filled = Math.round((pct / 100) * barLen);
-      const bar =
-        "█".repeat(filled) + "░".repeat(Math.max(0, barLen - filled));
+      const guild = interaction.guild!;
+      const local = await getGuildAutomodSnapshot(guild);
+      const pack = automodPackNames();
+      const installed = pack.filter((n) =>
+        local.rules.some((r) => r.name === n || r.name.includes(n.replace(AUTOMOD_PREFIX, ""))),
+      ).length;
 
-      const top = byGuild
-        .slice(0, 8)
-        .map((g) => `• **${g.name}**: ${g.n}`)
-        .join("\n");
+      const embed = new EmbedBuilder()
+        .setColor(local.ours > 0 ? GREEN : AMBER)
+        .setAuthor({ name: "Zero Two · AutoMod", iconURL: botIcon })
+        .setTitle(`🛡️ Estado · ${local.guildName}`)
+        .setDescription(
+          local.canManage
+            ? "El bot puede gestionar AutoMod en este servidor."
+            : "⚠️ Al bot le falta **Gestionar servidor** — no puede leer/crear reglas aquí.",
+        )
+        .addFields(
+          {
+            name: "📋 Reglas en este guild",
+            value: `\`${local.total}\` / 6 máx. Discord`,
+            inline: true,
+          },
+          {
+            name: "🌸 De Zero Two",
+            value: `\`${local.ours}\``,
+            inline: true,
+          },
+          {
+            name: "✅ Activas",
+            value: `\`${local.enabled}\``,
+            inline: true,
+          },
+          {
+            name: "📦 Pack Zero Two",
+            value: `\`${installed}\` / \`${pack.length}\` componentes del pack\n\`${bar(Math.round((installed / pack.length) * 100))}\``,
+            inline: false,
+          },
+          {
+            name: "🧩 Qué instala el pack",
+            value: pack.map((n) => `• \`${n}\``).join("\n"),
+            inline: false,
+          },
+        )
+        .setFooter({
+          text: `Zero Two ${BOT_VERSION} · /automod setup · /automod list`,
+        })
+        .setTimestamp();
+
+      if (owner) {
+        try {
+          const { total, ours } = await countAutomodRules(client);
+          const target = 100;
+          const pct = Math.min(100, Math.round((total / target) * 100));
+          embed.addFields({
+            name: "🏅 Meta global (owner)",
+            value: [
+              `Reglas en todos los guilds: **${total}** / **${target}**`,
+              `De Zero Two: **${ours}**`,
+              `\`${bar(pct)}\` **${pct}%**`,
+              total >= target
+                ? "✅ Meta insignia alcanzada (puede tardar en verse en el perfil)."
+                : `Faltan **${target - total}** · usa \`/automod sync-all\` o setup en más servers.`,
+            ].join("\n"),
+            inline: false,
+          });
+        } catch {
+          /* ignore */
+        }
+      }
+
+      await interaction.editReply({ embeds: [embed] });
+      return;
+    }
+
+    // ── list ────────────────────────────────────────────────────────────────
+    if (sub === "list") {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      const local = await getGuildAutomodSnapshot(interaction.guild!);
+
+      if (!local.canManage) {
+        await interaction.editReply({
+          embeds: [
+            new EmbedBuilder()
+              .setColor(PINK)
+              .setTitle("🚫 Sin permiso")
+              .setDescription(
+                "El bot necesita **Gestionar servidor** para listar reglas AutoMod.",
+              ),
+          ],
+        });
+        return;
+      }
+
+      const lines =
+        local.rules.length === 0
+          ? "_No hay reglas AutoMod en este servidor._"
+          : local.rules
+              .map((r) => {
+                const mark = r.enabled ? "🟢" : "⚪";
+                const tag = r.ours ? " · ZT" : "";
+                return `${mark} **${r.name}**${tag}\n└ \`${r.trigger}\` · \`${r.id}\``;
+              })
+              .join("\n");
 
       await interaction.editReply({
         embeds: [
           new EmbedBuilder()
-            .setColor(total >= target ? GREEN : CYAN)
-            .setAuthor({
-              name: "Zero Two · AutoMod",
-              iconURL: client.user?.displayAvatarURL() ?? undefined,
-            })
-            .setTitle("Progreso insignia AutoMod")
-            .setDescription(
-              [
-                `Reglas totales (todas): **${total}** / **${target}**`,
-                `Reglas Zero Two (\`ZT ·\`): **${ours}**`,
-                `\`${bar}\` **${pct}%**`,
-                "",
-                total >= target
-                  ? "✅ Meta alcanzada. La insignia **Uses AutoMod** debería aparecer en el perfil de la app (puede tardar en actualizarse)."
-                  : `Faltan **${Math.max(0, target - total)}** reglas. Usa \`/automod setup\` en más servidores (máx. 6 por guild).`,
-                top ? `\n**Por servidor:**\n${top}` : "",
-              ].join("\n"),
-            )
+            .setColor(CYAN)
+            .setAuthor({ name: "Zero Two · AutoMod list", iconURL: botIcon })
+            .setTitle(`📋 Reglas · ${local.guildName}`)
+            .setDescription(lines.slice(0, 4000))
             .setFooter({
-              text: "Insignia de la aplicación Discord · 100 reglas en total",
+              text: `${local.total} reglas · ${local.ours} de Zero Two · ${local.enabled} activas`,
             })
             .setTimestamp(),
         ],
@@ -119,94 +245,150 @@ const command: Command = {
       return;
     }
 
+    // ── setup ───────────────────────────────────────────────────────────────
     if (sub === "setup") {
-      if (!interaction.guild) {
-        await interaction.reply({
-          content: "❌ Solo en servidores.",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-      const r = await installAutomodPack(interaction.guild);
+      const r = await installAutomodPack(interaction.guild!);
+      const ok = r.created > 0 || (r.skipped > 0 && r.errors.length === 0);
+
       await interaction.editReply({
         embeds: [
           new EmbedBuilder()
-            .setColor(r.created > 0 ? GREEN : AMBER)
-            .setTitle("AutoMod · Setup")
+            .setColor(r.created > 0 ? GREEN : r.errors.length ? PINK : AMBER)
+            .setAuthor({ name: "Zero Two · AutoMod setup", iconURL: botIcon })
+            .setTitle(ok ? "✅ Pack aplicado" : "⚠️ Setup con avisos")
             .setDescription(
               [
                 `Servidor: **${r.guildName}**`,
-                `Creadas: **${r.created}**`,
-                `Ya existían: **${r.skipped}**`,
-                r.errors.length
-                  ? `Avisos:\n${r.errors.map((e) => `• ${e}`).join("\n")}`
-                  : "Sin errores.",
                 "",
-                "Reglas: anti-spam, menciones, invitaciones, estafas, insultos, contenido sexual (presets).",
-                "Siguiente: `/automod status` para ver el total hacia la insignia.",
+                `🆕 Creadas: **${r.created}**`,
+                `⏭️ Ya existían / límite: **${r.skipped}**`,
+                r.errors.length
+                  ? `\n**Avisos:**\n${r.errors.map((e) => `• ${e}`).join("\n")}`
+                  : "\nSin errores de API.",
+                "",
+                "**Cobertura del pack:**",
+                "• Anti-spam",
+                "• Menciones masivas (límite 5)",
+                "• Invitaciones Discord",
+                "• Estafas / nitro falso",
+                "• Presets Discord (insultos, sexual, slurs)",
+                "• Links sospechosos (acortadores, grabify…)",
+                "",
+                "Siguiente: `/automod list` o `/automod status`.",
               ].join("\n"),
-            ),
+            )
+            .setFooter({ text: `Prefijo de reglas: ${AUTOMOD_PREFIX}` })
+            .setTimestamp(),
         ],
       });
       return;
     }
 
+    // ── remove ──────────────────────────────────────────────────────────────
     if (sub === "remove") {
-      if (!interaction.guild) {
-        await interaction.reply({
-          content: "❌ Solo en servidores.",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-      const r = await removeAutomodPack(interaction.guild);
+      const r = await removeAutomodPack(interaction.guild!);
+
       await interaction.editReply({
         embeds: [
           new EmbedBuilder()
-            .setColor(PINK)
+            .setColor(r.removed > 0 ? PINK : AMBER)
+            .setAuthor({ name: "Zero Two · AutoMod remove", iconURL: botIcon })
+            .setTitle("🗑️ Desinstalación del pack")
             .setDescription(
-              `🗑️ Eliminadas **${r.removed}** reglas Zero Two.` +
-                (r.errors.length
-                  ? `\n${r.errors.map((e) => `• ${e}`).join("\n")}`
-                  : ""),
-            ),
+              [
+                `Eliminadas **${r.removed}** regla(s) con prefijo Zero Two.`,
+                r.errors.length
+                  ? `\n**Errores:**\n${r.errors.map((e) => `• ${e}`).join("\n")}`
+                  : r.removed === 0
+                    ? "\nNo había reglas `ZT |` / `ZT ·` en este servidor."
+                    : "\nLas reglas de otros bots o de Discord no se tocaron.",
+              ].join("\n"),
+            )
+            .setTimestamp(),
         ],
       });
       return;
     }
 
+    // ── global (owner) ──────────────────────────────────────────────────────
+    if (sub === "global") {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      const { total, ours, byGuild } = await countAutomodRules(client);
+      const target = 100;
+      const pct = Math.min(100, Math.round((total / target) * 100));
+      const top = byGuild
+        .slice(0, 12)
+        .map((g, i) => `\`${String(i + 1).padStart(2, "0")}\` **${g.name}** — ${g.n}`)
+        .join("\n");
+
+      await interaction.editReply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(total >= target ? GREEN : CYAN)
+            .setAuthor({ name: "Zero Two · AutoMod global", iconURL: botIcon })
+            .setTitle("🏅 Progreso insignia Uses AutoMod")
+            .setDescription(
+              [
+                `Reglas totales (todos los guilds accesibles): **${total}** / **${target}**`,
+                `Reglas Zero Two: **${ours}**`,
+                `\`${bar(pct, 14)}\` **${pct}%**`,
+                "",
+                total >= target
+                  ? "✅ Meta alcanzada. La insignia puede tardar en aparecer en el perfil de la app."
+                  : `Faltan **${Math.max(0, target - total)}** reglas. Setup en más servidores (máx. 6 c/u) o \`/automod sync-all\`.`,
+              ].join("\n"),
+            )
+            .addFields({
+              name: "📊 Top servidores",
+              value: top || "_Ningún servidor con reglas visibles_",
+              inline: false,
+            })
+            .setFooter({
+              text: `Zero Two ${BOT_VERSION} · Insignia de aplicación Discord`,
+            })
+            .setTimestamp(),
+        ],
+      });
+      return;
+    }
+
+    // ── sync-all (owner) ────────────────────────────────────────────────────
     if (sub === "sync-all") {
-      if (!isOwner(interaction.user.id)) {
-        await interaction.reply({
-          content: "❌ Solo el owner del bot puede usar esto.",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       const results = await installAutomodEverywhere(client);
       const created = results.reduce((a, r) => a + r.created, 0);
       const skipped = results.reduce((a, r) => a + r.skipped, 0);
       const failed = results.filter((r) => r.errors.length).length;
-      const { total } = await countAutomodRules(client);
+      const { total, ours } = await countAutomodRules(client);
+      const pct = Math.min(100, Math.round((total / 100) * 100));
+
+      const failSample = results
+        .filter((r) => r.errors.length)
+        .slice(0, 5)
+        .map((r) => `• **${r.guildName}**: ${r.errors[0]}`)
+        .join("\n");
 
       await interaction.editReply({
         embeds: [
           new EmbedBuilder()
-            .setColor(GREEN)
-            .setTitle("AutoMod · Sync global")
+            .setColor(created > 0 ? GREEN : AMBER)
+            .setAuthor({ name: "Zero Two · AutoMod sync-all", iconURL: botIcon })
+            .setTitle("🌍 Sincronización global terminada")
             .setDescription(
               [
                 `Servidores procesados: **${results.length}**`,
                 `Reglas nuevas: **${created}**`,
-                `Omitidas (ya existían): **${skipped}**`,
+                `Omitidas: **${skipped}**`,
                 `Guilds con error: **${failed}**`,
                 "",
-                `Total de reglas ahora: **${total}** / 100`,
+                `Total ahora: **${total}** / 100  ·  ZT: **${ours}**`,
+                `\`${bar(pct, 14)}\` **${pct}%**`,
+                failSample ? `\n**Muestra de errores:**\n${failSample}` : "",
               ].join("\n"),
-            ),
+            )
+            .setTimestamp(),
         ],
       });
       return;

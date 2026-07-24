@@ -51,11 +51,17 @@ async function buildPanelView(
     voiceChannelId: string | null;
   } | null = null;
 
+  let savedVolume: number | null = null;
+
   if (!isLive) {
     try {
       const { loadMusicSession } = await import("./sessionStore.js");
       const saved = await loadMusicSession(guildId);
       if (saved && (saved.current || saved.queue.length)) {
+        savedVolume =
+          typeof saved.volume === "number" && Number.isFinite(saved.volume)
+            ? Math.max(0, Math.min(150, Math.floor(saved.volume)))
+            : 80;
         savedSession = {
           title: saved.current?.title ?? saved.queue[0]?.title ?? "Sesión",
           queueLen: saved.queue.length + (saved.current ? 0 : 0),
@@ -70,10 +76,16 @@ async function buildPanelView(
     }
   }
 
+  // Prefer live session volume; never use `a ?? b ? 80 : 80` (always 80 by precedence).
+  const volume =
+    typeof session?.volume === "number" && Number.isFinite(session.volume)
+      ? Math.max(0, Math.min(150, Math.floor(session.volume)))
+      : (savedVolume ?? 80);
+
   const embed = musicPanelEmbed(client, {
     current: session?.current ?? null,
     queueLen: session?.queue.length ?? 0,
-    volume: session?.volume ?? savedSession ? 80 : 80,
+    volume,
     loop: session?.loop ?? "off",
     paused: session?.paused ?? false,
     voiceChannelId: session?.voiceChannelId ?? savedSession?.voiceChannelId ?? null,

@@ -18,6 +18,8 @@ import serverinfoCmd from "./commands/utility/serverinfo.js";
 import userinfoCmd from "./commands/utility/userinfo.js";
 import helpCmd from "./commands/utility/help.js";
 import botinfoCmd from "./commands/utility/botinfo.js";
+import presenceCmd from "./commands/utility/presence.js";
+import betaCmd from "./commands/utility/beta.js";
 
 // Moderation
 import banCmd from "./commands/moderation/ban.js";
@@ -38,8 +40,8 @@ import giveroleCmd from "./commands/moderation/giverole.js";
 
 // Fun
 import eightballCmd from "./commands/fun/8ball.js";
-import coinflipCmd from "./commands/fun/coinflip.js";
-import rollCmd from "./commands/fun/roll.js";
+import pokerCmd from "./commands/fun/poker.js";
+import shipCmd from "./commands/fun/ship.js";
 import blackjackCmd from "./commands/fun/blackjack.js";
 import dailyCmd from "./commands/fun/daily.js";
 import cfgembedCmd from "./commands/utility/cfgembed.js";
@@ -76,6 +78,8 @@ const ALL_COMMANDS = [
   userinfoCmd,
   helpCmd,
   botinfoCmd,
+  presenceCmd,
+  betaCmd,
   banCmd,
   kickCmd,
   muteCmd,
@@ -92,8 +96,8 @@ const ALL_COMMANDS = [
   automodCmd,
   giveroleCmd,
   eightballCmd,
-  coinflipCmd,
-  rollCmd,
+  pokerCmd,
+  shipCmd,
   blackjackCmd,
   dailyCmd,
   cfgembedCmd,

@@ -24,6 +24,8 @@ const META: Record<
   userinfo:   { emoji: "👤", category: "Utilidad", usage: "/userinfo [usuario]" },
   help:       { emoji: "📋", category: "Utilidad", usage: "/help [comando]" },
   zerotwoinf: { emoji: "⚙️", category: "Utilidad", usage: "/zerotwoinf" },
+  presence:   { emoji: "🎮", category: "Utilidad", usage: "/presence" },
+  beta:       { emoji: "🧪", category: "Utilidad", usage: "/beta <info|status|features|feedback|manage>" },
   cfgembed:   { emoji: "🎨", category: "Utilidad", usage: "/cfgembed [canal]", permission: "Gestionar Mensajes" },
   cfglogs:    { emoji: "📋", category: "Utilidad", usage: "/cfglogs <set|disable|status>", permission: "Gestionar Servidor" },
   ticket:     { emoji: "🎫", category: "Utilidad", usage: "/ticket <setup|panel|close|claim|add|remove|status>", permission: "Ver subcomandos" },
@@ -45,12 +47,12 @@ const META: Record<
   lock:       { emoji: "🔒", category: "Moderación", usage: "/lock [motivo]", permission: "Gestionar Canales" },
   unlock:     { emoji: "🔓", category: "Moderación", usage: "/unlock", permission: "Gestionar Canales" },
   logs:       { emoji: "📋", category: "Moderación", usage: "/logs <ver|buscar|borrar>", permission: "Silenciar Miembros" },
-  automod:    { emoji: "🛡️", category: "Moderación", usage: "/automod <setup|status|remove|sync-all>", permission: "Gestionar Servidor" },
+  automod:    { emoji: "🛡️", category: "Moderación", usage: "/automod <setup|status|list|remove|global|sync-all>", permission: "Gestionar Servidor" },
 
   // ── Diversión ───────────────────────────────────────────────────────────────
   "8ball":  { emoji: "🎱", category: "Diversión", usage: "/8ball <pregunta>" },
-  coinflip: { emoji: "🪙", category: "Diversión", usage: "/coinflip" },
-  roll:     { emoji: "🎲", category: "Diversión", usage: "/roll [caras]" },
+  poker:    { emoji: "🃏", category: "Diversión", usage: "/poker [rival]" },
+  ship:     { emoji: "💘", category: "Diversión", usage: "/ship [usuario1] <usuario2>" },
 
   // ── Casino ──────────────────────────────────────────────────────────────────
   blackjack: { emoji: "🃏", category: "Casino", usage: "/blackjack" },

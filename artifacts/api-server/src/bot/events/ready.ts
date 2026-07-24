@@ -22,6 +22,8 @@ const PROFILE_FEATURED = [
   "ticket",
   "wallet",
   "zerotwoinf",
+  "presence",
+  "beta",
   "musicpanel",
   "automod",
 ] as const;

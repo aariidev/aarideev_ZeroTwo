@@ -58,6 +58,8 @@ Thumbs.db
 
 # Secrets / local runtime
 cookies.txt
+data/beta-testers.json
+**/data/beta-testers.json
 **/cookies.txt
 bin/
 .config/

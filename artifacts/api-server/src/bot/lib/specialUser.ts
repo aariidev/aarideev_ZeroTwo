@@ -1,10 +1,14 @@
 import type { ChatInputCommandInteraction, Guild } from "discord.js";
+import {
+  getAllBetatesters,
+  isBetaTester as isBetaTesterFromLib,
+} from "./betatesters.js";
 
 const DEFAULT_OWNER_ID = "819080793447333918";
 
 function parseIds(value: string | undefined): string[] {
   return (value ?? "")
-    .split(",")
+    .split(/[,\s]+/)
     .map((id) => id.trim())
     .filter(Boolean);
 }
@@ -14,19 +18,23 @@ export function specialUserIds(): string[] {
 }
 
 export function ownerUserIds(): string[] {
-  return parseIds(process.env.OWNER_IDS ?? DEFAULT_OWNER_ID);
+  const ids = parseIds(process.env.OWNER_IDS);
+  return ids.length ? ids : [DEFAULT_OWNER_ID];
 }
 
+/** IDs beta (env + archivo persistente), sin owners */
 export function betaTesterIds(): string[] {
-  return parseIds(process.env.BETA_TESTER_IDS);
+  return getAllBetatesters();
 }
 
 export function isBetaTesterId(userId: string): boolean {
-  return betaTesterIds().includes(userId);
+  // Etiqueta “betatester”: en lista beta y no es owner
+  if (ownerUserIds().includes(userId)) return false;
+  return getAllBetatesters().includes(userId);
 }
 
 export function isSpecialUserId(userId: string): boolean {
-  return specialUserIds().includes(userId);
+  return ownerUserIds().includes(userId) || isBetaTesterFromLib(userId);
 }
 
 export function isSpecialGuildUser(
