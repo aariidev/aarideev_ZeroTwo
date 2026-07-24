@@ -60,6 +60,8 @@ Thumbs.db
 cookies.txt
 data/beta-testers.json
 **/data/beta-testers.json
+.tmp/
+**/.tmp/
 **/cookies.txt
 bin/
 .config/

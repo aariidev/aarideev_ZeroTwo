@@ -22,6 +22,7 @@ import presenceCmd from "./commands/utility/presence.js";
 import betaCmd from "./commands/utility/beta.js";
 import sugerenciasCmd from "./commands/utility/sugerencias.js";
 import nivelCmd from "./commands/utility/nivel.js";
+import welcomeCmd from "./commands/utility/welcome.js";
 
 // Moderation
 import banCmd from "./commands/moderation/ban.js";
@@ -85,6 +86,7 @@ const ALL_COMMANDS = [
   betaCmd,
   sugerenciasCmd,
   nivelCmd,
+  welcomeCmd,
   banCmd,
   antiraidCmd,
   kickCmd,
@@ -204,6 +206,7 @@ export async function startBot() {
   const { registerDmChat } = await import("./events/dmChat.js");
   const { registerAntiraid } = await import("./lib/antiraid.js");
   const { registerLevels } = await import("./lib/levels.js");
+  const { registerWelcome } = await import("./lib/welcome.js");
   const { registerSuggestionButtons } = await import(
     "./events/suggestionButtons.js"
   );
@@ -212,9 +215,10 @@ export async function startBot() {
   registerServerLogs(client);
   // Private DMs answered by Gemini (Zero Two)
   registerDmChat(client);
-  // Community: antiraid, XP/levels, suggestion buttons
+  // Community: antiraid, XP/levels, welcome, suggestion buttons
   registerAntiraid(client);
   registerLevels(client);
+  registerWelcome(client);
   registerSuggestionButtons(client);
   // Cap competing music bots when enabled per guild
   const { registerMusicBotCap } = await import("./music/capBots.js");

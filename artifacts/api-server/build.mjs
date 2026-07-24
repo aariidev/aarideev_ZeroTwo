@@ -9,9 +9,32 @@ globalThis.require = createRequire(import.meta.url);
 
 const artifactDir = path.dirname(fileURLToPath(import.meta.url));
 
+/**
+ * Sourcemaps on a ~6MB bundled bot eat a lot of RAM (Go esbuild → VirtualAlloc).
+ * Default OFF to avoid Windows errno 1455 / OOM. Enable with:
+ *   set ESBUILD_SOURCEMAP=1
+ * Disable explicitly:
+ *   set ESBUILD_DISABLE_SOURCEMAP=1
+ */
+function resolveSourcemap() {
+  if (process.env.ESBUILD_DISABLE_SOURCEMAP === "1") return false;
+  if (process.env.ESBUILD_SOURCEMAP === "1") return "linked";
+  // Cheap maps only when explicitly developing with source maps
+  if (process.env.ESBUILD_SOURCEMAP === "inline") return "inline";
+  return false;
+}
+
 async function buildAll() {
   const distDir = path.resolve(artifactDir, "dist");
   await rm(distDir, { recursive: true, force: true });
+
+  const sourcemap = resolveSourcemap();
+  if (!sourcemap) {
+    console.log(
+      "[build] sourcemaps OFF (set ESBUILD_SOURCEMAP=1 to enable; saves RAM on Windows)",
+    );
+  }
+
   await esbuild({
     entryPoints: [path.resolve(artifactDir, "src/index.ts")],
     platform: "node",
@@ -20,8 +43,34 @@ async function buildAll() {
     outdir: distDir,
     outExtension: { ".js": ".mjs" },
     logLevel: "info",
+    // Lower peak memory on constrained machines
+    treeShaking: true,
+    legalComments: "none",
+    // Avoid keeping the whole graph as huge strings longer than needed
+    write: true,
+    // Keep the biggest deps external so esbuild uses less RAM (Windows OOM / errno 1455).
+    // Runtime resolves them from node_modules next to the package.
     external: [
       "*.node",
+      // Heavy app deps — do not bundle
+      "discord.js",
+      "@discordjs/*",
+      "discord-api-types",
+      "@sapphire/*",
+      "drizzle-orm",
+      "drizzle-orm/*",
+      "express",
+      "express-*",
+      "pino",
+      "pino-*",
+      "thread-stream",
+      "sonic-boom",
+      "zod",
+      "cors",
+      "cookie-parser",
+      "express-rate-limit",
+      // Bundle @workspace/* (TS monorepo packages) — do NOT externalize
+      // or Node hits ERR_UNSUPPORTED_DIR_IMPORT on bare "./schema" paths.
       "sharp",
       "better-sqlite3",
       "sqlite3",
@@ -104,7 +153,7 @@ async function buildAll() {
       "puppeteer-core",
       "electron",
     ],
-    sourcemap: "linked",
+    sourcemap,
     plugins: [
       esbuildPluginPino({ transports: ["pino-pretty"] }),
     ],

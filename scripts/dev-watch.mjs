@@ -100,19 +100,49 @@ async function editDevMessage(msgId, embed, components = []) {
 function runBuild() {
   return new Promise((resolve) => {
     console.log("[watch] 🔨 Compilando...");
+    // Low-memory defaults for Windows (esbuild is Go; OOM → errno 1455)
+    const env = {
+      ...process.env,
+      ESBUILD_DISABLE_SOURCEMAP: process.env.ESBUILD_SOURCEMAP ? "0" : "1",
+      GOGC: process.env.GOGC ?? "50",
+      GOMAXPROCS: process.env.GOMAXPROCS ?? "2",
+      NODE_OPTIONS: [process.env.NODE_OPTIONS, "--max-old-space-size=2048"]
+        .filter(Boolean)
+        .join(" "),
+    };
+    if (env.ESBUILD_DISABLE_SOURCEMAP === "0") {
+      delete env.ESBUILD_DISABLE_SOURCEMAP;
+    }
+
     const proc = spawn("node", [BUILD_SCRIPT], {
       cwd: API_DIR,
       stdio: ["ignore", "pipe", "pipe"],
-      env: process.env,
+      env,
     });
 
     let stdout = "";
     let stderr = "";
-    proc.stdout.on("data", (d) => (stdout += d.toString()));
-    proc.stderr.on("data", (d) => (stderr += d.toString()));
+    proc.stdout.on("data", (d) => {
+      const s = d.toString();
+      stdout += s;
+      process.stdout.write(s);
+    });
+    proc.stderr.on("data", (d) => {
+      const s = d.toString();
+      stderr += s;
+      process.stderr.write(s);
+    });
+
+    proc.on("error", (err) => {
+      resolve({
+        ok: false,
+        stdout,
+        stderr: `${stderr}\n[spawn error] ${err.message}`,
+      });
+    });
 
     proc.on("close", (code) => {
-      resolve({ ok: code === 0, stdout, stderr });
+      resolve({ ok: code === 0, stdout, stderr, code });
     });
   });
 }
@@ -170,10 +200,11 @@ function reloadButtons() {
 }
 
 async function notifyBuildError(stderr) {
+  const text = String(stderr || "Sin detalle").slice(0, 1800);
   await sendDevEmbed({
     color: BOT_COLOR_ERR,
     title: "❌ Error de compilación",
-    description: `\`\`\`\n${stderr.slice(0, 1800)}\n\`\`\``,
+    description: `\`\`\`\n${text}\n\`\`\``,
     timestamp: new Date().toISOString(),
     footer: { text: "Zero Two Dev · Watcher" },
   });
@@ -270,11 +301,25 @@ function scheduleRebuild(filePath) {
     changedSinceLastBuild.clear();
     console.log(`[watch] 📝 Cambios detectados:\n  ${files.join("\n  ")}`);
 
-    const { ok, stderr } = await runBuild();
+    const result = await runBuild();
 
-    if (!ok) {
+    if (!result.ok) {
       console.error("[watch] ❌ Build fallida");
-      await notifyBuildError(stderr).catch(console.error);
+      const detail = (result.stderr || result.stdout || "").trim();
+      if (!detail) {
+        console.error(
+          "[watch] Sin salida del compilador — suele ser OOM (VirtualAlloc / errno 1455).\n" +
+            "  1) Cierra Firefox/Chrome/apps pesadas\n" +
+            "  2) node artifacts/api-server/build.mjs\n" +
+            "  3) Si sigue fallando, reinicia el PC o aumenta el pagefile",
+        );
+      } else {
+        console.error("[watch] ── error ──\n" + detail.slice(-3000));
+      }
+      await notifyBuildError(
+        detail ||
+          "Sin stderr (posible out of memory / errno 1455). Cierra apps y reintenta el build.",
+      ).catch(console.error);
       building = false;
       return;
     }
