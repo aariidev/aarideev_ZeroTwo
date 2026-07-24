@@ -346,6 +346,16 @@ export class GuildMusicSession {
       try {
         handle = await createTrackResource(url, this.volume, startSec);
       } catch (firstErr) {
+        const msg =
+          firstErr instanceof Error ? firstErr.message : String(firstErr);
+        // Don't spawn more yt-dlp if the host is out of memory / binary broken
+        if (
+          /ENOMEM|spawn UNKNOWN|Sin memoria|yt-dlp dañado|Failed to extract|Cryptodome|VirtualAlloc/i.test(
+            msg,
+          )
+        ) {
+          throw firstErr;
+        }
         // Refresh URL via yt-dlp search and retry once
         logger.warn({ firstErr, url }, "music: stream retry via search");
         const alt = await ytdlpSearchUrl(track.title);

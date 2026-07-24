@@ -20,9 +20,15 @@ import {
 import { eq, and, desc } from "drizzle-orm";
 import { logger } from "../../lib/logger.js";
 import { BOT_VERSION } from "./version.js";
+import {
+  getAchievementDef,
+  newlyUnlocked,
+  parseAchievementsJson,
+} from "./achievements.js";
 
 const PINK = 0xff2d6b;
 const GOLD = 0xffd700;
+const PURPLE = 0xa78bfa;
 
 /** XP needed to go from level L to L+1 */
 export function xpForLevel(level: number): number {
@@ -157,6 +163,7 @@ export async function getUserLevel(
       level: 0,
       totalMessages: 0,
       voiceMinutes: 0,
+      achievements: "[]",
       lastXpAt: null,
       updatedAt: new Date(),
     }
@@ -173,6 +180,30 @@ export async function getLeaderboard(
     .where(eq(userLevelsTable.guildId, guildId))
     .orderBy(desc(userLevelsTable.xp))
     .limit(limit);
+}
+
+async function announceToChannels(
+  client: Client,
+  settings: GuildLevelSettings,
+  channelId: string | null | undefined,
+  embeds: EmbedBuilder[],
+): Promise<void> {
+  const targets: string[] = [];
+  if (settings.announceChannelId) targets.push(settings.announceChannelId);
+  if (settings.announceInPlace && channelId) targets.push(channelId);
+  const seen = new Set<string>();
+  for (const id of targets) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    try {
+      const ch = await client.channels.fetch(id);
+      if (ch?.isTextBased() && !ch.isDMBased()) {
+        await (ch as TextChannel).send({ embeds });
+      }
+    } catch {
+      /* optional */
+    }
+  }
 }
 
 async function announceLevelUp(
@@ -193,26 +224,95 @@ async function announceLevelUp(
     .setDescription(
       `<@${userId}> alcanzó el **nivel ${newLevel}**.\nSigue hablando, Darling… me caes bien.`,
     )
-    .setFooter({ text: `Zero Two ${BOT_VERSION}` })
+    .setFooter({ text: `Zero Two ${BOT_VERSION} · ${guild.name}` })
     .setTimestamp();
 
-  const targets: string[] = [];
-  if (settings.announceChannelId) targets.push(settings.announceChannelId);
-  if (settings.announceInPlace && channelId) targets.push(channelId);
+  await announceToChannels(client, settings, channelId, [emb]);
+}
 
-  const seen = new Set<string>();
-  for (const id of targets) {
-    if (seen.has(id)) continue;
-    seen.add(id);
-    try {
-      const ch = await client.channels.fetch(id);
-      if (ch?.isTextBased() && !ch.isDMBased()) {
-        await (ch as TextChannel).send({ embeds: [emb] });
-      }
-    } catch {
-      /* optional */
-    }
+async function announceAchievements(
+  client: Client,
+  guild: Guild,
+  userId: string,
+  unlockedIds: string[],
+  settings: GuildLevelSettings,
+  channelId?: string | null,
+): Promise<void> {
+  if (!unlockedIds.length) return;
+  const lines = unlockedIds
+    .map((id) => {
+      const def = getAchievementDef(id);
+      return def
+        ? `${def.emoji} **${def.name}** — ${def.description}`
+        : `🏅 \`${id}\``;
+    })
+    .join("\n");
+
+  const emb = new EmbedBuilder()
+    .setColor(PURPLE)
+    .setAuthor({
+      name: "Zero Two · Logros",
+      iconURL: client.user?.displayAvatarURL() ?? undefined,
+    })
+    .setTitle(
+      unlockedIds.length === 1
+        ? "🏅 ¡Nuevo logro!"
+        : `🏅 ¡${unlockedIds.length} logros nuevos!`,
+    )
+    .setDescription(`<@${userId}>\n\n${lines}`)
+    .setFooter({ text: `Zero Two ${BOT_VERSION} · /nivel logros` })
+    .setTimestamp();
+
+  await announceToChannels(client, settings, channelId, [emb]);
+}
+
+/** Evaluate + persist new achievements; returns newly unlocked ids. */
+export async function syncAchievements(
+  guildId: string,
+  userId: string,
+  opts?: {
+    client?: Client;
+    guild?: Guild;
+    channelId?: string | null;
+  },
+): Promise<string[]> {
+  const user = await getUserLevel(guildId, userId);
+  const already = parseAchievementsJson(
+    (user as UserLevel & { achievements?: string }).achievements ?? "[]",
+  );
+  const fresh = newlyUnlocked(
+    {
+      level: user.level,
+      totalMessages: user.totalMessages,
+      voiceMinutes: user.voiceMinutes,
+    },
+    already,
+  );
+  if (!fresh.length) return [];
+
+  const merged = [...already, ...fresh];
+  await db
+    .update(userLevelsTable)
+    .set({ achievements: JSON.stringify(merged) })
+    .where(
+      and(
+        eq(userLevelsTable.guildId, guildId),
+        eq(userLevelsTable.userId, userId),
+      ),
+    );
+
+  if (opts?.client && opts.guild) {
+    const settings = await getLevelSettings(guildId);
+    void announceAchievements(
+      opts.client,
+      opts.guild,
+      userId,
+      fresh,
+      settings,
+      opts.channelId,
+    );
   }
+  return fresh;
 }
 
 /**
@@ -234,6 +334,7 @@ export async function grantXp(input: {
   newLevel: number;
   totalXp: number;
   user: UserLevel;
+  newAchievements: string[];
 }> {
   const amount = Math.max(0, Math.floor(input.amount));
   const user = await getUserLevel(input.guildId, input.userId);
@@ -272,12 +373,19 @@ export async function grantXp(input: {
     );
   }
 
+  const newAchievements = await syncAchievements(input.guildId, input.userId, {
+    client: input.client,
+    guild: input.guild,
+    channelId: input.channelId,
+  });
+
   return {
     leveledUp,
     oldLevel,
     newLevel,
     totalXp: newXp,
     user: updated,
+    newAchievements,
   };
 }
 
@@ -291,7 +399,7 @@ export async function handleMessageXp(message: Message): Promise<void> {
   const user = await getUserLevel(message.guild.id, message.author.id);
   const cooldownMs = Math.max(5, settings.cooldownSec) * 1000;
   if (user.lastXpAt && Date.now() - user.lastXpAt.getTime() < cooldownMs) {
-    // Count message without granting XP (cooldown)
+    // Count message without granting XP (cooldown) — still unlock message achievements
     await db
       .update(userLevelsTable)
       .set({ totalMessages: user.totalMessages + 1 })
@@ -302,6 +410,11 @@ export async function handleMessageXp(message: Message): Promise<void> {
         ),
       )
       .catch(() => null);
+    void syncAchievements(message.guild.id, message.author.id, {
+      client: message.client,
+      guild: message.guild,
+      channelId: message.channelId,
+    });
     return;
   }
 

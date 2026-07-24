@@ -93,6 +93,8 @@ export const userLevelsTable = mysqlTable(
     level: int("level").notNull().default(0),
     totalMessages: int("total_messages").notNull().default(0),
     voiceMinutes: int("voice_minutes").notNull().default(0),
+    /** JSON string array of achievement ids unlocked */
+    achievements: text("achievements").notNull().default("[]"),
     lastXpAt: timestamp("last_xp_at"),
     updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
   },
@@ -103,6 +105,34 @@ export const userLevelsTable = mysqlTable(
   ],
 );
 
+// ── Welcome / leave ───────────────────────────────────────────────────────────
+
+export const guildWelcomeSettingsTable = mysqlTable(
+  "guild_welcome_settings",
+  {
+    guildId: varchar("guild_id", { length: 32 }).primaryKey(),
+    enabled: boolean("enabled").notNull().default(true),
+    channelId: varchar("channel_id", { length: 32 }),
+    leaveChannelId: varchar("leave_channel_id", { length: 32 }),
+    /** Supports {user} {username} {server} {memberCount} {accountAge} */
+    welcomeMessage: text("welcome_message")
+      .notNull()
+      .default(
+        "Bienvenido/a {user} a **{server}** 🌸\nEres el miembro **#{memberCount}**. Cuenta creada {accountAge}.",
+      ),
+    leaveMessage: text("leave_message")
+      .notNull()
+      .default(
+        "**{username}** abandonó **{server}**. Ahora somos **{memberCount}**.",
+      ),
+    welcomeEmbed: boolean("welcome_embed").notNull().default(true),
+    leaveEmbed: boolean("leave_embed").notNull().default(true),
+    /** Optional role IDs JSON to assign on join */
+    autoroleIds: text("autorole_ids").notNull().default("[]"),
+    updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+  },
+);
+
 export type GuildSuggestionSettings =
   typeof guildSuggestionSettingsTable.$inferSelect;
 export type Suggestion = typeof suggestionsTable.$inferSelect;
@@ -110,3 +140,5 @@ export type GuildAntiraidSettings =
   typeof guildAntiraidSettingsTable.$inferSelect;
 export type GuildLevelSettings = typeof guildLevelSettingsTable.$inferSelect;
 export type UserLevel = typeof userLevelsTable.$inferSelect;
+export type GuildWelcomeSettings =
+  typeof guildWelcomeSettingsTable.$inferSelect;
