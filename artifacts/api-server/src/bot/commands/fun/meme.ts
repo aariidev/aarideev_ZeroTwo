@@ -113,54 +113,72 @@ const CATEGORIES: {
     emoji: "🐱",
     subs: ["catmemes", "blep", "CatsOnKeyboards"],
   },
-  {
-    id: "dark",
-    label: "Humor negro",
-    emoji: "🖤",
-    // Contenido sensible — solo tras disclaimer
-    requiresDisclaimer: true,
-    subs: [
-      "darkmemes",
-      "DarkHumorAndMemes",
-      "ImGoingToHellForThis",
-      "ActualDarkHumor",
-      "edgymemes",
-      "darkjokes",
-    ],
-  },
+  // Humor negro DESACTIVADO (subs ban/403 en Reddit). No reactivar sin fuente estable.
 ];
 
-/** Subs que siempre exigen disclaimer (aunque se pasen por opción subreddit) */
+/** Feature flag: humor negro desactivado (errores 403 / subs privados) */
+const DARK_HUMOR_ENABLED = false;
+
+/** Subs de humor negro bloqueados mientras la feature esté off */
 const DARK_SUBS = new Set(
-  CATEGORIES.find((c) => c.id === "dark")!.subs.map((s) => s.toLowerCase()),
+  [
+    "darkmemes",
+    "edgymemes",
+    "imgoingtohellforthis",
+    "darkjokes",
+    "actualdarkhumor",
+    "darkhumorandmemes",
+    "cursedcomments",
+  ].map((s) => s.toLowerCase()),
 );
 
-/** userId → timestamp de aceptación del disclaimer (TTL 12h) */
-const darkDisclaimerAccepted = new Map<string, number>();
-const DISCLAIMER_TTL_MS = 12 * 60 * 60 * 1000;
-
-function hasDarkDisclaimer(userId: string): boolean {
-  const t = darkDisclaimerAccepted.get(userId);
-  if (!t) return false;
-  if (Date.now() - t > DISCLAIMER_TTL_MS) {
-    darkDisclaimerAccepted.delete(userId);
-    return false;
-  }
-  return true;
+function hasDarkDisclaimer(_userId: string): boolean {
+  return false;
 }
 
-function acceptDarkDisclaimer(userId: string) {
-  darkDisclaimerAccepted.set(userId, Date.now());
+function acceptDarkDisclaimer(_userId: string) {
+  /* disabled */
 }
 
 function needsDisclaimer(
   categoryId: string,
   subreddit: string | null | undefined,
 ): boolean {
+  if (!DARK_HUMOR_ENABLED) return false;
   const cat = categoryMeta(categoryId);
   if (cat.requiresDisclaimer) return true;
   if (subreddit && DARK_SUBS.has(subreddit.toLowerCase())) return true;
   return false;
+}
+
+function isDarkHumorBlocked(
+  categoryId: string,
+  subreddit: string | null | undefined,
+): boolean {
+  if (DARK_HUMOR_ENABLED) return false;
+  if (categoryId === "dark") return true;
+  if (subreddit && DARK_SUBS.has(subreddit.toLowerCase())) return true;
+  return false;
+}
+
+function darkHumorDisabledEmbed(): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(AMBER)
+    .setTitle("🖤 Humor negro desactivado")
+    .setDescription(
+      [
+        "La categoría de **humor negro** está temporalmente **desactivada**.",
+        "",
+        "Los subreddits (p. ej. `r/darkmemes`) devuelven **403** (privados o baneados) y el nexo fallaba.",
+        "",
+        "Puedes seguir con:",
+        "• `/meme ver categoria:Español`",
+        "• `/meme ver categoria:Dank`",
+        "• `/meme ver categoria:Anime`",
+      ].join("\n"),
+    )
+    .setFooter({ text: `Zero Two ${BOT_VERSION}` })
+    .setTimestamp();
 }
 
 type SortMode = "top" | "hot" | "new";
@@ -221,13 +239,32 @@ function isImageUrl(url: string): boolean {
   if (/\.(jpe?g|png|gif|webp)$/i.test(u)) return true;
   if (u.includes("i.redd.it") || u.includes("preview.redd.it")) return true;
   if (u.includes("i.imgur.com") || u.includes("imgur.com/")) return true;
+  if (u.includes("redd.it/")) return true;
   return false;
 }
 
 function normalizeImageUrl(url: string): string {
   // preview.redd.it a veces necesita decodificar &amp;
-  return url.replace(/&amp;/g, "&");
+  let u = url.replace(/&amp;/g, "&");
+  if (u.startsWith("http://")) u = "https://" + u.slice(7);
+  // imgur página → intento i.imgur directo si es id simple
+  const imgur = u.match(/imgur\.com\/([a-zA-Z0-9]+)(?:\.[a-z]+)?$/i);
+  if (imgur && !u.includes("i.imgur.com") && !u.includes("/a/")) {
+    u = `https://i.imgur.com/${imgur[1]}.jpg`;
+  }
+  return u;
 }
+
+/** Subs ban/privados en Reddit vivo → ir directo al archivo */
+const LIVE_BLOCKED_SUBS = new Set(
+  [
+    "darkmemes",
+    "edgymemes",
+    "imgoingtohellforthis",
+    "actualdarkhumor",
+    "darkhumorandmemes",
+  ].map((s) => s.toLowerCase()),
+);
 
 async function fetchJson(url: string): Promise<unknown> {
   const res = await fetch(url, {
@@ -237,7 +274,16 @@ async function fetchJson(url: string): Promise<unknown> {
     },
     signal: AbortSignal.timeout(14_000),
   });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const j = (await res.json()) as { message?: string };
+      detail = j.message ? `: ${j.message}` : "";
+    } catch {
+      /* */
+    }
+    throw new Error(`HTTP ${res.status}${detail}`);
+  }
   return res.json();
 }
 
@@ -366,6 +412,41 @@ function pickFromPool(
   return topSlice[Math.floor(Math.random() * topSlice.length)] ?? null;
 }
 
+async function tryPickFromSub(
+  sub: string,
+  allowNsfw: boolean,
+  preferArchive: boolean,
+): Promise<MemePayload | null> {
+  const blockedLive = LIVE_BLOCKED_SUBS.has(sub.toLowerCase());
+  const order: Array<"archive" | "live"> = preferArchive || blockedLive
+    ? ["archive", "live"]
+    : ["live", "archive"];
+
+  for (const src of order) {
+    try {
+      if (src === "live") {
+        if (blockedLive) continue;
+        const live = await fetchLiveFromSub(sub, 30, allowNsfw);
+        const picked = pickFromPool(live, true);
+        if (picked) return picked;
+      } else {
+        const top = await fetchTopArchive(sub, allowNsfw);
+        const picked = pickFromPool(top, true);
+        if (picked) return picked;
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // 403 ban/private es esperado en dark clásicos — no spamear stack
+      if (/HTTP 403|Locked or Private|does not exist/i.test(msg)) {
+        logger.debug({ sub, src, msg }, "meme: sub no disponible (vivo)");
+      } else {
+        logger.debug({ err, sub, src }, "meme: fetch fail");
+      }
+    }
+  }
+  return null;
+}
+
 async function obtenerMeme(
   categoryId: string,
   opts?: {
@@ -381,52 +462,60 @@ async function obtenerMeme(
     forcedSub && DARK_SUBS.has(forcedSub.toLowerCase())
       ? "dark"
       : categoryId;
-  const subs = forcedSub
-    ? [forcedSub]
-    : [
-        pickSub(effectiveCat, true),
-        pickSub(effectiveCat, false),
-        pickSub(effectiveCat, false),
-      ];
-  // unique
-  const trySubs = [...new Set(subs.filter(Boolean))];
+  const isDark = effectiveCat === "dark" || categoryMeta(effectiveCat).requiresDisclaimer;
 
-  let lastErr: unknown;
+  // Dark: probar todos los subs de la categoría (archivo + vivos)
+  let trySubs: string[];
+  if (forcedSub) {
+    trySubs = [forcedSub];
+    // Si el forzado está ban, añadir backups de dark
+    if (isDark || LIVE_BLOCKED_SUBS.has(forcedSub.toLowerCase())) {
+      trySubs.push(...(CATEGORIES.find((c) => c.id === "dark")?.subs ?? []));
+    }
+  } else if (isDark) {
+    // todos los dark, barajados pero priorizando primarios
+    const darkSubs = [...(CATEGORIES.find((c) => c.id === "dark")?.subs ?? [])];
+    trySubs = darkSubs;
+  } else {
+    trySubs = [
+      pickSub(effectiveCat, true),
+      pickSub(effectiveCat, false),
+      pickSub(effectiveCat, false),
+    ];
+  }
+  trySubs = [...new Set(trySubs.filter(Boolean))];
 
   for (const sub of trySubs) {
-    // 1) Reddit live (meme-api proxy)
-    try {
-      const live = await fetchLiveFromSub(sub, 30, allowNsfw);
-      const picked = pickFromPool(live, true);
-      if (picked) {
-        rememberUrl(picked.imageUrl);
-        rememberUrl(picked.postLink);
-        return { ...picked, categoryId: effectiveCat };
-      }
-    } catch (err) {
-      lastErr = err;
-      logger.debug({ err, sub }, "meme: live fetch fail");
-    }
-
-    // 2) Archive top-by-score
-    try {
-      const top = await fetchTopArchive(sub, allowNsfw);
-      const picked = pickFromPool(top, true);
-      if (picked) {
-        rememberUrl(picked.imageUrl);
-        rememberUrl(picked.postLink);
-        return { ...picked, categoryId: effectiveCat };
-      }
-    } catch (err) {
-      lastErr = err;
-      logger.debug({ err, sub }, "meme: archive fetch fail");
+    const picked = await tryPickFromSub(sub, allowNsfw, isDark);
+    if (picked) {
+      rememberUrl(picked.imageUrl);
+      rememberUrl(picked.postLink);
+      return { ...picked, categoryId: effectiveCat };
     }
   }
 
-  logger.warn({ err: lastErr, categoryId, trySubs }, "meme: sin resultados");
-  throw lastErr instanceof Error
-    ? lastErr
-    : new Error("No hay memes de imagen en esos subreddits ahora mismo");
+  // Último recurso dark: allowNsfw false → reintentar archivo sin filtro estricto de vacío
+  if (isDark && !allowNsfw) {
+    for (const sub of trySubs.slice(0, 4)) {
+      try {
+        const top = await fetchTopArchive(sub, false);
+        const picked = pickFromPool(top, false);
+        if (picked) {
+          rememberUrl(picked.imageUrl);
+          return { ...picked, categoryId: effectiveCat };
+        }
+      } catch {
+        /* */
+      }
+    }
+  }
+
+  logger.warn({ categoryId, trySubs, allowNsfw }, "meme: sin resultados");
+  throw new Error(
+    isDark
+      ? "No hay memes de humor negro disponibles ahora (subs ban/privados o sin imágenes). Prueba de nuevo o usa canal NSFW."
+      : "No hay memes de imagen en esos subreddits ahora mismo",
+  );
 }
 
 function buildMemeEmbed(
@@ -504,20 +593,13 @@ function memeButtons(userId: string, categoryId: string, subreddit: string) {
   );
 }
 
-function memeButtonsRow2(userId: string, darkUnlocked: boolean) {
-  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+function memeButtonsRow2(userId: string) {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId(`meme:sub:${userId}:SpanishMeme`)
       .setLabel("SpanishMeme")
       .setEmoji("🇪🇸")
       .setStyle(ButtonStyle.Success),
-    new ButtonBuilder()
-      .setCustomId(
-        darkUnlocked ? `meme:cat:${userId}:dark` : `meme:disclaimer:${userId}`,
-      )
-      .setLabel(darkUnlocked ? "Humor negro" : "Humor negro ⚠")
-      .setEmoji("🖤")
-      .setStyle(ButtonStyle.Danger),
     new ButtonBuilder()
       .setCustomId(`meme:random:${userId}`)
       .setLabel("Aleatorio")
@@ -528,13 +610,12 @@ function memeButtonsRow2(userId: string, darkUnlocked: boolean) {
       .setLabel("Cerrar")
       .setStyle(ButtonStyle.Secondary),
   );
-  return row;
 }
 
 function memeComponents(userId: string, categoryId: string, subreddit: string) {
   return [
     memeButtons(userId, categoryId, subreddit),
-    memeButtonsRow2(userId, hasDarkDisclaimer(userId)),
+    memeButtonsRow2(userId),
   ];
 }
 
@@ -618,9 +699,7 @@ async function resolveTargetChannel(
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("meme")
-    .setDescription(
-      "😂 Memes de Reddit — ver, config de canales y humor negro 18+",
-    )
+    .setDescription("😂 Memes de Reddit — ver y configurar canal de memes")
     .addSubcommand((s) =>
       s
         .setName("ver")
@@ -663,23 +742,11 @@ const command: Command = {
     .addSubcommand((s) =>
       s
         .setName("config")
-        .setDescription(
-          "⚙️ Configura canal de memes y de humor negro (admin)",
-        )
+        .setDescription("⚙️ Configura el canal de memes del servidor (admin)")
         .addChannelOption((o) =>
           o
             .setName("canal_memes")
-            .setDescription("😂 Canal para memes normales")
-            .addChannelTypes(
-              ChannelType.GuildText,
-              ChannelType.GuildAnnouncement,
-            )
-            .setRequired(false),
-        )
-        .addChannelOption((o) =>
-          o
-            .setName("canal_humor_negro")
-            .setDescription("🖤 Canal para humor negro (mejor si es NSFW)")
+            .setDescription("😂 Canal donde publicar memes")
             .addChannelTypes(
               ChannelType.GuildText,
               ChannelType.GuildAnnouncement,
@@ -726,7 +793,6 @@ const command: Command = {
 
       const clear = interaction.options.getBoolean("limpiar") ?? false;
       const memeCh = interaction.options.getChannel("canal_memes");
-      const darkCh = interaction.options.getChannel("canal_humor_negro");
 
       if (clear) {
         await setMemeChannelConfig(interaction.guild.id, {
@@ -743,7 +809,7 @@ const command: Command = {
               })
               .setTitle("🧹 Config de memes limpiada")
               .setDescription(
-                "Ya no hay canales fijos. `/meme ver` responderá en el canal donde lo uses.",
+                "Ya no hay canal fijo. `/meme ver` responderá en el canal donde lo uses.",
               )
               .setFooter({ text: `Zero Two ${BOT_VERSION}` })
               .setTimestamp(),
@@ -753,28 +819,19 @@ const command: Command = {
         return;
       }
 
-      if (!memeCh && !darkCh) {
+      if (!memeCh) {
         await interaction.reply({
-          content:
-            "❌ Pasa `canal_memes` y/o `canal_humor_negro`, o `limpiar:true`.",
+          content: "❌ Pasa `canal_memes` o `limpiar:true`.",
           flags: MessageFlags.Ephemeral,
         });
         return;
       }
 
-      const patch: {
-        memeChannelId?: string | null;
-        darkChannelId?: string | null;
-      } = {};
-      if (memeCh) patch.memeChannelId = memeCh.id;
-      if (darkCh) patch.darkChannelId = darkCh.id;
-
-      const cfg = await setMemeChannelConfig(interaction.guild.id, patch);
-
-      const darkIsNsfw =
-        darkCh && "nsfw" in darkCh
-          ? Boolean((darkCh as { nsfw?: boolean }).nsfw)
-          : null;
+      const cfg = await setMemeChannelConfig(interaction.guild.id, {
+        memeChannelId: memeCh.id,
+        // humor negro desactivado: no se usa
+        darkChannelId: null,
+      });
 
       await interaction.reply({
         embeds: [
@@ -784,20 +841,15 @@ const command: Command = {
               name: "Zero Two · Memes",
               iconURL: client.user?.displayAvatarURL({ size: 64 }),
             })
-            .setTitle("✅ Canales de memes actualizados")
+            .setTitle("✅ Canal de memes actualizado")
             .setDescription(
               [
-                "Cuando uses `/meme ver`, el bot publicará en estos canales si están definidos:",
+                `😂 **Canal:** ${cfg.memeChannelId ? `<#${cfg.memeChannelId}>` : "`sin configurar`"}`,
                 "",
-                `😂 **Memes:** ${cfg.memeChannelId ? `<#${cfg.memeChannelId}>` : "`sin configurar`"}`,
-                `🖤 **Humor negro:** ${cfg.darkChannelId ? `<#${cfg.darkChannelId}>` : "`sin configurar`"}`,
-                darkIsNsfw === false
-                  ? "\n⚠️ El canal de humor negro **no es NSFW**. Recomendado marcarlo como +18."
-                  : darkIsNsfw === true
-                    ? "\n✅ Canal de humor negro es **NSFW**."
-                    : "",
+                "Cuando uses `/meme ver`, el bot publicará ahí (si está definido).",
+                "Tip: `/meme ver aqui:true` fuerza el canal actual.",
                 "",
-                "Tip: `/meme ver aqui:true` fuerza la respuesta en el canal actual.",
+                "_Humor negro está desactivado temporalmente._",
               ].join("\n"),
             )
             .setFooter({ text: `Zero Two ${BOT_VERSION} · /meme status` })
@@ -827,24 +879,19 @@ const command: Command = {
               iconURL: client.user?.displayAvatarURL({ size: 64 }),
             })
             .setTitle("📊 Configuración de canales")
-            .addFields(
-              {
-                name: "😂 Canal de memes",
-                value: cfg.memeChannelId
-                  ? `<#${cfg.memeChannelId}>`
-                  : "_No configurado — se usa el canal actual_",
-                inline: false,
-              },
-              {
-                name: "🖤 Canal de humor negro",
-                value: cfg.darkChannelId
-                  ? `<#${cfg.darkChannelId}>`
-                  : "_No configurado — se usa el canal actual_",
-                inline: false,
-              },
-            )
+            .addFields({
+              name: "😂 Canal de memes",
+              value: cfg.memeChannelId
+                ? `<#${cfg.memeChannelId}>`
+                : "_No configurado — se usa el canal actual_",
+              inline: false,
+            })
             .setDescription(
-              "Configura con `/meme config` · requiere **Gestionar servidor**.",
+              [
+                "Configura con `/meme config` · requiere **Gestionar servidor**.",
+                "",
+                "🖤 Humor negro: **desactivado** (subs con errores 403).",
+              ].join("\n"),
             )
             .setFooter({
               text: cfg.updatedAt
@@ -869,7 +916,16 @@ const command: Command = {
       ? await getMemeChannelConfig(guildId)
       : { memeChannelId: null, darkChannelId: null };
 
-    const isDarkRequest = needsDisclaimer(categoryId, subOpt);
+    // Bloqueo temprano: humor negro desactivado
+    if (isDarkHumorBlocked(categoryId, subOpt)) {
+      await interaction.reply({
+        embeds: [darkHumorDisabledEmbed()],
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const isDarkRequest = false; // humor negro off
     // NSFW allow = target channel nsfw (config dark or current)
     let allowNsfw = channelAllowsNsfw(interaction);
     if (!forceHere && isDarkRequest && cfg.darkChannelId && interaction.guild) {
@@ -1071,8 +1127,9 @@ const command: Command = {
       });
     };
 
-    // Gate disclaimer
+    // Gate disclaimer (desactivado con DARK_HUMOR_ENABLED=false)
     if (
+      DARK_HUMOR_ENABLED &&
       needsDisclaimer(categoryId, subOpt) &&
       !hasDarkDisclaimer(userId)
     ) {
@@ -1083,10 +1140,7 @@ const command: Command = {
     try {
       const meme = await obtenerMeme(categoryId, {
         subreddit: subOpt,
-        allowNsfw:
-          allowNsfw &&
-          (hasDarkDisclaimer(userId) ||
-            needsDisclaimer(categoryId, subOpt)),
+        allowNsfw: false,
       });
       const embed = buildMemeEmbed(
         client,
@@ -1116,8 +1170,8 @@ const command: Command = {
                 "No pude leer el subreddit ahora mismo.",
                 "Prueba:",
                 "• `/meme ver categoria:Español`",
-                "• `/meme ver categoria:Humor negro` (con disclaimer)",
-                "• `/meme config` para fijar canales",
+                "• `/meme ver categoria:Dank`",
+                "• `/meme config` para fijar el canal",
               ].join("\n"),
             )
             .setFooter({ text: `Zero Two ${BOT_VERSION}` }),
@@ -1189,60 +1243,19 @@ function attachMemeCollector(
       return;
     }
 
-    // Pedir disclaimer desde el botón 🖤
-    if (action === "disclaimer") {
+    // Humor negro desactivado: ignorar botones legacy
+    if (
+      action === "disclaimer" ||
+      action === "dark_decline" ||
+      action === "dark_accept" ||
+      action === "cat"
+    ) {
       await i
         .update({
-          embeds: [disclaimerEmbed(client)],
-          components: [disclaimerButtons(userId)],
-        })
-        .catch(() => null);
-      return;
-    }
-
-    if (action === "dark_decline") {
-      await i
-        .update({
-          embeds: [
-            new EmbedBuilder()
-              .setColor(AMBER)
-              .setTitle("🚫 Humor negro cancelado")
-              .setDescription("Vuelve a las categorías normales cuando quieras."),
-          ],
+          embeds: [darkHumorDisabledEmbed()],
           components: memeComponents(userId, "spanish", "SpanishMeme"),
         })
         .catch(() => null);
-      categoryId = "spanish";
-      subOpt = null;
-      return;
-    }
-
-    if (action === "dark_accept") {
-      acceptDarkDisclaimer(userId);
-      categoryId = "dark";
-      subOpt = null;
-      await i.deferUpdate().catch(() => null);
-      try {
-        const next = await obtenerMeme("dark", { allowNsfw });
-        lastEmbed = buildMemeEmbed(client, next, interaction.user.username);
-        lastEmbed.setColor(DARK);
-        await interaction.editReply({
-          embeds: [lastEmbed],
-          components: memeComponents(userId, "dark", next.subreddit),
-        });
-      } catch {
-        await interaction
-          .editReply({
-            embeds: [
-              new EmbedBuilder()
-                .setColor(RED)
-                .setTitle("❌ Falló el humor negro")
-                .setDescription("Disclaimer OK, pero no hay posts de imagen ahora."),
-            ],
-            components: memeComponents(userId, "dark", "darkmemes"),
-          })
-          .catch(() => null);
-      }
       return;
     }
 
@@ -1252,18 +1265,6 @@ function attachMemeCollector(
     if (action === "random") {
       nextCat = "random";
       nextSub = null;
-    } else if (action === "cat") {
-      nextCat = parts[3] ?? "dark";
-      nextSub = null;
-      if (needsDisclaimer(nextCat, null) && !hasDarkDisclaimer(userId)) {
-        await i
-          .update({
-            embeds: [disclaimerEmbed(client)],
-            components: [disclaimerButtons(userId)],
-          })
-          .catch(() => null);
-        return;
-      }
     } else if (action === "sub") {
       nextSub = parts[3] ?? null;
       if (nextSub === "ProgrammerHumor") nextCat = "programming";
@@ -1271,27 +1272,24 @@ function attachMemeCollector(
         nextCat = "anime";
       else if (nextSub === "SpanishMeme" || nextSub === "BuenosMemesEsp")
         nextCat = "spanish";
-      else if (nextSub && DARK_SUBS.has(nextSub.toLowerCase())) {
-        nextCat = "dark";
-        if (!hasDarkDisclaimer(userId)) {
-          await i
-            .update({
-              embeds: [disclaimerEmbed(client)],
-              components: [disclaimerButtons(userId)],
-            })
-            .catch(() => null);
-          return;
-        }
+      else if (nextSub && isDarkHumorBlocked("spanish", nextSub)) {
+        await i
+          .update({
+            embeds: [darkHumorDisabledEmbed()],
+            components: memeComponents(userId, "spanish", "SpanishMeme"),
+          })
+          .catch(() => null);
+        return;
       }
     } else if (action === "next") {
       nextCat = parts[3] ?? categoryId;
       const s = parts[4];
       nextSub = s && s !== "_" ? s : subOpt;
-      if (needsDisclaimer(nextCat, nextSub) && !hasDarkDisclaimer(userId)) {
+      if (isDarkHumorBlocked(nextCat, nextSub)) {
         await i
           .update({
-            embeds: [disclaimerEmbed(client)],
-            components: [disclaimerButtons(userId)],
+            embeds: [darkHumorDisabledEmbed()],
+            components: memeComponents(userId, "spanish", "SpanishMeme"),
           })
           .catch(() => null);
         return;
@@ -1301,12 +1299,18 @@ function attachMemeCollector(
     await i.deferUpdate().catch(() => null);
 
     try {
-      const nsfwOk =
-        allowNsfw &&
-        (hasDarkDisclaimer(userId) || needsDisclaimer(nextCat, nextSub));
+      if (isDarkHumorBlocked(nextCat, nextSub)) {
+        await i
+          .update({
+            embeds: [darkHumorDisabledEmbed()],
+            components: memeComponents(userId, "spanish", "SpanishMeme"),
+          })
+          .catch(() => null);
+        return;
+      }
       const next = await obtenerMeme(nextCat, {
         subreddit: nextSub,
-        allowNsfw: nsfwOk,
+        allowNsfw: false,
       });
       lastEmbed = buildMemeEmbed(
         client,
