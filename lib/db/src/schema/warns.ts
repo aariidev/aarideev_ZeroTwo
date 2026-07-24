@@ -5,21 +5,29 @@ import {
   text,
   timestamp,
   boolean,
+  index,
 } from "drizzle-orm/mysql-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-export const warnsTable = mysqlTable("warns", {
-  id: int("id").autoincrement().primaryKey(),
-  guildId: varchar("guild_id", { length: 32 }).notNull(),
-  userId: varchar("user_id", { length: 32 }).notNull(),
-  username: varchar("username", { length: 100 }).notNull(),
-  moderatorId: varchar("moderator_id", { length: 32 }).notNull(),
-  moderatorName: varchar("moderator_name", { length: 100 }).notNull(),
-  reason: text("reason").notNull(),
-  // Always write createdAt from app to avoid MySQL/timezone edge cases
-  createdAt: timestamp("created_at").notNull(),
-});
+export const warnsTable = mysqlTable(
+  "warns",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    guildId: varchar("guild_id", { length: 32 }).notNull(),
+    userId: varchar("user_id", { length: 32 }).notNull(),
+    username: varchar("username", { length: 100 }).notNull(),
+    moderatorId: varchar("moderator_id", { length: 32 }).notNull(),
+    moderatorName: varchar("moderator_name", { length: 100 }).notNull(),
+    reason: text("reason").notNull(),
+    // Always write createdAt from app to avoid MySQL/timezone edge cases
+    createdAt: timestamp("created_at").notNull(),
+  },
+  (t) => [
+    index("warns_guild_user").on(t.guildId, t.userId),
+    index("warns_guild_created").on(t.guildId, t.createdAt),
+  ],
+);
 
 export const insertWarnSchema = createInsertSchema(warnsTable).omit({
   id: true,
@@ -28,16 +36,24 @@ export const insertWarnSchema = createInsertSchema(warnsTable).omit({
 export type InsertWarn = z.infer<typeof insertWarnSchema>;
 export type Warn = typeof warnsTable.$inferSelect;
 
-export const activityTable = mysqlTable("activity", {
-  id: int("id").autoincrement().primaryKey(),
-  command: varchar("command", { length: 64 }).notNull(),
-  userId: varchar("user_id", { length: 32 }).notNull(),
-  username: varchar("username", { length: 100 }).notNull(),
-  guildId: varchar("guild_id", { length: 32 }).notNull(),
-  guildName: varchar("guild_name", { length: 150 }).notNull(),
-  executedAt: timestamp("executed_at").defaultNow().notNull(),
-  success: boolean("success").notNull().default(true),
-});
+export const activityTable = mysqlTable(
+  "activity",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    command: varchar("command", { length: 64 }).notNull(),
+    userId: varchar("user_id", { length: 32 }).notNull(),
+    username: varchar("username", { length: 100 }).notNull(),
+    guildId: varchar("guild_id", { length: 32 }).notNull(),
+    guildName: varchar("guild_name", { length: 150 }).notNull(),
+    executedAt: timestamp("executed_at").defaultNow().notNull(),
+    success: boolean("success").notNull().default(true),
+  },
+  (t) => [
+    index("activity_executed").on(t.executedAt),
+    index("activity_guild_executed").on(t.guildId, t.executedAt),
+    index("activity_command").on(t.command),
+  ],
+);
 
 export const insertActivitySchema = createInsertSchema(activityTable).omit({
   id: true,
@@ -67,19 +83,27 @@ export const botConfigTable = mysqlTable("bot_config", {
 
 export type BotConfig = typeof botConfigTable.$inferSelect;
 
-export const logsTable = mysqlTable("bot_logs", {
-  id: int("id").autoincrement().primaryKey(),
-  level: varchar("level", { length: 16 }).notNull().default("info"),
-  event: varchar("event", { length: 64 }).notNull(),
-  details: text("details").notNull(),
-  guildId: varchar("guild_id", { length: 32 }),
-  guildName: varchar("guild_name", { length: 150 }),
-  userId: varchar("user_id", { length: 32 }),
-  username: varchar("username", { length: 100 }),
-  moderatorId: varchar("moderator_id", { length: 32 }),
-  moderatorName: varchar("moderator_name", { length: 100 }),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+export const logsTable = mysqlTable(
+  "bot_logs",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    level: varchar("level", { length: 16 }).notNull().default("info"),
+    event: varchar("event", { length: 64 }).notNull(),
+    details: text("details").notNull(),
+    guildId: varchar("guild_id", { length: 32 }),
+    guildName: varchar("guild_name", { length: 150 }),
+    userId: varchar("user_id", { length: 32 }),
+    username: varchar("username", { length: 100 }),
+    moderatorId: varchar("moderator_id", { length: 32 }),
+    moderatorName: varchar("moderator_name", { length: 100 }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [
+    index("bot_logs_created").on(t.createdAt),
+    index("bot_logs_guild_created").on(t.guildId, t.createdAt),
+    index("bot_logs_event").on(t.event),
+  ],
+);
 
 export type Log = typeof logsTable.$inferSelect;
 

@@ -112,12 +112,28 @@ app.use(
 );
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-app.get("/api/health", (_req: Request, res: Response) => {
-  res.status(200).json({
-    status: "healthy",
+app.get("/api/health", async (_req: Request, res: Response) => {
+  let dbStatus: { ok: boolean; ms: number; error?: string } = {
+    ok: false,
+    ms: 0,
+  };
+  try {
+    const { pingDb } = await import("@workspace/db");
+    dbStatus = await pingDb();
+  } catch (err) {
+    dbStatus = {
+      ok: false,
+      ms: 0,
+      error: err instanceof Error ? err.message : "db unavailable",
+    };
+  }
+
+  res.status(dbStatus.ok ? 200 : 503).json({
+    status: dbStatus.ok ? "healthy" : "degraded",
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     signature: `Zero Two Core API // ${BOT_VERSION}`,
+    db: dbStatus,
   });
 });
 

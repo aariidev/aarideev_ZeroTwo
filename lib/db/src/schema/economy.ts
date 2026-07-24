@@ -4,6 +4,7 @@ import {
   int,
   timestamp,
   primaryKey,
+  index,
 } from "drizzle-orm/mysql-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -22,7 +23,10 @@ export const economyTable = mysqlTable(
     lastDaily: timestamp("last_daily"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
-  (t) => [primaryKey({ columns: [t.guildId, t.userId] })],
+  (t) => [
+    primaryKey({ columns: [t.guildId, t.userId] }),
+    index("economy_guild_balance").on(t.guildId, t.balance),
+  ],
 );
 
 export type Economy = typeof economyTable.$inferSelect;

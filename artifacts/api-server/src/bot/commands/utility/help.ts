@@ -26,6 +26,8 @@ const META: Record<
   zerotwoinf: { emoji: "⚙️", category: "Utilidad", usage: "/zerotwoinf" },
   presence:   { emoji: "🎮", category: "Utilidad", usage: "/presence" },
   beta:       { emoji: "🧪", category: "Utilidad", usage: "/beta <info|status|features|feedback|manage>" },
+  sugerencias:{ emoji: "💡", category: "Utilidad", usage: "/sugerencias <crear|set|logs|status|lista|toggle>" },
+  nivel:      { emoji: "📊", category: "Utilidad", usage: "/nivel <ver|top|config|dar>" },
   cfgembed:   { emoji: "🎨", category: "Utilidad", usage: "/cfgembed [canal]", permission: "Gestionar Mensajes" },
   cfglogs:    { emoji: "📋", category: "Utilidad", usage: "/cfglogs <set|disable|status>", permission: "Gestionar Servidor" },
   ticket:     { emoji: "🎫", category: "Utilidad", usage: "/ticket <setup|panel|close|claim|add|remove|status>", permission: "Ver subcomandos" },
@@ -48,6 +50,7 @@ const META: Record<
   unlock:     { emoji: "🔓", category: "Moderación", usage: "/unlock", permission: "Gestionar Canales" },
   logs:       { emoji: "📋", category: "Moderación", usage: "/logs <ver|buscar|borrar>", permission: "Silenciar Miembros" },
   automod:    { emoji: "🛡️", category: "Moderación", usage: "/automod <setup|status|list|remove|global|sync-all>", permission: "Gestionar Servidor" },
+  antiraid:   { emoji: "🚨", category: "Moderación", usage: "/antiraid <status|toggle|config>", permission: "Gestionar Servidor" },
 
   // ── Diversión ───────────────────────────────────────────────────────────────
   "8ball":  { emoji: "🎱", category: "Diversión", usage: "/8ball <pregunta>" },
