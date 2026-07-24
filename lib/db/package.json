@@ -9,7 +9,12 @@
   },
   "scripts": {
     "push": "drizzle-kit push --config ./drizzle.config.ts",
-    "push-force": "drizzle-kit push --force --config ./drizzle.config.ts"
+    "push-force": "drizzle-kit push --force --config ./drizzle.config.ts",
+    "ensure": "node ./ensure-all.mjs",
+    "health": "node ./health.mjs",
+    "prune": "node ./prune.mjs",
+    "prune:apply": "node ./prune.mjs --apply",
+    "smoke": "node ./smoke-mysql.mjs"
   },
   "dependencies": {
     "drizzle-orm": "catalog:",
