@@ -75,7 +75,9 @@ git clone https://github.com/aariidev/aarideev_ZeroTwo.git
     <td valign="top" width="50%">
 
 ### 🤖 Bot
-- **~52 slash commands** — utilidad, moderación, diversión, casino, música, tickets y admin
+- **~59 slash commands** — utilidad, moderación, diversión, casino, música, tickets y admin
+- **`/autconfig`** — setup de un golpe: roles de color, AutoMod, antiraid, logs, niveles + panel de reacciones
+- **Panel de colores** — embed con reacciones; un color a la vez (self-assign)
 - **Rich presence dinámica** — now playing real, modo Darling, `/presence`
 - **Música en voz** — YouTube + Spotify, cola, loop, shuffle, panel fijo y botones
 - **Spotify → YouTube** — playlists con carga progresiva (embed scrape + pool paralelo)
@@ -83,6 +85,11 @@ git clone https://github.com/aariidev/aarideev_ZeroTwo.git
 - **Sistema de tickets** — setup, panel, claim, close + transcript HTML y panel web
 - **Warns unificados** — `/warn add|list|remove|clear` en base de datos
 - **AutoMod pack** — reglas Discord (`/automod setup`) + progreso de insignia
+- **Antiraid** — joins masivos (`/antiraid`) con kick/ban/alerta
+- **Welcome / leave** — mensajes y autoroles (`/welcome`)
+- **Niveles / XP** — mensajes + voz, logros (`/nivel`)
+- **Sugerencias** — canal + votación (`/sugerencias`)
+- **Reglas** — `/reglas` · `/rules` con embed
 - **Logs de servidor** — mensajes, miembros, canales, roles, voz, invites…
 - **Instantáneas de mensajes** — ediciones y borrados recuperables
 - **Beta testers** — `/beta` + pestaña Beta Lab en el dashboard
@@ -122,11 +129,11 @@ git clone https://github.com/aariidev/aarideev_ZeroTwo.git
 
 ## 📋 Comandos
 
-> **~52 slash commands** — Utilidad · Moderación · Diversión · Casino · Música · Admin  
+> **~59 slash commands** — Utilidad · Moderación · Diversión · Casino · Música · Admin  
 > En Discord: escribe `/` y el nombre del comando.  
 > En el bot: `/help` o `/help [comando]` para el panel interactivo.
 
-### 🛠️ Utilidad (11)
+### 🛠️ Utilidad (16)
 
 | Comando | Uso | Descripción | Permiso |
 |---|---|---|---|
@@ -138,6 +145,10 @@ git clone https://github.com/aariidev/aarideev_ZeroTwo.git
 | `/zerotwoinf` | `/zerotwoinf` | Info en vivo: sistema, red y base de datos | — |
 | `/presence` | `/presence` | Preview de la rich presence (owners: forzar slice) | — |
 | `/beta` | `/beta info\|status\|features\|feedback\|manage` | Programa de beta testers | manage = owner |
+| `/sugerencias` | `/sugerencias crear\|set\|…` | Canal de sugerencias y revisión | Gestionar servidor |
+| `/nivel` | `/nivel ver\|top\|logros\|config\|dar` | Niveles / XP (mensajes + voz) | config = admin |
+| `/welcome` | `/welcome status\|set\|toggle\|autorole\|test` | Bienvenida, despedida y autoroles | Gestionar servidor |
+| `/reglas` · `/rules` | `/reglas [canal]` | Publica el embed de reglas del servidor | Gestionar mensajes |
 | `/cfgembed` | `/cfgembed [canal]` | Constructor interactivo de embeds | Gestionar mensajes |
 | `/cfglogs` | `/cfglogs set\|disable\|status` | Canal de logs del servidor | Gestionar servidor |
 | `/ticket` | ver subcomandos ↓ | Sistema de tickets de soporte | ver abajo |
@@ -157,10 +168,11 @@ git clone https://github.com/aariidev/aarideev_ZeroTwo.git
 
 También disponible en el dashboard → **Tickets**.
 
-### 🛡️ Moderación (15)
+### 🛡️ Moderación (17)
 
 | Comando | Uso | Descripción | Permiso |
 |---|---|---|---|
+| `/autconfig` | `/autconfig [canal_logs] [colores] [automod]…` | **Auto-setup del servidor** (ver abajo) | Administrador |
 | `/ban` | `/ban <usuario> [motivo] [días]` | Banea (días = borrar mensajes 0–7) | Banear miembros |
 | `/unban` | `/unban <userid> [motivo]` | Desbanea por ID de usuario | Banear miembros |
 | `/kick` | `/kick <usuario> [motivo]` | Expulsa del servidor | Expulsar miembros |
@@ -175,7 +187,35 @@ También disponible en el dashboard → **Tickets**.
 | `/slowmode` | `/slowmode <segundos> [global]` | Modo lento 0–21600 s | Gestionar canales |
 | `/logs` | `/logs ver\|borrar` | Consulta / limpia logs de moderación | Moderación |
 | `/automod` | `/automod setup\|status\|list\|remove\|…` | Pack AutoMod Zero Two | Gestionar servidor |
+| `/antiraid` | `/antiraid status\|toggle\|config` | Protección contra joins masivos | Gestionar servidor |
 | `/giverole` | `/giverole <usuario> <rol>` | Da o quita un rol | Gestionar roles |
+
+#### `/autconfig` — setup de un golpe
+
+Configura el servidor en un solo comando (requiere **Administrador** + que el bot tenga *Gestionar roles* y *Gestionar servidor*):
+
+| Paso | Qué hace |
+|---|---|
+| **Colores** | ~38 roles de color (+ separador). Omite los que ya existen (nombre, alias o color casi igual) |
+| **Utilidad** | Roles `🔇 Silenciado` y `🌸 Miembro` + overwrites de mute en canales |
+| **AutoMod** | Pack Zero Two (`ZT \| …`) |
+| **Antiraid** | Activo (umbral 5 / 60s / kick por defecto; configurable) |
+| **Logs** | Si pasas `canal_logs`: canal + catálogo de eventos |
+| **Niveles** | Activa el sistema de XP |
+| **Panel de colores** | Al final **pregunta** si publicar un embed con reacciones en un canal |
+
+**Flujo del panel de colores**
+
+1. Termina el setup → embed: *«¿Crear panel de colores con reacciones?»*
+2. **Sí** → eliges el canal (selector)
+3. Zero Two publica el/los embeds y añade las reacciones (máx. 20 por mensaje; se parte en varios si hace falta)
+4. Los miembros reaccionan → reciben el rol. **Un color a la vez**; quitar la reacción quita el color
+
+Opciones útiles: `canal_logs`, `colores`, `automod`, `antiraid`, `roles_utilidad`, `niveles`, `umbral_antiraid`, `accion_antiraid`, `todos_eventos_logs`.
+
+```text
+/autconfig canal_logs:#logs
+```
 
 #### Subcomandos de `/automod`
 
@@ -187,6 +227,14 @@ También disponible en el dashboard → **Tickets**.
 | `remove` | Quita solo reglas `ZT \|` de Zero Two | Gestionar servidor |
 | `global` | Progreso insignia Uses AutoMod (100 reglas) | Owner |
 | `sync-all` | Instala el pack en todos los guilds del bot | Owner |
+
+#### Subcomandos de `/antiraid`
+
+| Subcomando | Descripción |
+|---|---|
+| `status` | Ver umbral, ventana, acción y canal de logs |
+| `toggle` | Activar / desactivar |
+| `config` | Ajustar `umbral`, `ventana`, `accion` (kick/ban/none), `logs` |
 
 #### Subcomandos de `/warn`
 
@@ -275,13 +323,13 @@ También disponible en el dashboard → **Tickets**.
 
 | Categoría | Cantidad |
 |---|---:|
-| Utilidad | 11 |
-| Moderación | 15 |
+| Utilidad | 16 |
+| Moderación | 17 |
 | Diversión | 3 |
 | Casino | 8 |
 | Música | 14 |
 | Admin | 1 |
-| **Total** | **52** |
+| **Total** | **59** |
 
 <br/>
 
@@ -321,9 +369,9 @@ aarideev_ZeroTwo/
 │   │   └── src/
 │   │       ├── bot/
 │   │       │   ├── commands/
-│   │       │   │   ├── utility/     # help, userinfo, serverinfo, presence,
-│   │       │   │   │                # beta, ticket, cfglogs, cfgembed…
-│   │       │   │   ├── moderation/  # ban, kick, warn, automod, purge…
+│   │       │   │   ├── utility/     # help, welcome, nivel, reglas, beta,
+│   │       │   │   │                # ticket, sugerencias, cfglogs…
+│   │       │   │   ├── moderation/  # autconfig, automod, antiraid, ban…
 │   │       │   │   ├── fun/         # 8ball, poker, ship, casino, daily
 │   │       │   │   ├── music/       # play, panel, queue, volume…
 │   │       │   │   └── admin/       # /dev
@@ -331,8 +379,8 @@ aarideev_ZeroTwo/
 │   │       │   │                    # tickets, chat por MD
 │   │       │   ├── games/           # motor de blackjack
 │   │       │   ├── music/           # cola, stream yt-dlp, Spotify, panel
-│   │       │   └── lib/             # presence, automod, betatesters,
-│   │       │                        # modlog, warns, tickets, economy
+│   │       │   └── lib/             # presence, automod, antiraid, colorRolesPanel,
+│   │       │                        # welcome, levels, modlog, tickets…
 │   │       ├── lib/                 # sesión, logger, guildAccess…
 │   │       ├── middleware/
 │   │       └── routes/              # bot, guilds, warns, logs, tickets,
