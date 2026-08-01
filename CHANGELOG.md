@@ -5,27 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.4.1] - 2026-07-27
+## [2.4.2] - 2026-08-01
 
 ### Added
-- **Privacidad de inventario** (`economy.inventory_private`, default público)
-  - `/inventory usuario:` para ver mochilas ajenas (si son públicas)
-  - `/inventory privacidad:publico|privado` + botones 🌐/🔒 en el propio inventario
-  - Bypass de auditoría: `OWNER_IDS` y staff del guild (`Administrator` / `ManageGuild`)
-  - Mensaje secreto Zero Two cuando el inventario está oculto
-  - Dashboard → **Mi cuenta**: toggle por servidor + `GET/PATCH /api/me/economy`
-  - Cache en memoria (~90s) invalidado al cambiar desde Discord o la web
-  - Logs internos `bot_logs` (`economy` · `inventory_privacy` / `inventory_audit_view`)
+- `/poker` result embeds ahora incluyen un botón para enviar sugerencias al dev.
+- Dev puede generar y aplicar mejoras al embed usando Gemini desde la DM enviada.
+- El bot publica un embed de estadísticas de arranque/reinicio en el canal `1530019095565570158`.
+- Dev Panel y dashboard ahora muestran el estado del bot, ping y reinicios con mayor seguridad.
+
+### Fixed
+- Corregido el warning de Discord.js sobre `ephemeral` en respuestas y `deferReply`.
+- Arreglado el build de `/poker` tras la declaración duplicada de `customBet`.
+- Mejorada la presentación del embed de arranque con author, thumbnail y campos más legibles.
 
 ### Changed
-- Versión del núcleo unificada a **v2.4.1**
-- `/help` · usage de inventory con opciones de usuario y privacidad
+- Bumped bot display version to **v2.4.2**.
+- `artifacts/api-server` package version actualizado.
 
 ### Notes
-- La privacidad **no** bloquea uso de ítems ni un futuro sistema de trade
-- Migración: `node lib/db/ensure-all.mjs` (columna `inventory_private`)
+- La versión del núcleo ahora se mantiene en `bot/lib/version.ts` como fuente de verdad.
 
-## [2.4.0] - 2026-07-24
+## [2.4.1] - 2026-07-27
 
 ### Added
 - **Music · Spotify progressive load**
@@ -106,6 +106,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Blackjack game with betting
 - Stability improvements
 
+[2.4.2]: https://github.com/aariidev/aarideev_ZeroTwo/releases/tag/v2.4.2
 [2.4.1]: https://github.com/aariidev/aarideev_ZeroTwo/releases/tag/v2.4.1
 [2.4.0]: https://github.com/aariidev/aarideev_ZeroTwo/releases/tag/v2.4.0
 [3.0.0]: https://github.com/aariidev/aarideev_ZeroTwo/releases/tag/v3.0.0

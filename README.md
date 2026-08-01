@@ -12,7 +12,7 @@
 <br/>
 
 [![Repo](https://img.shields.io/badge/github-aariidev%2Faarideev__ZeroTwo-ec4899?style=for-the-badge&logo=github&logoColor=white&labelColor=0d0d0d)](https://github.com/aariidev/aarideev_ZeroTwo)
-[![Versión](https://img.shields.io/badge/versión-2.4.1-ec4899?style=for-the-badge&labelColor=0d0d0d)](https://github.com/aariidev/aarideev_ZeroTwo/releases)
+[![Versión](https://img.shields.io/badge/versión-2.4.2-ec4899?style=for-the-badge&labelColor=0d0d0d)](https://github.com/aariidev/aarideev_ZeroTwo/releases)
 [![discord.js](https://img.shields.io/badge/discord.js-v14-5865F2?style=for-the-badge&logo=discord&logoColor=white&labelColor=0d0d0d)](https://discord.js.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?style=for-the-badge&logo=typescript&logoColor=white&labelColor=0d0d0d)](https://www.typescriptlang.org)
 [![React](https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react&logoColor=black&labelColor=0d0d0d)](https://react.dev)
@@ -588,7 +588,7 @@ Las playlists también funcionan vía **embed público** de Spotify sin Premium 
 
 Hecho con 🩷 por [aariidev](https://github.com/aariidev)
 
-**Zero Two · v2.4.1**  
+**Zero Two · v2.4.2**
 [github.com/aariidev/aarideev_ZeroTwo](https://github.com/aariidev/aarideev_ZeroTwo)
 
 </div>
