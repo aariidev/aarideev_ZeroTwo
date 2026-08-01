@@ -8,6 +8,7 @@ import { AuthGate } from "@/components/auth-gate";
 import { AppLayout } from "@/components/layout/app-layout";
 import Home from "@/pages/home";
 import Guilds from "@/pages/guilds";
+import GuildDetail from "@/pages/guild-detail";
 import Commands from "@/pages/commands";
 import Warns from "@/pages/warns";
 import DevPanel from "@/pages/dev";
@@ -39,6 +40,7 @@ function ProtectedRouter() {
         <Switch>
           <Route path="/" component={Home} />
           <Route path="/guilds" component={Guilds} />
+          <Route path="/guilds/:id" component={GuildDetail} />
           <Route path="/commands" component={Commands} />
           <Route path="/warns" component={Warns} />
           <Route path="/tickets" component={TicketsPage} />
