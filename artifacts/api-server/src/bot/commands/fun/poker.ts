@@ -10,6 +10,9 @@ import {
   ButtonBuilder,
   ButtonStyle,
   ComponentType,
+  Message,
+  MessageFlags,
+  TextChannel,
 } from "discord.js";
 import { Command } from "../../types.js";
 import { assetImage } from "../../lib/helpAssets.js";
@@ -21,6 +24,8 @@ import {
   recordGame,
 } from "../../lib/economy.js";
 import { clampBet, BJ_MIN_BET, BJ_MAX_BET } from "../../games/blackjack.js";
+import { ownerUserIds } from "../../lib/specialUser.js";
+import { generateBroadcastWithGemini } from "../../../lib/gemini.js";
 
 const PINK = 0xff2d6b;
 const GOLD = 0xffd700;
@@ -262,6 +267,97 @@ type PendingChallenge = {
 
 const pendingChallenges = new Map<string, PendingChallenge>();
 
+// Helper: attach a suggestion button to a sent message and handle DM->Gemini->apply flow
+async function attachSuggestionFlow(
+  sentMessage: Message,
+  resultEmbed: EmbedBuilder,
+  interaction: ChatInputCommandInteraction,
+  client: Client,
+) {
+  const suggestId = `poker-send-dev-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+  const suggestRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(suggestId).setLabel("Enviar sugerencias al dev").setStyle(ButtonStyle.Primary),
+  );
+  try {
+    await sentMessage.edit({ components: [suggestRow] });
+  } catch {
+    // ignore if not editable
+  }
+
+  const sugCollector = sentMessage.createMessageComponentCollector({ componentType: ComponentType.Button, time: 300_000 });
+  sugCollector.on("collect", async (sbtn: any) => {
+    if (sbtn.customId !== suggestId) return;
+    const allowed = sbtn.user.id === interaction.user.id || ownerUserIds().includes(sbtn.user.id);
+    if (!allowed) {
+      await sbtn.reply({ content: "No autorizado para enviar sugerencias al dev.", flags: MessageFlags.Ephemeral });
+      return;
+    }
+    await sbtn.deferReply({ flags: MessageFlags.Ephemeral });
+    const owners = ownerUserIds();
+    const devId = process.env.DEV_USER_ID?.trim() || owners[0];
+    try {
+      const devUser = await client.users.fetch(devId);
+      const dmRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId(`poker-gemini-gen-${Date.now()}`).setLabel("Generar sugerencias (Gemini)").setStyle(ButtonStyle.Primary),
+      );
+      const sent = await devUser.send({ content: `Nueva sugerencia desde <#${interaction.channelId}> (mensaje de <@${interaction.user.id}>).`, embeds: [resultEmbed], components: [dmRow] });
+      await sbtn.editReply({ content: `Enviado al dev (${devUser.tag}).` });
+
+      const dmCollector = (sent as Message).createMessageComponentCollector({ componentType: ComponentType.Button, time: 15 * 60_000 });
+      dmCollector.on("collect", async (dBtn: any) => {
+        if (!dBtn.customId.startsWith("poker-gemini-gen-")) return;
+        if (dBtn.user.id !== devId) {
+          await dBtn.reply({ content: "Solo el dev puede generar sugerencias aquí.", ephemeral: true });
+          return;
+        }
+        await dBtn.deferReply({ ephemeral: true });
+        const title = resultEmbed.data?.title ?? "";
+        const description = resultEmbed.data?.description ?? "";
+        const digest = `Título: ${title}\n\nDescripción:\n${description}\n\nPor favor: sugiere un título mejor y una descripción mejorada para este embed en español. Devuélvelo como JSON con keys: title, message.`;
+        try {
+          const draft = await generateBroadcastWithGemini({ digests: digest, guildCount: 1 });
+          const applyId = `poker-apply-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+          const applyRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder().setCustomId(applyId).setLabel("Aplicar mejoras").setStyle(ButtonStyle.Success),
+          );
+          const suggestionEmbed = new EmbedBuilder()
+            .setColor(0x8b5cf6)
+            .setTitle("Sugerencia (Gemini)")
+            .addFields(
+              { name: "Título sugerido", value: draft.title || "-" },
+              { name: "Descripción sugerida", value: draft.message || "-" },
+            );
+          await dBtn.editReply({ content: "Sugerencias generadas.", embeds: [suggestionEmbed], components: [applyRow], ephemeral: true });
+
+          const applyCollector = (sent as Message).createMessageComponentCollector({ componentType: ComponentType.Button, time: 10 * 60_000 });
+          applyCollector.on("collect", async (aBtn: any) => {
+            if (aBtn.customId !== applyId) return;
+            if (aBtn.user.id !== devId) {
+              await aBtn.reply({ content: "Solo el dev puede aplicar las mejoras.", ephemeral: true });
+              return;
+            }
+            try {
+              const channel = await client.channels.fetch(interaction.channelId ?? "") as TextChannel;
+              const originalMsg = await channel.messages.fetch(sentMessage.id);
+              const newEmbed = EmbedBuilder.from(resultEmbed).setTitle(draft.title).setDescription(draft.message);
+              await originalMsg.edit({ embeds: [newEmbed], components: [] });
+              await aBtn.reply({ content: "Mejoras aplicadas al mensaje original.", ephemeral: true });
+              dmCollector.stop("done");
+              applyCollector.stop("done");
+            } catch (err) {
+              await aBtn.reply({ content: `Error al aplicar mejoras: ${String(err)}`, ephemeral: true });
+            }
+          });
+        } catch (err) {
+          await dBtn.editReply({ content: `Error generando sugerencias: ${String(err)}`, ephemeral: true });
+        }
+      });
+    } catch (err) {
+      await sbtn.editReply({ content: `No se pudo enviar al dev: ${String(err)}`, ephemeral: true });
+    }
+  });
+}
+
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("poker")
@@ -441,8 +537,10 @@ const command: Command = {
           const resultEmbed = new EmbedBuilder()
             .setColor(resultColor)
             .setAuthor({ name: "Zero Two Casino · Poker — Resultado", iconURL: botIcon })
-            .setTitle(tie ? "Empate" : `Ganador: <@${winnerId}>`)
+            .setTitle(tie ? "Empate" : "Resultado")
             .setDescription([
+              tie ? `**Empate** — las apuestas han sido devueltas.` : `**Ganador:** <@${winnerId}>`,
+              "",
               `**Mesa (board)**`,
               `\`${handStr(boardNow)}\``,
               "",
@@ -462,13 +560,103 @@ const command: Command = {
 
           // Disable buttons and show result
           pendingChallenges.delete((msg as any).id);
-          await btnInt.update({ embeds: [resultEmbed], components: [] });
+          // Attach suggestion button row to result
+          const suggestId = `poker-send-dev-${Date.now()}-${Math.floor(Math.random()*1000)}`;
+          const suggestRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder().setCustomId(suggestId).setLabel("Enviar sugerencias al dev").setStyle(ButtonStyle.Primary),
+          );
+          await btnInt.update({ embeds: [resultEmbed], components: [suggestRow] });
+
+          // Collector for suggestion button
+          const sugCollector = (msg as any).createMessageComponentCollector({ componentType: ComponentType.Button, time: 300_000 });
+          sugCollector.on("collect", async (sbtn: any) => {
+            if (sbtn.customId !== suggestId) return;
+            // only original challenger or owners can trigger send
+            const allowed = sbtn.user.id === interaction.user.id || ownerUserIds().includes(sbtn.user.id);
+            if (!allowed) {
+              await sbtn.reply({ content: "No autorizado para enviar sugerencias al dev.", ephemeral: true });
+              return;
+            }
+
+            await sbtn.deferReply({ ephemeral: true });
+            const owners = ownerUserIds();
+            const devId = process.env.DEV_USER_ID?.trim() || owners[0];
+            try {
+              const devUser = await client.users.fetch(devId);
+              const dmRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+                new ButtonBuilder().setCustomId(`poker-gemini-gen-${Date.now()}`).setLabel("Generar sugerencias (Gemini)").setStyle(ButtonStyle.Primary),
+              );
+              const sent = await devUser.send({ content: `Nueva sugerencia desde <#${interaction.channelId}> (mensaje de <@${interaction.user.id}>).`, embeds: [resultEmbed], components: [dmRow] });
+              await sbtn.editReply({ content: `Enviado al dev (${devUser.tag}).`, ephemeral: true });
+
+              // Collector on DM for generation
+              const dmCollector = (sent as Message).createMessageComponentCollector({ componentType: ComponentType.Button, time: 15 * 60_000 });
+              dmCollector.on("collect", async (dBtn: any) => {
+                if (!dBtn.customId.startsWith("poker-gemini-gen-")) return;
+                // Only dev can click
+                if (dBtn.user.id !== devId) {
+                  await dBtn.reply({ content: "Solo el dev puede generar sugerencias aquí.", flags: MessageFlags.Ephemeral });
+                  return;
+                }
+                await dBtn.deferReply({ flags: MessageFlags.Ephemeral });
+                // Build digest from embed
+                const title = resultEmbed.data?.title ?? "";
+                const description = resultEmbed.data?.description ?? "";
+                const digest = `Título: ${title}\n\nDescripción:\n${description}\n\nPor favor: sugiere un título mejor y una descripción mejorada para este embed en español. Devuélvelo con un título (máx 80 chars) y descripción (máx 4000 chars).`;
+                try {
+                  const draft = await generateBroadcastWithGemini({ digests: digest, guildCount: 1 });
+                  // Reply with suggested title/description and button to apply
+                  const applyId = `poker-apply-${Date.now()}-${Math.floor(Math.random()*1000)}`;
+                  const applyRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+                    new ButtonBuilder().setCustomId(applyId).setLabel("Aplicar mejoras").setStyle(ButtonStyle.Success),
+                  );
+                  const suggestionEmbed = new EmbedBuilder()
+                    .setColor(0x8b5cf6)
+                    .setTitle("Sugerencia (Gemini)")
+                    .addFields(
+                      { name: "Título sugerido", value: draft.title || "-" },
+                      { name: "Descripción sugerida", value: draft.message || "-" },
+                    );
+                  await dBtn.editReply({ content: "Sugerencias generadas.", embeds: [suggestionEmbed], components: [applyRow] });
+
+                  // Wait for dev to click apply
+                  const applyCollector = (sent as Message).createMessageComponentCollector({ componentType: ComponentType.Button, time: 10 * 60_000 });
+                  applyCollector.on("collect", async (aBtn: any) => {
+                    if (aBtn.customId !== applyId) return;
+                    if (aBtn.user.id !== devId) {
+                      await aBtn.reply({ content: "Solo el dev puede aplicar las mejoras.", flags: MessageFlags.Ephemeral });
+                      return;
+                    }
+                    // Apply: edit the original message in channel (btn.message where original was) — we have msg (challenge message)
+                    try {
+                      const channel = await client.channels.fetch(interaction.channelId ?? "") as TextChannel;
+                      // Find the result message in the channel: the original msg id available as (msg as any).id
+                      const originalMsg = await channel.messages.fetch((msg as any).id);
+                      const newEmbed = EmbedBuilder.from(resultEmbed).setTitle(draft.title).setDescription(draft.message);
+                      await originalMsg.edit({ embeds: [newEmbed], components: [] });
+                      await aBtn.reply({ content: "Mejoras aplicadas al mensaje original.", flags: MessageFlags.Ephemeral });
+                      // Close collectors
+                      dmCollector.stop("done");
+                      applyCollector.stop("done");
+                    } catch (err) {
+                      await aBtn.reply({ content: `Error al aplicar mejoras: ${String(err)}`, flags: MessageFlags.Ephemeral });
+                    }
+                  });
+                } catch (err) {
+                  await dBtn.editReply({ content: `Error generando sugerencias: ${String(err)}` });
+                }
+              });
+            } catch (err) {
+              await sbtn.editReply({ content: `No se pudo enviar al dev: ${String(err)}` });
+            }
+          });
+
           collector.stop("done");
           return;
         }
-      });
+    });
 
-      collector.on("end", async (_collected: any, reason: string) => {
+    collector.on("end", async (_collected: any, reason: string) => {
         if (reason === "time") {
           try {
             if ((msg as any).editable) await (msg as any).edit({ content: `⌛ Reto caducado — nadie respondió.`, embeds: [], components: [] });
@@ -477,11 +665,10 @@ const command: Command = {
           }
           pendingChallenges.delete((msg as any).id);
         }
-      });
+    });
 
-      return;
+    return;
     }
-
     // Non-PvP: prepare deck and hands (only reached when not creating/awaiting a challenge)
     const deck = shuffle(buildDeck());
     let i = 0;
@@ -593,6 +780,12 @@ const command: Command = {
             .setTimestamp();
           if (img.url) embedWin.setImage(img.url);
           await interaction.editReply({ embeds: [embedWin], files: img.file ? [img.file] : undefined });
+          try {
+            const sentMsg = (await interaction.fetchReply()) as Message;
+            await attachSuggestionFlow(sentMsg, embedWin, interaction, client);
+          } catch {
+            /* ignore */
+          }
           return;
         } else if (you.rank.score < dealer.rank.score) {
           // lose: nothing to add (already deducted)
@@ -624,6 +817,12 @@ const command: Command = {
             .setTimestamp();
           if (img.url) embedLose.setImage(img.url);
           await interaction.editReply({ embeds: [embedLose], files: img.file ? [img.file] : undefined });
+          try {
+            const sentMsg = (await interaction.fetchReply()) as Message;
+            await attachSuggestionFlow(sentMsg, embedLose, interaction, client);
+          } catch {
+            /* ignore */
+          }
           return;
         } else {
           // tie: refund bet
@@ -656,6 +855,12 @@ const command: Command = {
             .setTimestamp();
           if (img.url) embedTie.setImage(img.url);
           await interaction.editReply({ embeds: [embedTie], files: img.file ? [img.file] : undefined });
+          try {
+            const sentMsg = (await interaction.fetchReply()) as Message;
+            await attachSuggestionFlow(sentMsg, embedTie, interaction, client);
+          } catch {
+            /* ignore */
+          }
           return;
         }
       }
@@ -704,10 +909,16 @@ const command: Command = {
 
     if (img.url) embed.setImage(img.url);
 
-    await interaction.reply({
+    const sent = await interaction.reply({
       embeds: [embed],
       files: img.file ? [img.file] : undefined,
-    });
+      fetchReply: true,
+    }) as Message;
+    try {
+      await attachSuggestionFlow(sent, embed, interaction, client);
+    } catch {
+      /* ignore */
+    }
   },
 };
 
