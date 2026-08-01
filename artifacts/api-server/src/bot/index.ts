@@ -177,7 +177,7 @@ export async function startBot() {
   client.cooldowns = new Collection();
 
   for (const command of ALL_COMMANDS) {
-    if (command?.data?.name && command?.execute) {
+    if (command?.data?.name && typeof command.execute === "function") {
       client.commands.set(command.data.name, command);
     } else {
       logger.warn(
