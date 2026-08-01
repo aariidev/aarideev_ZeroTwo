@@ -34,7 +34,8 @@ export type LogEvent =
   | "invite_delete"
   | "voice_join"
   | "voice_leave"
-  | "voice_move";
+  | "voice_move"
+  | "economy";
 
 export interface LogEntry {
   level?: LogLevel;

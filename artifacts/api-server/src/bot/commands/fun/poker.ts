@@ -6,10 +6,21 @@ import {
   EmbedBuilder,
   ChatInputCommandInteraction,
   Client,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ComponentType,
 } from "discord.js";
 import { Command } from "../../types.js";
 import { assetImage } from "../../lib/helpAssets.js";
 import { BOT_VERSION } from "../../lib/version.js";
+import {
+  getBalance,
+  deductBalance,
+  addBalance,
+  recordGame,
+} from "../../lib/economy.js";
+import { clampBet, BJ_MIN_BET, BJ_MAX_BET } from "../../games/blackjack.js";
 
 const PINK = 0xff2d6b;
 const GOLD = 0xffd700;
@@ -239,14 +250,34 @@ function bestHand(seven: Card[]): { best: Card[]; rank: HandRank } {
   return { best: bestCards, rank: bestRank };
 }
 
+// Pending PvP challenges (messageId -> challenge)
+type PendingChallenge = {
+  challengerId: string;
+  rivalId: string;
+  guildId: string;
+  channelId: string;
+  bet: number;
+  createdAt: number;
+};
+
+const pendingChallenges = new Map<string, PendingChallenge>();
+
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("poker")
-    .setDescription("🃏 Poker Texas Hold'em — mano, flop y showdown")
+    .setDescription("🃏 Poker Texas Hold'em — mano, flop y showdown (casino/PvP)")
+    .addIntegerOption((opt) =>
+      opt
+        .setName("apuesta")
+        .setDescription(`Apuesta personalizada (${BJ_MIN_BET} – ${BJ_MAX_BET.toLocaleString()} fichas)`) 
+        .setMinValue(BJ_MIN_BET)
+        .setMaxValue(BJ_MAX_BET)
+        .setRequired(false),
+    )
     .addUserOption((o) =>
       o
         .setName("rival")
-        .setDescription("Opcional: confrontar a otro usuario en la mesa")
+        .setDescription("Opcional: retar a otro usuario en la mesa. Si apuestas, el rival debe aceptar el reto.")
         .setRequired(false),
     ),
 
@@ -269,6 +300,189 @@ const command: Command = {
       return;
     }
 
+    const guildId = interaction.guild?.id ?? "";
+    const userId = interaction.user.id;
+    const botIcon = client.user?.displayAvatarURL();
+
+    const customBet = interaction.options.getInteger("apuesta");
+
+    // If there is a rival AND a bet -> create a PvP challenge (rival must accept)
+    if (rivalUser && customBet != null) {
+      const bet = customBet;
+      const challengeEmbed = new EmbedBuilder()
+        .setColor(CYAN)
+        .setAuthor({ name: "Zero Two Casino · Poker — Reto", iconURL: botIcon })
+        .setTitle("Reto de Poker")
+        .setDescription(`<@${interaction.user.id}> te reta a una partida de Poker por **${bet.toLocaleString()}** fichas.`)
+        .addFields(
+          { name: "Retador", value: `<@${interaction.user.id}>`, inline: true },
+          { name: "Rival", value: `<@${rivalUser.id}>`, inline: true },
+          { name: "Apuesta", value: ` ${bet.toLocaleString()} fichas?`, inline: true },
+        )
+        .setFooter({ text: `Tienes 60s para aceptar` })
+        .setTimestamp();
+
+      const acceptId = `poker-accept-${interaction.id}`;
+      const declineId = `poker-decline-${interaction.id}`;
+      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId(acceptId).setLabel("Aceptar").setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(declineId).setLabel("Rechazar").setStyle(ButtonStyle.Danger),
+      );
+
+      const msg = await interaction.reply({ embeds: [challengeEmbed], components: [row], fetchReply: true });
+      // Store pending challenge
+      pendingChallenges.set((msg as any).id, {
+        challengerId: interaction.user.id,
+        rivalId: rivalUser.id,
+        guildId,
+        channelId: interaction.channelId ?? "",
+        bet,
+        createdAt: Date.now(),
+      });
+
+      // Collector for button clicks
+      const collector = (msg as any).createMessageComponentCollector({ componentType: ComponentType.Button, time: 60_000 });
+
+      collector.on("collect", async (btnInt: any) => {
+        // Only the rival can accept/reject
+        if (btnInt.user.id !== rivalUser.id) {
+          await btnInt.reply({ content: "Solo el rival puede aceptar o rechazar este reto.", ephemeral: true });
+          return;
+        }
+
+        if (btnInt.customId === declineId) {
+          // Declined
+          pendingChallenges.delete((msg as any).id);
+          await btnInt.update({ content: `❌ <@${rivalUser.id}> ha rechazado el reto.`, embeds: [], components: [] });
+          collector.stop("declined");
+          return;
+        }
+
+        if (btnInt.customId === acceptId) {
+          // Attempt to accept: check balances
+          const challengerId = interaction.user.id;
+          const rivalId = rivalUser.id;
+          const [balA, balB] = await Promise.all([getBalance(guildId, challengerId), getBalance(guildId, rivalId)]);
+          if (balA < bet) {
+            await btnInt.update({ content: `❌ <@${challengerId}> no tiene suficientes fichas (tiene ${balA.toLocaleString()}).`, embeds: [], components: [] });
+            pendingChallenges.delete((msg as any).id);
+            collector.stop("no-funds");
+            return;
+          }
+          if (balB < bet) {
+            await btnInt.update({ content: `❌ <@${rivalId}> no tiene suficientes fichas (tiene ${balB.toLocaleString()}).`, embeds: [], components: [] });
+            pendingChallenges.delete((msg as any).id);
+            collector.stop("no-funds");
+            return;
+          }
+
+          // Deduct both bets atomically-ish: deduct challenger then rival; if rival deduct fails, refund challenger
+          const d1 = await deductBalance(guildId, challengerId, bet);
+          if (!d1.success) {
+            await btnInt.update({ content: `❌ Error al deducir fichas a <@${challengerId}>.`, embeds: [], components: [] });
+            pendingChallenges.delete((msg as any).id);
+            collector.stop("deduct-failed");
+            return;
+          }
+          const d2 = await deductBalance(guildId, rivalId, bet);
+          if (!d2.success) {
+            // refund challenger
+            await addBalance(guildId, challengerId, bet);
+            await btnInt.update({ content: `❌ <@${rivalId}> no pudo pagar la apuesta. Reto cancelado.`, embeds: [], components: [] });
+            pendingChallenges.delete((msg as any).id);
+            collector.stop("deduct-failed");
+            return;
+          }
+
+          // Both paid, play the hand now
+          // Build deck and deal
+          const deck = shuffle(buildDeck());
+          let idx = 0;
+          const drawNow = (n: number) => {
+            const cards = deck.slice(idx, idx + n);
+            idx += n;
+            return cards;
+          };
+
+          const aHole = drawNow(2);
+          const bHole = drawNow(2);
+          const boardNow = drawNow(5);
+
+          const aSeven = [...aHole, ...boardNow];
+          const bSeven = [...bHole, ...boardNow];
+          const aBest = bestHand(aSeven);
+          const bBest = bestHand(bSeven);
+
+          // Determine winner
+          let winnerId: string | null = null;
+          let tie = false;
+          if (aBest.rank.score > bBest.rank.score) winnerId = challengerId;
+          else if (aBest.rank.score < bBest.rank.score) winnerId = rivalId;
+          else tie = true;
+
+          // Payouts
+          if (tie) {
+            // refund both
+            await addBalance(guildId, challengerId, bet);
+            await addBalance(guildId, rivalId, bet);
+            await recordGame(guildId, challengerId, false, 0);
+            await recordGame(guildId, rivalId, false, 0);
+          } else if (winnerId) {
+            const winnerGain = bet * 2;
+            await addBalance(guildId, winnerId, winnerGain);
+            // record games
+            await recordGame(guildId, winnerId, true, bet);
+            const loserId = winnerId === challengerId ? rivalId : challengerId;
+            await recordGame(guildId, loserId, false, -bet);
+          }
+
+          // Build result embed
+          const resultColor = tie ? GOLD : winnerId === challengerId ? GREEN : PINK;
+          const resultEmbed = new EmbedBuilder()
+            .setColor(resultColor)
+            .setAuthor({ name: "Zero Two Casino · Poker — Resultado", iconURL: botIcon })
+            .setTitle(tie ? "Empate" : `Ganador: <@${winnerId}>`)
+            .setDescription([
+              `**Mesa (board)**`,
+              `\`${handStr(boardNow)}\``,
+              "",
+              `**<@${challengerId}> — Tus cartas**`,
+              `\`${handStr(aHole)}\``,
+              `Mejor mano: \`${handStr(aBest.best)}\` → **${aBest.rank.name}**`,
+              "",
+              `**<@${rivalId}> — Tus cartas**`,
+              `\`${handStr(bHole)}\``,
+              `Mejor mano: \`${handStr(bBest.best)}\` → **${bBest.rank.name}**`,
+            ].join("\n"))
+            .addFields(
+              { name: "🏪 Tienda", value: "`/shop` — power-ups", inline: true },
+              { name: "📅 Wallet", value: "`/wallet` — ver saldo", inline: true },
+            )
+            .setTimestamp();
+
+          // Disable buttons and show result
+          pendingChallenges.delete((msg as any).id);
+          await btnInt.update({ embeds: [resultEmbed], components: [] });
+          collector.stop("done");
+          return;
+        }
+      });
+
+      collector.on("end", async (_collected: any, reason: string) => {
+        if (reason === "time") {
+          try {
+            if ((msg as any).editable) await (msg as any).edit({ content: `⌛ Reto caducado — nadie respondió.`, embeds: [], components: [] });
+          } catch (e) {
+            // ignore
+          }
+          pendingChallenges.delete((msg as any).id);
+        }
+      });
+
+      return;
+    }
+
+    // Non-PvP: prepare deck and hands (only reached when not creating/awaiting a challenge)
     const deck = shuffle(buildDeck());
     let i = 0;
     const draw = (n: number) => {
@@ -279,6 +493,10 @@ const command: Command = {
 
     const youHole = draw(2);
     const rivalHole = rivalUser ? draw(2) : null;
+    let dealerHole: Card[] | null = null;
+    if (customBet != null && !rivalUser) {
+      dealerHole = draw(2);
+    }
     const board = draw(5); // flop + turn + river
 
     const youSeven = [...youHole, ...board];
@@ -288,9 +506,15 @@ const command: Command = {
     if (rivalHole) {
       rival = bestHand([...rivalHole, ...board]);
     }
+    let dealer: ReturnType<typeof bestHand> | null = null;
+    if (dealerHole) {
+      dealer = bestHand([...dealerHole, ...board]);
+    }
 
     let resultLine = "";
     let color = you.rank.color;
+
+    // Resolve outcome: if rival present compare vs rival, else if dealer present compare vs dealer
     if (rival && rivalUser) {
       if (you.rank.score > rival.rank.score) {
         resultLine = `🏆 **Ganas** frente a ${rivalUser}`;
@@ -302,9 +526,142 @@ const command: Command = {
         resultLine = `🤝 **Empate** con ${rivalUser}`;
         color = GOLD;
       }
+    } else if (dealer) {
+      if (you.rank.score > dealer.rank.score) {
+        resultLine = `🏆 **Ganas** contra la casa`;
+        color = GREEN;
+      } else if (you.rank.score < dealer.rank.score) {
+        resultLine = `💀 **Pierdes** contra la casa`;
+        color = PINK;
+      } else {
+        resultLine = `🤝 **Empate** con la casa`;
+        color = GOLD;
+      }
     }
 
     const img = assetImage("fun");
+
+    // If there was a bet, handle economy payouts
+    if (customBet != null) {
+      const balance = await getBalance(guildId, userId);
+      const check = clampBet(customBet, balance);
+      if (!check.ok) {
+        await interaction.reply({ embeds: [new EmbedBuilder().setColor(PINK).setDescription(`❌ ${check.error}`)], ephemeral: true });
+        return;
+      }
+
+      await interaction.deferReply();
+
+      const bet = check.bet;
+      const { success, balance: afterDeduct } = await deductBalance(guildId, userId, bet);
+      if (!success) {
+        await interaction.editReply({ embeds: [new EmbedBuilder().setColor(PINK).setDescription(`❌ Saldo insuficiente. Necesitas **${bet.toLocaleString()}** pero tienes **${afterDeduct.toLocaleString()}**.`)] });
+        return;
+      }
+
+      // Determine outcome against dealer
+      if (dealer) {
+        if (you.rank.score > dealer.rank.score) {
+          // win: payout = bet * 2 (net +bet)
+          const newBal = await addBalance(guildId, userId, bet * 2);
+          await recordGame(guildId, userId, true, bet);
+          color = GREEN;
+          resultLine = `🏆 **Ganas** contra la casa — +${bet.toLocaleString()} fichas (ganancia neta)`;
+          // adjust footer
+          const embedWin = new EmbedBuilder()
+            .setColor(color)
+            .setAuthor({ name: "Zero Two Casino · Texas Hold'em", iconURL: botIcon })
+            .setTitle(`${you.rank.emoji} ${you.rank.name}`)
+            .setDescription([
+              resultLine,
+              "",
+              `**Mesa (board)**`,
+              `\`${handStr(board)}\``,
+              "",
+              `**Tus cartas** · <@${interaction.user.id}>`,
+              `\`${handStr(youHole)}\``,
+              `Mejor mano: \`${handStr(you.best)}\` → **${you.rank.name}**`,
+              "",
+              `💬 *"${you.rank.comment}"*`,
+            ].join("\n"))
+            .addFields(
+              { name: "🏦 Saldo nuevo", value: `\`${newBal.toLocaleString()} fichas\``, inline: true },
+              { name: "🏪 Tienda", value: "`/shop` — power-ups", inline: true },
+              { name: "📅 Daily", value: "`/wallet` — fichas gratis", inline: true },
+            )
+            .setFooter({ text: `Zero Two ${BOT_VERSION} · Casino` })
+            .setTimestamp();
+          if (img.url) embedWin.setImage(img.url);
+          await interaction.editReply({ embeds: [embedWin], files: img.file ? [img.file] : undefined });
+          return;
+        } else if (you.rank.score < dealer.rank.score) {
+          // lose: nothing to add (already deducted)
+          await recordGame(guildId, userId, false, -bet);
+          color = PINK;
+          resultLine = `💀 **Pierdes** contra la casa — pierdes **${bet.toLocaleString()}** fichas`;
+          const embedLose = new EmbedBuilder()
+            .setColor(color)
+            .setAuthor({ name: "Zero Two Casino · Texas Hold'em", iconURL: botIcon })
+            .setTitle(`${you.rank.emoji} ${you.rank.name}`)
+            .setDescription([
+              resultLine,
+              "",
+              `**Mesa (board)**`,
+              `\`${handStr(board)}\``,
+              "",
+              `**Tus cartas** · <@${interaction.user.id}>`,
+              `\`${handStr(youHole)}\``,
+              `Mejor mano: \`${handStr(you.best)}\` → **${you.rank.name}**`,
+              "",
+              `💬 *"${you.rank.comment}"*`,
+            ].join("\n"))
+            .addFields(
+              { name: "🏦 Saldo actual", value: `\`${afterDeduct.toLocaleString()} fichas\``, inline: true },
+              { name: "🏪 Tienda", value: "`/shop` — power-ups", inline: true },
+              { name: "📅 Daily", value: "`/wallet` — fichas gratis", inline: true },
+            )
+            .setFooter({ text: `Zero Two ${BOT_VERSION} · Casino` })
+            .setTimestamp();
+          if (img.url) embedLose.setImage(img.url);
+          await interaction.editReply({ embeds: [embedLose], files: img.file ? [img.file] : undefined });
+          return;
+        } else {
+          // tie: refund bet
+          const newBal = await addBalance(guildId, userId, bet);
+          await recordGame(guildId, userId, false, 0);
+          color = GOLD;
+          resultLine = `🤝 **Empate** — apuesta devuelta`;
+          const embedTie = new EmbedBuilder()
+            .setColor(color)
+            .setAuthor({ name: "Zero Two Casino · Texas Hold'em", iconURL: botIcon })
+            .setTitle(`${you.rank.emoji} ${you.rank.name}`)
+            .setDescription([
+              resultLine,
+              "",
+              `**Mesa (board)**`,
+              `\`${handStr(board)}\``,
+              "",
+              `**Tus cartas** · <@${interaction.user.id}>`,
+              `\`${handStr(youHole)}\``,
+              `Mejor mano: \`${handStr(you.best)}\` → **${you.rank.name}**`,
+              "",
+              `💬 *"${you.rank.comment}"*`,
+            ].join("\n"))
+            .addFields(
+              { name: "🏦 Saldo actual", value: `\`${newBal.toLocaleString()} fichas\``, inline: true },
+              { name: "🏪 Tienda", value: "`/shop` — power-ups", inline: true },
+              { name: "📅 Daily", value: "`/wallet` — fichas gratis", inline: true },
+            )
+            .setFooter({ text: `Zero Two ${BOT_VERSION} · Casino` })
+            .setTimestamp();
+          if (img.url) embedTie.setImage(img.url);
+          await interaction.editReply({ embeds: [embedTie], files: img.file ? [img.file] : undefined });
+          return;
+        }
+      }
+    }
+
+    // No bet flow (original behavior): build normal embed and include shop info in fields
     const embed = new EmbedBuilder()
       .setColor(color)
       .setAuthor({
@@ -335,6 +692,10 @@ const command: Command = {
         ]
           .filter(Boolean)
           .join("\n"),
+      )
+      .addFields(
+        { name: "🏪 Tienda", value: "`/shop` — power-ups", inline: true },
+        { name: "📅 Daily", value: "`/wallet` — fichas gratis", inline: true },
       )
       .setFooter({
         text: `Zero Two ${BOT_VERSION} · Solo diversión · sin fichas reales`,

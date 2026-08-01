@@ -1163,6 +1163,8 @@ export async function resolveTracks(
 
     // ── YouTube playlist / Mix / radio (list=RD…, /playlist?list=…) ─────────
     // IMPORTANT: check BEFORE single-video handling, or list= is discarded.
+    // NEVER use play-dl playlist_info here — breaks with "contents" / browseId
+    // when YouTube changes innertube (cookies OK no lo arreglan).
     if (isYoutubePlaylistOrMixUrl(query)) {
       try {
         const entries = await ytdlpPlaylistEntries(query, 50);
@@ -1184,36 +1186,19 @@ export async function resolveTracks(
         logger.warn({ err, query }, "music: yt-dlp playlist/mix failed");
       }
 
-      // play-dl fallback (often broken with browseId)
-      try {
-        const yt = play.yt_validate(query);
-        if (yt === "playlist" || /[?&]list=/i.test(query)) {
-          const pl = await play.playlist_info(query, { incomplete: true });
-          const videos = await pl.all_videos();
-          if (videos.length) {
-            return videos.slice(0, 50).map((v) => ({
-              title: v.title ?? "Unknown",
-              url: v.url,
-              durationSec: v.durationInSec ?? 0,
-              thumbnail: v.thumbnails?.[0]?.url ?? null,
-              requestedBy: requester,
-              source: "youtube" as const,
-            }));
-          }
-        }
-      } catch (err) {
-        logger.warn({ err }, "music: play-dl playlist fallback failed");
-      }
-
-      // Last resort: at least the seed video of a mix URL
+      // Last resort: at least the seed video of a mix/watch?list= URL
       const seed =
         query.match(
-          /(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([\w-]{6,})/i,
+          /(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/|live\/)|youtu\.be\/)([\w-]{6,})/i,
         )?.[1] ?? null;
       if (seed) {
         const url = `https://www.youtube.com/watch?v=${seed}`;
         const meta = await ytdlpSearchMeta(url);
         if (meta) {
+          logger.info(
+            { seed },
+            "music: playlist vacía/fallida — solo seed video",
+          );
           return [
             {
               title: meta.title,
@@ -1225,10 +1210,20 @@ export async function resolveTracks(
             },
           ];
         }
+        return [
+          {
+            title: "YouTube",
+            url,
+            durationSec: 0,
+            thumbnail: null,
+            requestedBy: requester,
+            source: "youtube",
+          },
+        ];
       }
 
       throw new Error(
-        "No pude cargar el Mix/playlist de YouTube. Prueba otro enlace o actualiza yt-dlp / cookies.txt.",
+        "No pude cargar el Mix/playlist de YouTube con yt-dlp. Prueba otro enlace o actualiza yt-dlp (`yt-dlp -U`) y cookies.txt.",
       );
     }
 
@@ -1268,9 +1263,10 @@ export async function resolveTracks(
       ];
     }
 
+    // Generic YouTube URL (play-dl yt_validate) — still prefer yt-dlp
     try {
       const yt = play.yt_validate(query);
-      if (yt === "playlist") {
+      if (yt === "playlist" || /[?&]list=/i.test(query)) {
         const entries = await ytdlpPlaylistEntries(query, 50);
         if (entries.length) {
           return entries.map((e) => ({
@@ -1282,33 +1278,59 @@ export async function resolveTracks(
             source: "youtube" as const,
           }));
         }
-        const pl = await play.playlist_info(query, { incomplete: true });
-        const videos = await pl.all_videos();
-        return videos.slice(0, 50).map((v) => ({
-          title: v.title ?? "Unknown",
-          url: v.url,
-          durationSec: v.durationInSec ?? 0,
-          thumbnail: v.thumbnails?.[0]?.url ?? null,
-          requestedBy: requester,
-          source: "youtube" as const,
-        }));
+        // play-dl playlist intentionally skipped (TypeError: contents)
+        throw new Error(
+          "Playlist YouTube sin entradas vía yt-dlp. Actualiza yt-dlp o prueba otro enlace.",
+        );
       }
       if (yt === "video") {
-        const info = await play.video_info(query);
-        const v = info.video_details;
-        return [
-          {
-            title: v.title ?? "Unknown",
-            url: v.url,
-            durationSec: v.durationInSec ?? 0,
-            thumbnail: v.thumbnails?.[0]?.url ?? null,
-            requestedBy: requester,
-            source: "youtube",
-          },
-        ];
+        // Prefer yt-dlp metadata
+        try {
+          const meta = await ytdlpSearchMeta(query);
+          if (meta) {
+            return [
+              {
+                title: meta.title,
+                url: meta.url || query,
+                durationSec: meta.durationSec,
+                thumbnail: meta.thumbnail,
+                requestedBy: requester,
+                source: "youtube",
+              },
+            ];
+          }
+        } catch {
+          /* fall through to play-dl */
+        }
+        try {
+          const info = await play.video_info(query);
+          const v = info.video_details;
+          return [
+            {
+              title: v.title ?? "Unknown",
+              url: v.url,
+              durationSec: v.durationInSec ?? 0,
+              thumbnail: v.thumbnails?.[0]?.url ?? null,
+              requestedBy: requester,
+              source: "youtube",
+            },
+          ];
+        } catch (err) {
+          logger.warn({ err, query }, "music: play-dl video_info failed");
+          return [
+            {
+              title: "YouTube",
+              url: query,
+              durationSec: 0,
+              thumbnail: null,
+              requestedBy: requester,
+              source: "youtube",
+            },
+          ];
+        }
       }
     } catch (err) {
-      logger.warn({ err, query }, "music: play-dl URL resolve failed, raw URL");
+      logger.warn({ err, query }, "music: URL resolve failed, raw URL fallback");
       if (/youtu(\.be|be\.com)/i.test(query)) {
         return [
           {

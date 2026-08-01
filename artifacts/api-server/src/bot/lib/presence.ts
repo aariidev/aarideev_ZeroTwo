@@ -1,11 +1,11 @@
 /**
- * Rich presence dinámica — Zero Two (modo Darling).
+ * Rich presence dinámica — Zero Two.
  *
- * - Now playing real + actualización al instante
- * - Con música: rotación centrada en la pista (casi solo música)
- * - Sin música: marketing con tono Darling + stats
- * - Intervalo adaptativo: 12 s música / 22 s reposo
- * - Preview público para /presence
+ * Modos:
+ *  - music: prioriza now playing (pocos slices, orden fijo)
+ *  - idle:  rotación corta y ordenada (identidad → stats → features)
+ *
+ * Intervalos: 12s música / 20s reposo
  */
 import { ActivityType, type Client } from "discord.js";
 import { BOT_VERSION } from "./version.js";
@@ -18,8 +18,8 @@ type PresenceSlice = {
   type: ActivityType;
   state?: string;
   status?: "online" | "idle" | "dnd";
+  /** Veces que se repite en la cola de rotación (1–3) */
   weight?: number;
-  /** Etiqueta corta para /presence */
   label?: string;
 };
 
@@ -62,11 +62,11 @@ export type PresencePreview = {
   };
 };
 
-// ── Estado global interno ─────────────────────────────────────────────────────
+// ── Estado ────────────────────────────────────────────────────────────────────
 
 const MAX_NAME = 128;
 const MAX_STATE = 128;
-const INTERVAL_IDLE_MS = 22_000;
+const INTERVAL_IDLE_MS = 20_000;
 const INTERVAL_MUSIC_MS = 12_000;
 
 let refreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -89,17 +89,19 @@ const statsCache = {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function clip(s: string, max: number): string {
-  if (s.length <= max) return s;
-  if (max <= 1) return s.slice(0, max);
-  return `${s.slice(0, max - 1)}…`;
+  const t = s.replace(/\s+/g, " ").trim();
+  if (t.length <= max) return t;
+  if (max <= 1) return t.slice(0, max);
+  return `${t.slice(0, max - 1)}…`;
 }
 
-function sep(left: string, right: string): string {
-  return clip(`${left}  ·  ${right}`, MAX_NAME);
+/** Separador limpio y uniforme */
+function line(parts: string[], max = MAX_NAME): string {
+  return clip(parts.filter(Boolean).join(" · "), max);
 }
 
-function plural(n: number, singular: string, pluralStr?: string): string {
-  return n === 1 ? `${n} ${singular}` : `${n} ${pluralStr ?? singular + "s"}`;
+function plural(n: number, one: string, many?: string): string {
+  return n === 1 ? `${n} ${one}` : `${n} ${many ?? `${one}s`}`;
 }
 
 function formatUptime(ms: number): string {
@@ -166,7 +168,7 @@ function wsPing(client: Client): number | null {
   return Number.isFinite(p) && p >= 0 ? Math.round(p) : null;
 }
 
-// ── Construcción de slices ────────────────────────────────────────────────────
+// ── Slices: MUSIC (orden fijo, pocos) ─────────────────────────────────────────
 
 function buildMusicSlices(): PresenceSlice[] {
   const {
@@ -174,90 +176,73 @@ function buildMusicSlices(): PresenceSlice[] {
     nowPlayingTitle,
     nowPlayingGuild,
     musicPaused,
-    openTickets,
   } = statsCache;
-  const slices: PresenceSlice[] = [];
-  const guildBit = nowPlayingGuild
-    ? clip(nowPlayingGuild, 28)
+
+  const where = nowPlayingGuild
+    ? clip(nowPlayingGuild, 32)
     : plural(musicSessions, "canal", "canales");
 
+  const slices: PresenceSlice[] = [];
+
+  // 1) Now playing (principal, se repite más)
   if (nowPlayingTitle) {
-    const title = clip(nowPlayingTitle, 90);
+    const title = clip(nowPlayingTitle, 100);
     slices.push({
-      label: "Now playing",
+      label: "1 · Now playing",
       name: musicPaused ? clip(`⏸ ${title}`, MAX_NAME) : title,
       type: ActivityType.Listening,
       state: musicPaused
-        ? sep("pausa contigo", guildBit)
-        : sep("para ti, Darling", guildBit),
+        ? line(["en pausa", where], MAX_STATE)
+        : line(["en directo", where], MAX_STATE),
       status: musicPaused ? "idle" : "online",
-      weight: 4,
+      weight: 3,
     });
 
-    // Frases cortas con la canción (sin repetir el título entero)
-    const short = clip(nowPlayingTitle, 48);
+    // 2) Panel / control
     slices.push({
-      label: "Darling vibe",
-      name: musicPaused
-        ? sep(`🌸 esperando`, short)
-        : sep(`💕 contigo`, short),
+      label: "2 · Controles",
+      name: line(["🎛️ /musicpanel", "cola · loop · skip"]),
       type: ActivityType.Listening,
       state: musicPaused
-        ? "Cuando quieras, reanudamos…"
-        : "Zero Two en el canal de voz",
+        ? "Pulsa reanudar en el panel"
+        : "Controla la cola desde el panel",
+      status: musicPaused ? "idle" : "online",
+      weight: 1,
+    });
+
+    // 3) Custom status limpio con la canción
+    slices.push({
+      label: "3 · Estado",
+      name: "Custom Status",
+      type: ActivityType.Custom,
+      state: clip(
+        musicPaused
+          ? `⏸ ${clip(nowPlayingTitle, 90)}`
+          : `🎵 ${clip(nowPlayingTitle, 90)}`,
+        MAX_STATE,
+      ),
       status: musicPaused ? "idle" : "online",
       weight: 2,
     });
   } else {
+    // Música activa sin título en caché
     slices.push({
-      label: "Sesiones activas",
-      name: sep(
-        `🎵 DJ Zero Two`,
-        plural(musicSessions, "canal activo", "canales activos"),
-      ),
+      label: "1 · DJ activo",
+      name: line([
+        "🎵 Zero Two Music",
+        plural(musicSessions, "sesión activa", "sesiones activas"),
+      ]),
       type: ActivityType.Listening,
-      state: "Hay ritmo en el nexo, Darling",
+      state: "Hay audio en el nexo",
       status: "online",
       weight: 3,
     });
-  }
-
-  slices.push({
-    label: "Panel",
-    name: sep(`🎛️ /musicpanel`, `cola · loop · shuffle`),
-    type: ActivityType.Listening,
-    state: "Controla la fiesta sin salir del chat",
-    status: "online",
-    weight: 1,
-  });
-
-  slices.push({
-    label: "Custom music",
-    name: "Custom Status",
-    type: ActivityType.Custom,
-    state: clip(
-      musicPaused
-        ? `⏸ En pausa · /musicpanel`
-        : nowPlayingTitle
-          ? `🎵 ${clip(nowPlayingTitle, 80)}`
-          : `🎵 En vivo · ${plural(musicSessions, "sesión", "sesiones")}`,
-      MAX_STATE,
-    ),
-    status: musicPaused ? "idle" : "online",
-    weight: 1,
-  });
-
-  // Tickets urgentes aún se asoman (bajo peso) si hay soporte abierto
-  if (openTickets > 0) {
     slices.push({
-      label: "Tickets (alerta)",
-      name: sep(
-        `🎫 ${plural(openTickets, "ticket abierto", "tickets abiertos")}`,
-        `te esperan`,
-      ),
-      type: ActivityType.Watching,
-      state: "Soporte en curso — no te olvido, Darling",
-      status: "idle",
+      label: "2 · Panel",
+      name: line(["🎛️ /musicpanel", "control del servidor"]),
+      type: ActivityType.Listening,
+      state: "Añade pistas con /play",
+      status: "online",
       weight: 1,
     });
   }
@@ -265,140 +250,119 @@ function buildMusicSlices(): PresenceSlice[] {
   return slices;
 }
 
+// ── Slices: IDLE (orden fijo: identidad → stats → features) ───────────────────
+
 function buildIdleSlices(client?: Client | null): PresenceSlice[] {
   const { guilds, users, openTickets } = statsCache;
-  const hasTickets = openTickets > 0;
   const ping = client ? wsPing(client) : null;
   const uptime = formatUptime(Date.now() - startedAt);
   const slices: PresenceSlice[] = [];
 
+  // 1) Identidad
   slices.push({
-    label: "Identidad",
-    name: sep(`🌸 Zero Two`, BOT_VERSION),
+    label: "1 · Identidad",
+    name: line([`🌸 Zero Two`, BOT_VERSION]),
     type: ActivityType.Playing,
-    state: "Hola Darling — prueba /help",
+    state: "Hola — prueba /help",
     status: "online",
     weight: 2,
   });
 
+  // 2) Stats
   slices.push({
-    label: "Custom status",
-    name: "Custom Status",
-    type: ActivityType.Custom,
-    state: clip(`🌸 /help · contigo en el nexo · ${BOT_VERSION}`, MAX_STATE),
-    status: "online",
-    weight: 2,
-  });
-
-  slices.push({
-    label: "Música promo",
-    name: sep(`🎵 /play`, `YouTube · Spotify · search`),
-    type: ActivityType.Listening,
-    state: "Pon un tema y bailemos, Darling",
-    status: "online",
-    weight: 2,
-  });
-
-  slices.push({
-    label: "Stats",
-    name: sep(
+    label: "2 · Stats",
+    name: line([
       `📡 ${plural(guilds, "servidor")}`,
-      `👥 ${formatUsers(users)} usuarios`,
-    ),
+      `👥 ${formatUsers(users)}`,
+    ]),
     type: ActivityType.Watching,
     state:
       ping != null
         ? `latencia ${ping} ms · up ${uptime}`
-        : `despierta hace ${uptime}`,
+        : `online · up ${uptime}`,
     status: "online",
-    weight: 1,
+    weight: 2,
   });
 
+  // 3) Música
   slices.push({
-    label: "Blackjack",
-    name: sep(`🃏 /blackjack`, `casino · daily · wallet`),
-    type: ActivityType.Playing,
-    state: "¿Doblas o te rindes, Darling?",
+    label: "3 · Música",
+    name: line(["🎵 /play", "YouTube · Spotify"]),
+    type: ActivityType.Listening,
+    state: "Panel: /musicpanel",
     status: "online",
-    weight: 1,
+    weight: 2,
   });
 
+  // 4) Casino
   slices.push({
-    label: "Daily",
-    name: sep(`🎁 /daily`, `fichas · rachas`),
+    label: "4 · Casino",
+    name: line(["🃏 /blackjack", "daily · shop"]),
     type: ActivityType.Playing,
-    state: "Tu recompensa te está esperando",
+    state: "Fichas con /wallet · /daily",
     status: "online",
     weight: 1,
   });
 
-  if (hasTickets) {
+  // 5) Tickets
+  if (openTickets > 0) {
     slices.push({
-      label: "Tickets activos",
-      name: sep(
+      label: "5 · Soporte",
+      name: line([
         `🎫 ${plural(openTickets, "ticket abierto", "tickets abiertos")}`,
-        `/ticket`,
-      ),
+        "/ticket",
+      ]),
       type: ActivityType.Watching,
-      state: "Alguien necesita ayuda en el nexo",
+      state: "Hay soporte en curso",
       status: "idle",
       weight: 2,
     });
   } else {
     slices.push({
-      label: "Tickets",
-      name: sep(`🎫 /ticket`, `soporte · transcripts`),
+      label: "5 · Soporte",
+      name: line(["🎫 /ticket", "panel · claim · close"]),
       type: ActivityType.Watching,
-      state: "Si te pierdes, abre un ticket",
-      status: "idle",
+      state: "Abre un ticket si necesitas ayuda",
+      status: "online",
       weight: 1,
     });
   }
 
+  // 6) Moderación
   slices.push({
-    label: "AutoMod",
-    name: sep(`🛡️ AutoMod`, `/warn · /ban · reglas`),
-    type: ActivityType.Competing,
-    state: "Protegiendo a mis partners",
-    status: "dnd",
-    weight: 1,
-  });
-
-  slices.push({
-    label: "Info",
-    name: sep(`✨ /zerotwoinf`, `stats · red · DB`),
-    type: ActivityType.Playing,
-    state:
-      ping != null
-        ? `mi pulso: ${ping} ms · /presence`
-        : `up ${uptime} · /presence`,
-    status: "online",
-    weight: 1,
-  });
-
-  slices.push({
-    label: "Presence tip",
-    name: sep(`🎮 /presence`, `preview de mi estado`),
+    label: "6 · Moderación",
+    name: line(["🛡️ /automod", "warn · ban · logs"]),
     type: ActivityType.Watching,
-    state: "Mira cómo roto mi rich presence",
+    state: "Setup rápido: /autconfig",
     status: "online",
     weight: 1,
+  });
+
+  // 7) Custom status (estado limpio, al final)
+  slices.push({
+    label: "7 · Estado",
+    name: "Custom Status",
+    type: ActivityType.Custom,
+    state: clip(
+      `🌸 /help · ${plural(guilds, "servidor")} · ${BOT_VERSION}`,
+      MAX_STATE,
+    ),
+    status: "online",
+    weight: 2,
   });
 
   return slices;
 }
 
 function buildSlices(client?: Client | null): PresenceSlice[] {
-  if (statsCache.musicSessions > 0) {
-    return buildMusicSlices();
-  }
+  if (statsCache.musicSessions > 0) return buildMusicSlices();
   return buildIdleSlices(client);
 }
 
 function expandRotation(slices: PresenceSlice[]): PresenceSlice[] {
   const out: PresenceSlice[] = [];
   for (const s of slices) {
-    const w = Math.max(1, Math.min(5, s.weight ?? 1));
+    const w = Math.max(1, Math.min(3, s.weight ?? 1));
     for (let i = 0; i < w; i++) out.push(s);
   }
   return out.length ? out : slices;
@@ -409,6 +373,14 @@ function toActivityPayload(slice: PresenceSlice): {
   type: ActivityType;
   state?: string;
 } {
+  if (slice.type === ActivityType.Custom) {
+    return {
+      name: "Custom Status",
+      type: ActivityType.Custom,
+      state: clip(slice.state ?? slice.name, MAX_STATE),
+    };
+  }
+
   const activity: {
     name: string;
     type: ActivityType;
@@ -417,16 +389,7 @@ function toActivityPayload(slice: PresenceSlice): {
     name: clip(slice.name, MAX_NAME),
     type: slice.type,
   };
-
-  if (slice.state) {
-    activity.state = clip(slice.state, MAX_STATE);
-  }
-
-  if (slice.type === ActivityType.Custom) {
-    activity.name = "Custom Status";
-    activity.state = clip(slice.state ?? slice.name, MAX_STATE);
-  }
-
+  if (slice.state) activity.state = clip(slice.state, MAX_STATE);
   return activity;
 }
 
@@ -456,7 +419,12 @@ export function applyRichPresence(client: Client, advance = true): void {
   });
 
   logger.debug(
-    { presence: activity.name, state: activity.state, type: slice.type },
+    {
+      presence: activity.name,
+      state: activity.state,
+      type: activityTypeLabel(slice.type),
+      label: slice.label,
+    },
     "🎮 Rich presence",
   );
 }
@@ -470,9 +438,6 @@ export function forcePresenceUpdate(client: Client): void {
   }
 }
 
-/**
- * Snapshot legible para /presence (no avanza la rotación).
- */
 export function getPresencePreview(client?: Client | null): PresencePreview {
   const mode: "music" | "idle" =
     statsCache.musicSessions > 0 ? "music" : "idle";
@@ -483,7 +448,6 @@ export function getPresencePreview(client?: Client | null): PresencePreview {
       ? 0
       : ((rotateIndex % rotation.length) + rotation.length) % rotation.length;
 
-  // Marcar el slice actual en la lista única (por name+type+state)
   const current = rotation[safeIdx];
   const slices: PresencePreviewItem[] = unique.map((s, i) => {
     const isCurrent = Boolean(
@@ -496,9 +460,7 @@ export function getPresencePreview(client?: Client | null): PresencePreview {
       index: i + 1,
       label: s.label ?? `Slice ${i + 1}`,
       name:
-        s.type === ActivityType.Custom
-          ? (s.state ?? s.name)
-          : s.name,
+        s.type === ActivityType.Custom ? (s.state ?? s.name) : s.name,
       state: s.state,
       typeLabel: activityTypeLabel(s.type),
       type: s.type,
@@ -531,9 +493,6 @@ export function getPresencePreview(client?: Client | null): PresencePreview {
   };
 }
 
-/**
- * Avanza un paso la rotación y aplica (útil para botón “siguiente” en /presence).
- */
 export function stepPresence(client: Client): PresencePreview {
   applyRichPresence(client, true);
   return getPresencePreview(client);
@@ -619,7 +578,7 @@ export function startPresenceRefresh(
       mode: statsCache.musicSessions > 0 ? "music" : "idle",
       slices: buildSlices(client).length,
     },
-    "🎮 Rich presence dinámica activada",
+    "🎮 Rich presence ordenada activada",
   );
 }
 
@@ -687,5 +646,5 @@ export function setMusicSessionCountLegacy(n: number): void {
 
 /** @deprecated */
 export function presenceActivityName(): string {
-  return sep(`🌸 Zero Two`, BOT_VERSION);
+  return line([`🌸 Zero Two`, BOT_VERSION]);
 }

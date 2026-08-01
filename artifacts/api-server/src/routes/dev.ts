@@ -128,7 +128,6 @@ function buildStatusPayload() {
   const online = isBotOnline();
   const rawPing = botClient?.ws.ping ?? -1;
   return {
-    devUserId: DEV_USER_ID,
     maintenanceMode: current.maintenanceMode,
     maintenanceMessage: current.maintenanceMessage,
     botOnline: online,

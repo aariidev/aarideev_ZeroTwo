@@ -8,7 +8,6 @@ import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 
-const DEV_USER_ID = "819080793447333918";
 const TOKEN_KEY = "zt_dev_token";
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -36,7 +35,6 @@ interface RestartInfo {
 }
 
 interface DevStatus {
-  devUserId: string;
   maintenanceMode: boolean;
   maintenanceMessage: string;
   botOnline: boolean;
@@ -72,7 +70,7 @@ const TYPE_CONFIG: Record<string, { label: string; color: string }> = {
 
 export default function DevPanel() {
   const { toast } = useToast();
-  const { isOwner, loading: authLoadingUser } = useAuth();
+  const { user, isOwner, loading: authLoadingUser } = useAuth();
   const [, setLocation] = useLocation();
 
   // Only the developer (OWNER_IDS) can open the Dev Panel — no one else
@@ -754,15 +752,23 @@ export default function DevPanel() {
           <div className="text-center mb-8">
             <Lock className="h-12 w-12 text-primary mx-auto mb-4" />
             <h1 className="text-2xl font-display text-primary tracking-widest">ACCESO RESTRINGIDO</h1>
-            <p className="text-muted-foreground text-sm mt-2 font-mono">dev_user_id: {DEV_USER_ID}</p>
+            <p className="text-muted-foreground text-sm mt-2 font-mono">
+              Tu sesión de Discord ha sido verificada como owner.
+            </p>
+            {user && (
+              <p className="text-xs uppercase tracking-[0.24em] text-primary/80 mt-3 font-mono">
+                @ {user.tag}
+              </p>
+            )}
           </div>
 
           <div className="space-y-4">
             <div>
-              <label className="text-xs text-muted-foreground font-mono mb-1 block">DEV_TOKEN</label>
+              <label className="text-xs text-muted-foreground font-mono mb-1 block">TOKEN DE DESARROLLO</label>
               <Input
                 type="password"
-                placeholder="Introduce tu token de acceso..."
+                autoComplete="new-password"
+                placeholder="Introduce tu DEV_TOKEN aquí"
                 value={tokenInput}
                 onChange={(e) => setTokenInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleLogin()}
@@ -774,9 +780,16 @@ export default function DevPanel() {
               onClick={handleLogin}
               disabled={authLoading || !tokenInput.trim()}
             >
-              {authLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Terminal className="h-4 w-4 mr-2" />}
+              {authLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Terminal className="h-4 w-4 mr-2" />
+              )}
               AUTENTICAR
             </Button>
+            <p className="text-[11px] text-muted-foreground font-mono leading-relaxed">
+              El token se guarda solo en este navegador. No lo compartas con nadie.
+            </p>
           </div>
         </div>
       </div>
@@ -794,7 +807,7 @@ export default function DevPanel() {
             DEV_CONSOLE
           </h1>
           <p className="text-muted-foreground font-mono text-sm mt-1">
-            uid: {DEV_USER_ID} · session active
+            {user ? `Owner: ${user.tag}` : "Developer panel active"} · sesión activa
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -1437,7 +1450,7 @@ export default function DevPanel() {
         <DevCard icon={Shield} title="SYSTEM_INFO" glowColor="cyan">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
-              { label: "dev_user_id", value: DEV_USER_ID },
+              { label: "owner", value: user?.tag ?? "owner" },
               { label: "bot_name", value: status.botName ?? "—" },
               { label: "guilds_monitored", value: String(status.guildsCount) },
               { label: "websocket_ping", value: typeof status.ping === "number" && status.ping >= 0 ? `${status.ping}ms` : "—" },

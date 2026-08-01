@@ -2,6 +2,7 @@ import {
   mysqlTable,
   varchar,
   int,
+  boolean,
   timestamp,
   primaryKey,
   index,
@@ -21,6 +22,8 @@ export const economyTable = mysqlTable(
     gamesWon: int("games_won").notNull().default(0),
     streak: int("streak").notNull().default(0),
     lastDaily: timestamp("last_daily"),
+    /** true = otros no ven el inventario (salvo owner/staff) */
+    inventoryPrivate: boolean("inventory_private").notNull().default(false),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (t) => [

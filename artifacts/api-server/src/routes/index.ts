@@ -8,6 +8,7 @@ import devRouter from "./dev.js";
 import logsRouter from "./logs.js";
 import ticketsRouter from "./tickets.js";
 import betaRouter from "./beta.js";
+import meRouter from "./me.js";
 
 const router: IRouter = Router();
 
@@ -20,5 +21,6 @@ router.use("/dev", devRouter);
 router.use("/logs", logsRouter);
 router.use("/tickets", ticketsRouter);
 router.use("/beta", betaRouter);
+router.use("/me", meRouter);
 
 export default router;

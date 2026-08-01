@@ -554,7 +554,7 @@ export function musicPanelControls(
     new ButtonBuilder()
       .setCustomId(`music:pause:${guildId}`)
       .setEmoji(paused ? "▶️" : "⏸️")
-      .setLabel(paused ? "Reanudar" : "Pausa")
+      .setLabel(paused ? "Reanudar" : "Pausar")
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId(`music:skip:${guildId}`)
@@ -572,12 +572,12 @@ export function musicPanelControls(
     new ButtonBuilder()
       .setCustomId(`music:voldown:${guildId}`)
       .setEmoji("🔉")
-      .setLabel("-10")
+      .setLabel("Vol −")
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId(`music:volup:${guildId}`)
       .setEmoji("🔊")
-      .setLabel("+10")
+      .setLabel("Vol +")
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId(`music:loop:${guildId}`)
@@ -587,16 +587,16 @@ export function musicPanelControls(
     new ButtonBuilder()
       .setCustomId(`music:shuffle:${guildId}`)
       .setEmoji("🔀")
-      .setLabel("Mezclar")
+      .setLabel("Shuffle")
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId(`music:queue:${guildId}`)
       .setEmoji("📋")
-      .setLabel("Cola")
+      .setLabel("Ver cola")
       .setStyle(ButtonStyle.Secondary),
   );
 
-  const row2Buttons = [
+  const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId(`music:clear:${guildId}`)
       .setEmoji("🗑️")
@@ -605,20 +605,27 @@ export function musicPanelControls(
     new ButtonBuilder()
       .setCustomId(`music:leave:${guildId}`)
       .setEmoji("🚪")
-      .setLabel("Salir")
+      .setLabel("Desconectar")
       .setStyle(ButtonStyle.Secondary),
-  ];
-  if (hasSaved && isLive) {
-    // rarely both — keep continue available only when not live
-  }
-  const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    ...row2Buttons,
   );
 
   return [row0, row1, row2];
 }
 
-/** Embed del panel fijo (estado en vivo + banner). */
+function queueDurationSec(tracks: Track[]): number {
+  return tracks.reduce(
+    (acc, t) => acc + (Number.isFinite(t.durationSec) ? t.durationSec : 0),
+    0,
+  );
+}
+
+function statusBadge(paused: boolean, hasCurrent: boolean): string {
+  if (!hasCurrent) return "⚪ **Idle** · sin reproducción";
+  if (paused) return "🟡 **Pausado** · nexo en espera";
+  return "🟢 **En directo** · sincronizado";
+}
+
+/** Embed del panel fijo (estado en vivo + banner + detalle). */
 export function musicPanelEmbed(
   client: Client,
   opts: {
@@ -631,6 +638,9 @@ export function musicPanelEmbed(
     playbackSec?: number | null;
     hasHistory?: boolean;
     djRoleId?: string | null;
+    /** Próximas pistas (preview de cola) */
+    upcoming?: Track[];
+    historyLen?: number;
     /** Snapshot waiting after bot restart */
     savedSession?: {
       title: string;
@@ -648,104 +658,273 @@ export function musicPanelEmbed(
         : "➡️ Off";
 
   const saved = opts.savedSession;
+  const upcoming = opts.upcoming ?? [];
+  const pos = opts.playbackSec ?? 0;
+  const dur = opts.current?.durationSec ?? 0;
+  const pct =
+    dur > 0 ? Math.min(100, Math.max(0, Math.round((pos / dur) * 100))) : 0;
+  const remaining =
+    dur > 0 ? Math.max(0, dur - pos) : 0;
+  const queueTotalSec = queueDurationSec(upcoming);
+  const totalInSession =
+    (opts.current ? Math.max(0, (opts.current.durationSec || 0) - pos) : 0) +
+    queueTotalSec;
+
+  const color = opts.current
+    ? opts.paused
+      ? AMBER
+      : opts.current.source === "spotify"
+        ? SPOTIFY
+        : PINK
+    : saved
+      ? AMBER
+      : CYAN;
+
   const emb = new EmbedBuilder()
-    .setColor(
-      opts.current
-        ? opts.paused
-          ? AMBER
-          : PINK
-        : saved
-          ? AMBER
-          : CYAN,
-    )
+    .setColor(color)
     .setAuthor({
       name: "Zero Two Music · Panel del servidor",
-      iconURL: client.user?.displayAvatarURL() ?? undefined,
+      iconURL: client.user?.displayAvatarURL({ size: 64 }) ?? undefined,
     })
     .setTitle(
       opts.current
         ? opts.paused
-          ? "⏸ Pausado"
-          : "🎵 Reproduciendo"
+          ? "⏸️ Pausado en el nexo"
+          : "🎵 Ahora suena en el nexo"
         : saved
-          ? "💾 Sesión guardada"
-          : "🎧 Panel de música",
+          ? "💾 Sesión lista para continuar"
+          : "🎧 Panel de música · Idle",
     )
-    .setDescription(
-      opts.current
-        ? [
-            `**[${opts.current.title.slice(0, 120)}](${opts.current.url})**`,
-            progressBar(opts.playbackSec ?? 0, opts.current.durationSec),
-            "",
-            `Pedido por <@${opts.current.requestedBy.id}> · \`${SOURCE_LABEL[opts.current.source] ?? opts.current.source}\``,
-          ].join("\n")
-        : saved
-          ? [
-              "El bot se reinició con una sesión de música activa.",
-              "",
-              `**Última pista:** ${saved.title.slice(0, 100)}`,
-              saved.playbackSec > 0
-                ? `**Posición:** \`${formatDuration(saved.playbackSec)}\``
-                : null,
-              `**Cola guardada:** \`${saved.queueLen}\` pista(s)`,
-              saved.voiceChannelId
-                ? `**Canal:** <#${saved.voiceChannelId}>`
-                : null,
-              "",
-              "Pulsa **Continuar sesión** o usa `/continue`.",
-            ]
-              .filter(Boolean)
-              .join("\n")
-          : [
-              "No hay nada en reproducción.",
-              "",
-              "• Entra a un **canal de voz**",
-              "• Pulsa **Añadir** o usa `/play`",
-              "• Controla todo desde este panel",
-            ].join("\n"),
-    )
-    .addFields(
-      {
-        name: "📋 Cola",
-        value: `\`${opts.queueLen}\` en espera`,
-        inline: true,
-      },
-      {
-        name: "🔊 Volumen",
-        value: volumeBar(opts.volume),
-        inline: true,
-      },
-      {
-        name: "🔁 Loop",
-        value: loopLabel,
-        inline: true,
-      },
-      {
-        name: "🎙️ Voz",
-        value: opts.voiceChannelId
-          ? `<#${opts.voiceChannelId}>`
-          : "`desconectado`",
-        inline: true,
-      },
-      {
-        name: "⏮️ Historial",
-        value: opts.hasHistory ? "`disponible`" : "`vacío`",
-        inline: true,
-      },
-      {
-        name: "🎚️ DJ",
-        value: opts.djRoleId ? `<@&${opts.djRoleId}>` : "`cualquiera en voz`",
-        inline: true,
-      },
-    )
-    .setFooter({
-      text: "Panel fijo · progreso ~cada 12s · rol DJ opcional",
-      iconURL: client.user?.displayAvatarURL() ?? undefined,
-    })
     .setTimestamp();
 
-  if (opts.current?.thumbnail) {
-    emb.setThumbnail(opts.current.thumbnail);
+  // ── LIVE ──────────────────────────────────────────────────────────────────
+  if (opts.current) {
+    const t = opts.current;
+    const srcEmoji = SOURCE_EMOJI[t.source] ?? "📡";
+    const srcLabel = SOURCE_LABEL[t.source] ?? t.source;
+
+    emb
+      .setURL(t.url)
+      .setDescription(
+        [
+          statusBadge(opts.paused, true),
+          "",
+          `### ${t.title.slice(0, 120)}`,
+          `[Abrir pista](${t.url})`,
+          "",
+          progressBar(pos, t.durationSec),
+          `**Progreso** \`${pct}%\` · **Restan** \`${formatDuration(remaining)}\``,
+        ].join("\n"),
+      )
+      .addFields(
+        {
+          name: "🎧 Pedido por",
+          value: `<@${t.requestedBy.id}>\n\`${t.requestedBy.tag.slice(0, 32)}\``,
+          inline: true,
+        },
+        {
+          name: "📡 Fuente",
+          value: `${srcEmoji} \`${srcLabel}\``,
+          inline: true,
+        },
+        {
+          name: "⏱️ Duración",
+          value: `\`${formatDuration(t.durationSec)}\``,
+          inline: true,
+        },
+        {
+          name: "🔊 Volumen",
+          value: volumeBar(opts.volume),
+          inline: true,
+        },
+        {
+          name: "🔁 Loop",
+          value: loopLabel,
+          inline: true,
+        },
+        {
+          name: "🎙️ Canal de voz",
+          value: opts.voiceChannelId
+            ? `<#${opts.voiceChannelId}>`
+            : "`desconectado`",
+          inline: true,
+        },
+        {
+          name: "📋 Cola",
+          value: [
+            `\`${opts.queueLen}\` en espera`,
+            queueTotalSec > 0
+              ? `· \`${formatDuration(queueTotalSec)}\` total`
+              : "",
+          ]
+            .filter(Boolean)
+            .join(" "),
+          inline: true,
+        },
+        {
+          name: "⏳ Tiempo restante sesión",
+          value:
+            totalInSession > 0
+              ? `\`${formatDuration(totalInSession)}\` (pista + cola)`
+              : "`—`",
+          inline: true,
+        },
+        {
+          name: "🎚️ Acceso DJ",
+          value: opts.djRoleId
+            ? `<@&${opts.djRoleId}>`
+            : "`cualquiera en voz`",
+          inline: true,
+        },
+      );
+
+    if (upcoming.length > 0) {
+      const lines = upcoming.slice(0, 5).map((q, i) => {
+        const n = i + 1;
+        const who = `<@${q.requestedBy.id}>`;
+        return `**${n}.** [${q.title.slice(0, 48)}](${q.url}) · \`${formatDuration(q.durationSec)}\` · ${who}`;
+      });
+      if (opts.queueLen > 5) {
+        lines.push(`*…y ${opts.queueLen - 5} más*`);
+      }
+      emb.addFields({
+        name: "⏭️ A continuación",
+        value: lines.join("\n").slice(0, 1020),
+        inline: false,
+      });
+    } else {
+      emb.addFields({
+        name: "⏭️ A continuación",
+        value: "_Cola vacía — pulsa **Añadir** o usa `/play`_",
+        inline: false,
+      });
+    }
+
+    if (t.spotifyUrl) {
+      emb.addFields({
+        name: "💚 Spotify",
+        value: `[Abrir en Spotify](${t.spotifyUrl})`,
+        inline: true,
+      });
+    }
+
+    emb.addFields({
+      name: "⏮️ Historial",
+      value: opts.hasHistory
+        ? `\`disponible\` · \`${opts.historyLen ?? "—"}\` pista(s)`
+        : "`vacío`",
+      inline: true,
+    });
+
+    if (t.thumbnail) emb.setThumbnail(t.thumbnail);
+
+    emb.setFooter({
+      text: `Zero Two Music · ${BOT_VERSION} · panel fijo · refresh ~12s · ${opts.paused ? "paused" : "live"}`,
+      iconURL:
+        t.requestedBy.avatarURL ??
+        client.user?.displayAvatarURL({ size: 32 }) ??
+        undefined,
+    });
+  } else if (saved) {
+    // ── SAVED SESSION ─────────────────────────────────────────────────────
+    emb
+      .setDescription(
+        [
+          "🟡 **Sesión recuperable** tras un reinicio del bot.",
+          "",
+          "```",
+          `Pista   : ${saved.title.slice(0, 60)}`,
+          saved.playbackSec > 0
+            ? `Posición: ${formatDuration(saved.playbackSec)}`
+            : "Posición: inicio",
+          `Cola    : ${saved.queueLen} pista(s)`,
+          "```",
+          saved.voiceChannelId
+            ? `🎙️ Canal: <#${saved.voiceChannelId}>`
+            : null,
+          "",
+          "Pulsa **Continuar sesión** (o `/continue`) para retomar el nexo.",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      )
+      .addFields(
+        {
+          name: "🔊 Volumen guardado",
+          value: volumeBar(opts.volume),
+          inline: true,
+        },
+        {
+          name: "📋 Cola",
+          value: `\`${saved.queueLen}\``,
+          inline: true,
+        },
+        {
+          name: "🎚️ DJ",
+          value: opts.djRoleId ? `<@&${opts.djRoleId}>` : "`cualquiera en voz`",
+          inline: true,
+        },
+      )
+      .setFooter({
+        text: `Zero Two Music · ${BOT_VERSION} · snapshot listo`,
+        iconURL: client.user?.displayAvatarURL({ size: 32 }) ?? undefined,
+      });
+  } else {
+    // ── IDLE ──────────────────────────────────────────────────────────────
+    emb
+      .setDescription(
+        [
+          statusBadge(false, false),
+          "",
+          "El panel está listo. Cuando entres en voz y pongas música, aquí verás:",
+          "• Progreso en vivo y **%** de la pista",
+          "• Cola, duración total y siguientes canciones",
+          "• Volumen, loop, canal de voz y rol DJ",
+          "",
+          "**Cómo empezar**",
+          "1. Entra a un **canal de voz**",
+          "2. Pulsa **Añadir** o usa `/play <canción|url>`",
+          "3. Controla todo desde este mensaje ✨",
+        ].join("\n"),
+      )
+      .addFields(
+        {
+          name: "📋 Cola",
+          value: "`0` en espera",
+          inline: true,
+        },
+        {
+          name: "🔊 Volumen",
+          value: volumeBar(opts.volume),
+          inline: true,
+        },
+        {
+          name: "🔁 Loop",
+          value: loopLabel,
+          inline: true,
+        },
+        {
+          name: "🎙️ Voz",
+          value: opts.voiceChannelId
+            ? `<#${opts.voiceChannelId}>`
+            : "`desconectado`",
+          inline: true,
+        },
+        {
+          name: "🎚️ DJ",
+          value: opts.djRoleId ? `<@&${opts.djRoleId}>` : "`cualquiera en voz`",
+          inline: true,
+        },
+        {
+          name: "💡 Tips",
+          value: "`/play` · Spotify playlists · botones ↓",
+          inline: true,
+        },
+      )
+      .setFooter({
+        text: `Zero Two Music · ${BOT_VERSION} · panel idle`,
+        iconURL: client.user?.displayAvatarURL({ size: 32 }) ?? undefined,
+      });
   }
 
   return withBanner(emb);

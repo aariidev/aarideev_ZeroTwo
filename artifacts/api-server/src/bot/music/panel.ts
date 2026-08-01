@@ -91,6 +91,8 @@ async function buildPanelView(
     voiceChannelId: session?.voiceChannelId ?? savedSession?.voiceChannelId ?? null,
     playbackSec: session?.playbackSec ?? 0,
     hasHistory: session?.hasHistory ?? false,
+    historyLen: session?.history?.length ?? 0,
+    upcoming: session?.queue?.slice(0, 8) ?? [],
     djRoleId: cfg.djRoleId,
     savedSession,
   });

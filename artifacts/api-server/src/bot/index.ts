@@ -5,6 +5,7 @@ import { setBotClient as setBotClientForBot } from "../routes/bot.js";
 import { setBotClient as setBotClientForGuilds } from "../routes/guilds.js";
 import { setBotClientForDev } from "../routes/dev.js";
 import { setBotClientForTickets } from "../routes/tickets.js";
+import { setMeBotClient } from "../routes/me.js";
 import { devState } from "../lib/devState.js";
 import { db } from "@workspace/db";
 import { botConfigTable } from "@workspace/db";
@@ -287,6 +288,7 @@ export async function startBot() {
       setBotClientForGuilds(client);
       setBotClientForDev(client);
       setBotClientForTickets(client);
+      setMeBotClient(client);
 
       startGameCleanup();
       logger.info("🔗 Pasarelas y rutas API vinculadas al cliente central.");

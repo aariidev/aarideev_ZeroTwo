@@ -620,16 +620,32 @@ export async function ytdlpPlaylistEntries(
   const target = urlOrList.trim();
   if (!target) return [];
 
+  // 1) flat-playlist (rápido)
+  let items = await runYtdlpPlaylistPrint(ytdlp, target, max, true);
+  if (items.length > 0) return items;
+
+  // 2) sin flat (más lento, a veces trae IDs que flat no devuelve)
+  items = await runYtdlpPlaylistPrint(ytdlp, target, max, false);
+  return items;
+}
+
+function runYtdlpPlaylistPrint(
+  ytdlp: string,
+  target: string,
+  max: number,
+  flat: boolean,
+): Promise<YtSearchMeta[]> {
   return new Promise((resolve) => {
     const sep = "|||";
     const args = [
       target,
-      "--flat-playlist",
+      ...(flat ? (["--flat-playlist"] as const) : []),
       "--yes-playlist",
       "--print",
       `%(id)s${sep}%(title)s${sep}%(duration)s${sep}%(thumbnail)s`,
       "--skip-download",
       "--no-warnings",
+      "--ignore-errors",
       "--playlist-end",
       String(Math.max(1, Math.min(100, max))),
       ...cookieArgs(),
@@ -637,20 +653,28 @@ export async function ytdlpPlaylistEntries(
     ];
     const proc = spawn(ytdlp, args, { windowsHide: true });
     let out = "";
+    let err = "";
     const timer = setTimeout(() => {
       try {
         proc.kill("SIGKILL");
       } catch {
         /* */
       }
-      // still parse whatever we got
       resolve(parsePlaylistPrint(out, sep));
-    }, 45_000);
+    }, flat ? 45_000 : 90_000);
 
     proc.stdout.on("data", (c) => (out += c.toString()));
-    proc.on("close", () => {
+    proc.stderr.on("data", (c) => (err += c.toString()));
+    proc.on("close", (code) => {
       clearTimeout(timer);
-      resolve(parsePlaylistPrint(out, sep));
+      const parsed = parsePlaylistPrint(out, sep);
+      if (parsed.length === 0 && err.trim()) {
+        logger.debug(
+          { code, err: err.slice(-400), target: target.slice(0, 80), flat },
+          "ytdlp playlist empty",
+        );
+      }
+      resolve(parsed);
     });
     proc.on("error", () => {
       clearTimeout(timer);

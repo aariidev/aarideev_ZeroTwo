@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
-import { Loader2, Radio, Shield } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Loader2, Radio, Shield, Lock } from "lucide-react";
 
 function DiscordIcon({ className }: { className?: string }) {
   return (
@@ -139,7 +140,7 @@ export default function LoginPage() {
           )}
 
           {!oauthConfigured ? (
-            <div className="border border-yellow-500/30 bg-yellow-500/10 text-yellow-200 text-xs font-mono p-4 space-y-2">
+            <div className="border border-yellow-500/30 bg-yellow-500/10 text-yellow-200 text-xs font-mono p-4 space-y-2 rounded-xl">
               <p className="font-bold">OAuth no configurado</p>
               <p>
                 Falta <code className="text-[#00f5d4]">CLIENT_SECRET</code> en el
@@ -147,13 +148,11 @@ export default function LoginPage() {
               </p>
             </div>
           ) : (
-            <button
+            <Button
               type="button"
               onClick={handleLogin}
               disabled={redirecting}
-              className="w-full flex items-center justify-center gap-3 py-3.5 px-4 font-display tracking-widest text-sm
-                bg-[#5865F2] hover:bg-[#4752C4] disabled:opacity-70 disabled:cursor-wait text-white transition-colors
-                shadow-[0_0_24px_rgba(88,101,242,0.35)]"
+              className="w-full flex items-center justify-center gap-3 py-3.5 px-4 font-display tracking-widest text-sm bg-[#5865F2] hover:bg-[#4752C4] disabled:opacity-70 disabled:cursor-wait text-white transition-colors shadow-[0_0_24px_rgba(88,101,242,0.35)]"
             >
               {redirecting ? (
                 <>
@@ -166,16 +165,19 @@ export default function LoginPage() {
                   CONTINUAR CON DISCORD
                 </>
               )}
-            </button>
+            </Button>
           )}
 
-          <p className="text-[10px] text-slate-600 font-mono text-center mt-6 leading-relaxed">
-            Scopes: identidad + lista de servidores (para configurar los tuyos).
-            <br />
-            <span className="text-slate-500">
-              Cualquier cuenta de Discord puede iniciar sesión.
-            </span>
-          </p>
+          <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4 text-[11px] font-mono text-slate-400">
+            <div className="flex items-center gap-2 text-sm text-[#ff2d6b] mb-2">
+              <Lock className="w-4 h-4" />
+              <span>Inicio de sesión protegido</span>
+            </div>
+            <p className="leading-relaxed">
+              Usa Discord para iniciar sesión. El dashboard acepta solo cuentas autorizadas
+              y protege tu acceso con OAuth.
+            </p>
+          </div>
         </div>
       </div>
     </div>

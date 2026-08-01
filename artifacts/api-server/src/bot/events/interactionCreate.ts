@@ -1,4 +1,11 @@
-import { Interaction, EmbedBuilder, Collection } from "discord.js";
+import {
+  Interaction,
+  EmbedBuilder,
+  Collection,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+} from "discord.js";
 import { logger } from "../../lib/logger.js";
 import { BotClient } from "../types.js";
 import { db, activityTable, commandStatsTable } from "@workspace/db";
@@ -546,6 +553,78 @@ async function handleInventory(interaction: Interaction): Promise<boolean> {
           .setTimestamp(),
       ],
       ephemeral: true,
+    });
+    return true;
+  }
+
+  // Privacy toggle
+  if (action === "inv_privacy") {
+    if (interaction.user.id !== userId) {
+      await interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xff2d6b)
+            .setDescription("❌ Solo el dueño puede cambiar la privacidad."),
+        ],
+        ephemeral: true,
+      });
+      return true;
+    }
+    const mode = itemId; // "public" | "private"
+    if (mode !== "public" && mode !== "private") return false;
+
+    const { setInventoryPrivate } = await import("../lib/economy.js");
+    const { logBotEvent } = await import("../../lib/botLogger.js");
+    const next = mode === "private";
+    await setInventoryPrivate(guildId, userId, next);
+
+    logBotEvent({
+      level: "info",
+      event: "economy",
+      details: {
+        action: "inventory_privacy",
+        inventoryPrivate: next,
+        source: "button",
+      },
+      guildId,
+      guildName: interaction.guild?.name,
+      userId: interaction.user.id,
+      username: interaction.user.username,
+    });
+
+    const privacyRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`inv_privacy:${userId}:public`)
+        .setLabel("Público")
+        .setEmoji("🌐")
+        .setStyle(next ? ButtonStyle.Secondary : ButtonStyle.Success)
+        .setDisabled(!next),
+      new ButtonBuilder()
+        .setCustomId(`inv_privacy:${userId}:private`)
+        .setLabel("Privado")
+        .setEmoji("🔒")
+        .setStyle(next ? ButtonStyle.Danger : ButtonStyle.Secondary)
+        .setDisabled(next),
+    );
+
+    await interaction.update({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(next ? 0x6b7280 : 0x00ff9f)
+          .setAuthor({ name: "ZeroTwo Casino · Privacidad", iconURL: botIcon })
+          .setTitle(next ? "🔒 Inventario privado" : "🌐 Inventario público")
+          .setDescription(
+            next
+              ? "Otros parásitos **no** verán tu mochila.\nStaff del bot/servidor puede auditar. Trade y uso de ítems siguen activos."
+              : "Cualquiera en el servidor puede consultar tu inventario con `/inventory usuario:`.",
+          )
+          .setFooter({
+            text: "Zero Two · Privacidad de inventario",
+            iconURL: botIcon,
+          })
+          .setTimestamp(),
+      ],
+      components: [privacyRow],
     });
     return true;
   }
