@@ -4,3 +4,4 @@ export * from "./tickets";
 export * from "./guildSettings";
 export * from "./messageSnapshots";
 export * from "./community";
+export * from "./lol";
