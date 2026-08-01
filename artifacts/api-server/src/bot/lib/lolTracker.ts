@@ -64,6 +64,19 @@ export async function fetchSummonerByName(region: string, name: string) {
   return summoner;
 }
 
+export async function fetchOpggAi(region: string, name: string) {
+  const url = `https://op.gg/lol/summoners/${region}/${encodeURIComponent(name)}/ai.json`;
+  const res = await fetch(url, { headers: { "User-Agent": "DiscordBot/1.0 (opgg-fetch)" } });
+  if (!res.ok) {
+    const txt = await res.text();
+    const err = new Error(`OP.GG ai.json error ${res.status}: ${txt}`);
+    (err as any).status = res.status;
+    throw err;
+  }
+  const json = await res.json();
+  return json;
+}
+
 // Lightweight wrapper to store lastData in DB (table added in lib/db schema)
 export async function upsertTrackedSummoner(row: {
   summonerId: string;
