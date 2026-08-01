@@ -1,5 +1,6 @@
 import { db } from "@workspace/db";
-import fetch from "node-fetch";
+import { fetch } from "undici";
+import { eq } from "drizzle-orm";
 
 export type RiotSummoner = {
   id: string;
@@ -90,7 +91,7 @@ export async function upsertTrackedSummoner(row: {
   const existing = await db
     .select()
     .from(lolTrackedTable)
-    .where(lolTrackedTable.summonerId.eq(row.summonerId))
+    .where(eq(lolTrackedTable.summonerId, row.summonerId))
     .limit(1);
 
   const now = new Date();
@@ -105,7 +106,7 @@ export async function upsertTrackedSummoner(row: {
         lastData: row.lastData ? JSON.stringify(row.lastData) : existing[0].lastData,
         lastFetchedAt: now,
       })
-      .where(lolTrackedTable.id.eq(existing[0].id));
+      .where(eq(lolTrackedTable.id, existing[0].id));
     return { updated: true, id: existing[0].id };
   }
 
@@ -127,11 +128,11 @@ export async function upsertTrackedSummoner(row: {
 
 export async function removeTrackedById(id: number) {
   const { lolTrackedTable } = await import("@workspace/db");
-  await db.delete(lolTrackedTable).where(lolTrackedTable.id.eq(id));
+  await db.delete(lolTrackedTable).where(eq(lolTrackedTable.id, id));
 }
 
 export async function listTrackedForUser(discordUserId: string) {
   const { lolTrackedTable } = await import("@workspace/db");
-  const rows = await db.select().from(lolTrackedTable).where(lolTrackedTable.discordUserId.eq(discordUserId));
+  const rows = await db.select().from(lolTrackedTable).where(eq(lolTrackedTable.discordUserId, discordUserId));
   return rows;
 }
