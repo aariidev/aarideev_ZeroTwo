@@ -4,5 +4,9 @@
             "name": "Preset Connection",
             "connectionString": "mongodb://localhost:27017"
         }
-    ]
+    ],
+    "github.copilot.chat.claudeAgent.useSdkExtension": true,
+    "github.copilot.chat.codesearch.enabled": true,
+    "github.copilot.chat.alternateGeminiModelFPrompt.enabled": true,
+    "github.copilot.chat.alternateGptPrompt.enabled": true
 }
