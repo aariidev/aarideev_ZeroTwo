@@ -18,21 +18,50 @@ function riotBaseForRegion(region: string) {
 
 export async function fetchSummonerByName(region: string, name: string) {
   const key = process.env.RIOT_API_KEY;
-  if (!key) throw new Error("RIOT_API_KEY not set in environment");
-  const base = riotBaseForRegion(region);
-  const url = `${base}/lol/summoner/v4/summoners/by-name/${encodeURIComponent(name)}`;
-  const res = await fetch(url, {
-    headers: { "X-Riot-Token": key },
-  });
+  if (key) {
+    // Use official Riot API when API key is available
+    const base = riotBaseForRegion(region);
+    const url = `${base}/lol/summoner/v4/summoners/by-name/${encodeURIComponent(name)}`;
+    const res = await fetch(url, {
+      headers: { "X-Riot-Token": key },
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      const err = new Error(`Riot API error ${res.status}: ${txt}`);
+      // attach status for caller
+      (err as any).status = res.status;
+      throw err;
+    }
+    const json = (await res.json()) as RiotSummoner;
+    return json;
+  }
+
+  // Fallback: use OP.GG ai.json endpoint (no API key required)
+  // Note: OP.GG's JSON shape differs from Riot's; return a best-effort RiotSummoner-like object
+  const opggUrl = `https://op.gg/lol/summoners/${region}/${encodeURIComponent(name)}/ai.json`;
+  const res = await fetch(opggUrl, { headers: { "User-Agent": "DiscordBot/1.0 (OP.GG fallback)" } });
   if (!res.ok) {
     const txt = await res.text();
-    const err = new Error(`Riot API error ${res.status}: ${txt}`);
-    // attach status for caller
+    const err = new Error(`OP.GG fetch error ${res.status}: ${txt}`);
     (err as any).status = res.status;
     throw err;
   }
-  const json = (await res.json()) as RiotSummoner;
-  return json;
+  const j = await res.json();
+  // OP.GG's payload may nest data under several keys; try common locations
+  const opSumm = j?.player ?? j?.summoner ?? j;
+  const summonerId = opSumm?.id ?? `${region}:${name}`;
+
+  const summoner: RiotSummoner = {
+    id: String(summonerId),
+    accountId: opSumm?.accountId ?? "",
+    puuid: opSumm?.puuid ?? "",
+    name: opSumm?.name ?? name,
+    profileIconId: Number(opSumm?.profileIconId ?? 0),
+    revisionDate: Number(opSumm?.revisionDate ?? Date.now()),
+    summonerLevel: Number(opSumm?.summonerLevel ?? opSumm?.level ?? 0),
+  };
+
+  return summoner;
 }
 
 // Lightweight wrapper to store lastData in DB (table added in lib/db schema)
