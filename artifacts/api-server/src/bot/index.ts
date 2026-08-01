@@ -19,6 +19,7 @@ import serverinfoCmd from "./commands/utility/serverinfo.js";
 import userinfoCmd from "./commands/utility/userinfo.js";
 import helpCmd from "./commands/utility/help.js";
 import botinfoCmd from "./commands/utility/botinfo.js";
+import loltrackCmd from "./commands/utility/loltrack.js";
 import presenceCmd from "./commands/utility/presence.js";
 import betaCmd from "./commands/utility/beta.js";
 import sugerenciasCmd from "./commands/utility/sugerencias.js";
@@ -86,6 +87,7 @@ const ALL_COMMANDS = [
   userinfoCmd,
   helpCmd,
   botinfoCmd,
+  loltrackCmd,
   presenceCmd,
   betaCmd,
   sugerenciasCmd,
