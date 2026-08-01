@@ -102,24 +102,51 @@ const command: Command = {
         const { fetchSummonerByName } = await import("../../lib/lolTracker.js");
         try {
           const summ = await fetchSummonerByName(region, name);
-          const emb = new EmbedBuilder()
-            .setTitle(`${summ.name} — ${region}`)
-            .setColor(0x22c55e)
-            .addFields(
-              { name: "Summoner ID", value: `
-\\
-\\`${summ.id}\``, inline: true },
-              { name: "Account ID", value: `
-\\
-\\`${summ.accountId}\``, inline: true },
-              { name: "PUUID", value: `
-\\
-\\`${summ.puuid}\``, inline: false },
-              { name: "Nivel", value: `
-\\
-\\`${summ.summonerLevel}\``, inline: true },
-            )
-            .setTimestamp();
+
+          // Try to fetch richer OP.GG ai.json data for more detailed stats (quietly fail back if not available)
+          let opgg: any = null;
+          try {
+            const { fetchOpggAi } = await import("../../lib/lolTracker.js");
+            opgg = await fetchOpggAi(region, name);
+          } catch (_) {
+            // ignore - op.gg may not have data or the endpoint could fail
+            opgg = null;
+          }
+
+          const emb = new EmbedBuilder().setTitle(`${summ.name} — ${region}`).setColor(0x22c55e);
+
+          // Basic IDs
+          emb.addFields({ name: "Summoner ID", value: `\\n\\`${summ.id}\``, inline: true });
+          emb.addFields({ name: "Account ID", value: `\\n\\`${summ.accountId}\``, inline: true });
+
+          // PUUID and level
+          emb.addFields({ name: "PUUID", value: `\\n\\`${summ.puuid}\``, inline: false });
+          emb.addFields({ name: "Nivel", value: `\\n\\`${summ.summonerLevel}\``, inline: true });
+
+          // OP.GG-derived fields (if available)
+          if (opgg) {
+            const ranked = opgg?.ranked?.solo ?? opgg?.profile ?? opgg?.queue?.solo ?? null;
+            const wins = opgg?.profile?.wins ?? opgg?.recent?.wins ?? null;
+            const losses = opgg?.profile?.losses ?? opgg?.recent?.losses ?? null;
+            const winRate = wins != null && losses != null ? Math.round((wins / (wins + losses)) * 100) : null;
+
+            emb.addFields({ name: "Rank", value: ranked ? `${ranked.tier ?? ranked.rank ?? ranked}` : "N/A", inline: true });
+            emb.addFields({ name: "LP / Record", value: (ranked?.lp ?? (wins != null ? `${wins}W/${losses}L` : "N/A"))?.toString() ?? "N/A", inline: true });
+
+            if (winRate != null) emb.addFields({ name: "Winrate", value: `${winRate}%`, inline: true });
+
+            // Top champions summary (best-effort)
+            const champs = opgg?.champions ?? opgg?.topChampions ?? null;
+            if (Array.isArray(champs) && champs.length) {
+              const top = champs.slice(0, 4).map((c: any) => `${c.name ?? c.championName ?? c.key} — ${c.wins ?? c.w + 0}/${c.losses ?? c.l + 0}`).join("\n");
+              emb.addFields({ name: "Top champs", value: top, inline: false });
+            }
+
+            // Link to OP.GG
+            emb.addFields({ name: "OP.GG", value: `https://op.gg/lol/summoners/${region}/${encodeURIComponent(name)}`, inline: false });
+          }
+
+          emb.setTimestamp();
           await interaction.editReply({ embeds: [emb] });
         } catch (err: any) {
           await interaction.editReply({ content: `Error al consultar Riot API: ${err.message}` });
