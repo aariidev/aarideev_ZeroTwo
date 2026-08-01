@@ -34,6 +34,7 @@
     "play-dl": "^1.9.7",
     "sodium-native": "^5.1.0",
     "youtube-dl-exec": "^3.1.9",
+    "undici": "^6.27.0",
     "zod": "catalog:"
   },
   "devDependencies": {
