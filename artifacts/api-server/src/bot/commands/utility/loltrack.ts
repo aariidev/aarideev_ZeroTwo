@@ -6,6 +6,41 @@ import {
 } from "discord.js";
 import { Command } from "../../types.js";
 
+const DD_CHAMPION_ICON_BASE = "https://ddragon.leagueoflegends.com/cdn/latest/img/champion";
+const DD_CHAMPION_SPLASH_BASE = "https://ddragon.leagueoflegends.com/cdn/img/champion/splash";
+const DD_PROFILE_ICON_BASE = "https://ddragon.leagueoflegends.com/cdn/latest/img/profileicon";
+
+function normalizeChampionName(champion: any) {
+  const raw = champion?.championName ?? champion?.id ?? champion?.name ?? champion?.key;
+  if (!raw) return null;
+  return String(raw)
+    .replace(/\s+/g, "")
+    .replace(/&/g, "And")
+    .replace(/['.\/:\-]/g, "")
+    .replace(/[^A-Za-z0-9]/g, "");
+}
+
+function championIconUrl(champion: any) {
+  const name = normalizeChampionName(champion);
+  return name ? `${DD_CHAMPION_ICON_BASE}/${name}.png` : null;
+}
+
+function championSplashUrl(champion: any) {
+  const name = normalizeChampionName(champion);
+  return name ? `${DD_CHAMPION_SPLASH_BASE}/${name}_0.jpg` : null;
+}
+
+function champSummaryLine(champion: any) {
+  const name = champion?.name ?? champion?.championName ?? champion?.key ?? "Unknown";
+  const wins = Number(champion?.wins ?? champion?.w ?? 0);
+  const losses = Number(champion?.losses ?? champion?.l ?? 0);
+  const games = wins + losses;
+  const winRate = games ? Math.round((wins / games) * 100) : null;
+  const iconUrl = championIconUrl(champion);
+  const label = iconUrl ? `[${name}](${iconUrl})` : String(name);
+  return `${label} — ${wins}W/${losses}L${winRate != null ? ` (${winRate}% WR)` : ""}`;
+}
+
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName("loltrack")
@@ -60,16 +95,22 @@ const command: Command = {
             lastData: summ,
           });
 
+          const profileIconUrl = summ.profileIconId ? `${DD_PROFILE_ICON_BASE}/${summ.profileIconId}.png` : undefined;
           const emb = new EmbedBuilder()
             .setColor(0x00e5ff)
             .setTitle("Summoner trackeado")
-            .setDescription(`**${summ.name}** (${region})`) 
+            .setDescription(`**${summ.name}** (${region})\nNivel ${summ.summonerLevel}`)
+            .setThumbnail(profileIconUrl ?? null)
             .addFields(
-              { name: "SummonerID", value: `
-\\
-\\`${summ.id}\``, inline: false },
+              { name: "Summoner ID", value: `\`${summ.id}\``, inline: true },
+              { name: "Nivel", value: `${summ.summonerLevel}`, inline: true },
+              { name: "Región", value: region.toUpperCase(), inline: true },
             )
-            .setFooter({ text: `Zero Two · LOL Tracker` });
+            .setFooter({ text: `Zero Two · LOL Tracker` })
+            .setTimestamp();
+          if (note) {
+            emb.addFields({ name: "Nota", value: note, inline: false });
+          }
 
           await interaction.editReply({ embeds: [emb] });
         } catch (err: any) {
@@ -78,7 +119,7 @@ const command: Command = {
       } else if (sub === "remove") {
         const id = interaction.options.getInteger("id", true);
         await interaction.deferReply({ ephemeral: true });
-        const { lolTrackedTable } = await import("@workspace/db");
+        const { lolTrackedTable } = (await import("@workspace/db")) as any;
         const { removeTrackedById } = await import("../../lib/lolTracker.js");
         await removeTrackedById(id as number);
         await interaction.editReply({ content: `✅ Tracking con id ${id} eliminado.` });
@@ -103,49 +144,91 @@ const command: Command = {
         try {
           const summ = await fetchSummonerByName(region, name);
 
-          // Try to fetch richer OP.GG ai.json data for more detailed stats (quietly fail back if not available)
+          // Attempt to gather Riot-based ranked + recent match stats if API key is available.
+          let ranked: any = null;
+          let recent: any = null;
           let opgg: any = null;
           try {
-            const { fetchOpggAi } = await import("../../lib/lolTracker.js");
-            opgg = await fetchOpggAi(region, name);
+            const lib = await import("../../lib/lolTracker.js");
+            if (process.env.RIOT_API_KEY) {
+              try {
+                ranked = await lib.fetchRankedBySummonerId(region, summ.id);
+              } catch (_) {
+                ranked = null;
+              }
+              try {
+                recent = summ.puuid ? await lib.fetchRecentWinRate(summ.puuid, region, 20) : null;
+              } catch (_) {
+                recent = null;
+              }
+              // still try OP.GG for top-champions/enriched data if available
+              try {
+                opgg = await lib.fetchOpggAi(region, name);
+              } catch (_) {
+                opgg = null;
+              }
+            } else {
+              // No Riot key: fall back to OP.GG only
+              try {
+                opgg = await lib.fetchOpggAi(region, name);
+              } catch (_) {
+                opgg = null;
+              }
+            }
           } catch (_) {
-            // ignore - op.gg may not have data or the endpoint could fail
-            opgg = null;
+            // ignore any helper failures
           }
 
-          const emb = new EmbedBuilder().setTitle(`${summ.name} — ${region}`).setColor(0x22c55e);
-
+          const profileIconUrl = summ.profileIconId ? `${DD_PROFILE_ICON_BASE}/${summ.profileIconId}.png` : undefined;
+          const opggUrl = `https://op.gg/lol/summoners/${region}/${encodeURIComponent(name)}`;
+          const emb = new EmbedBuilder()
+            .setColor(0x22c55e)
+            .setTitle(`${summ.name} — ${region.toUpperCase()}`)
+            .setAuthor({ name: "Zero Two · LOL Tracker", iconURL: profileIconUrl ?? undefined, url: opggUrl })
+            .setThumbnail(profileIconUrl ?? null)
+            .setDescription(`Nivel ${summ.summonerLevel}`);
+ 
           // Basic IDs
-          emb.addFields({ name: "Summoner ID", value: `\\n\\`${summ.id}\``, inline: true });
-          emb.addFields({ name: "Account ID", value: `\\n\\`${summ.accountId}\``, inline: true });
-
-          // PUUID and level
-          emb.addFields({ name: "PUUID", value: `\\n\\`${summ.puuid}\``, inline: false });
-          emb.addFields({ name: "Nivel", value: `\\n\\`${summ.summonerLevel}\``, inline: true });
-
-          // OP.GG-derived fields (if available)
-          if (opgg) {
-            const ranked = opgg?.ranked?.solo ?? opgg?.profile ?? opgg?.queue?.solo ?? null;
+          emb.addFields({ name: "Summoner ID", value: `\`${summ.id}\``, inline: true });
+          emb.addFields({ name: "Account ID", value: summ.accountId ? `\`${summ.accountId}\`` : "N/A", inline: true });
+          emb.addFields({ name: "Region", value: region.toUpperCase(), inline: true });
+ 
+          // Rank / LP / Record using Riot API when present, otherwise OP.GG fallback.
+          let rankLabel = "N/A";
+          let recordLabel = "N/A";
+          if (ranked) {
+            rankLabel = `${ranked.tier ?? ""} ${ranked.rank ?? ""}`.trim() || "N/A";
+            recordLabel = `${ranked.leaguePoints ?? 0} LP — ${ranked.wins ?? 0}W/${ranked.losses ?? 0}L`;
+          } else if (opgg) {
+            const queue = opgg?.ranked?.solo ?? opgg?.profile ?? opgg?.queue?.solo ?? null;
             const wins = opgg?.profile?.wins ?? opgg?.recent?.wins ?? null;
             const losses = opgg?.profile?.losses ?? opgg?.recent?.losses ?? null;
-            const winRate = wins != null && losses != null ? Math.round((wins / (wins + losses)) * 100) : null;
-
-            emb.addFields({ name: "Rank", value: ranked ? `${ranked.tier ?? ranked.rank ?? ranked}` : "N/A", inline: true });
-            emb.addFields({ name: "LP / Record", value: (ranked?.lp ?? (wins != null ? `${wins}W/${losses}L` : "N/A"))?.toString() ?? "N/A", inline: true });
-
-            if (winRate != null) emb.addFields({ name: "Winrate", value: `${winRate}%`, inline: true });
-
-            // Top champions summary (best-effort)
+            rankLabel = queue ? `${queue.tier ?? queue.rank ?? queue}` : "N/A";
+            if (queue?.lp != null) {
+              recordLabel = `${queue.lp} LP — ${queue.wins ?? wins ?? 0}W/${queue.losses ?? losses ?? 0}L`;
+            } else if (wins != null && losses != null) {
+              recordLabel = `${wins}W/${losses}L`;
+            }
+          }
+          emb.addFields({ name: "Rank", value: rankLabel, inline: true });
+          emb.addFields({ name: "LP / Record", value: recordLabel, inline: true });
+ 
+          if (recent && recent.played) {
+            emb.addFields({ name: `Últimas ${recent.played}`, value: `${recent.wins}W/${recent.played - recent.wins}L — ${recent.winRate}% winrate`, inline: true });
+          }
+ 
+          if (opgg) {
             const champs = opgg?.champions ?? opgg?.topChampions ?? null;
             if (Array.isArray(champs) && champs.length) {
-              const top = champs.slice(0, 4).map((c: any) => `${c.name ?? c.championName ?? c.key} — ${c.wins ?? c.w + 0}/${c.losses ?? c.l + 0}`).join("\n");
-              emb.addFields({ name: "Top champs", value: top, inline: false });
+              const topChamps = champs.slice(0, 4).map(champSummaryLine);
+              emb.addFields({ name: "Top champs", value: topChamps.join("\n"), inline: false });
+              const splash = championSplashUrl(champs[0]);
+              if (splash) emb.setImage(splash);
             }
-
-            // Link to OP.GG
-            emb.addFields({ name: "OP.GG", value: `https://op.gg/lol/summoners/${region}/${encodeURIComponent(name)}`, inline: false });
+            emb.addFields({ name: "OP.GG", value: opggUrl, inline: false });
           }
-
+ 
+          emb.setFooter({ text: "Datos reales de Riot / OP.GG" });
           emb.setTimestamp();
           await interaction.editReply({ embeds: [emb] });
         } catch (err: any) {

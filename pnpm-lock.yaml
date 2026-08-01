@@ -222,6 +222,9 @@ importers:
       sodium-native:
         specifier: ^5.1.0
         version: 5.1.0(bare-events@2.9.1)
+      undici:
+        specifier: ^6.27.0
+        version: 6.27.0
       youtube-dl-exec:
         specifier: ^3.1.9
         version: 3.1.9(debug@4.4.3)
