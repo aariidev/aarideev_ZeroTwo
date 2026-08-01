@@ -120,38 +120,48 @@ export default async function onReady(client: BotClient) {
   const commandCount = client.commands.size;
   const memory = process.memoryUsage();
   const statsEmbed = new EmbedBuilder()
-    .setTitle("🚀 Zero Two: Estadísticas de inicio/reinicio")
-    .setColor(0x7c3aed)
+    .setColor(0x8b5cf6)
+    .setAuthor({
+      name: "Zero Two • Monitor de arranque",
+      iconURL: client.user?.displayAvatarURL() ?? undefined,
+    })
+    .setTitle("✨ Bot online · resumen de arranque")
     .setDescription(
-      "El bot ha entrado en línea. A continuación se presentan estadísticas detalladas y de salud del sistema.",
+      [
+        "**Zero Two ha vuelto a entrar en línea** y está lista para seguir operando.",
+        "",
+        "• **Estado:** `🟢 En línea`",
+        "• **Resumen:** el sistema ha sido inicializado o reiniciado correctamente.",
+      ].join("\n"),
     )
     .addFields(
-      { name: "Versión", value: BOT_VERSION, inline: true },
-      { name: "Entorno", value: process.env.NODE_ENV ?? "desarrollo", inline: true },
-      { name: "PID", value: `${process.pid}`, inline: true },
-      { name: "Uptime", value: formatDuration(uptimeMs), inline: true },
-      { name: "Comandos registrados", value: `${commandCount}`, inline: true },
-      { name: "Servidores", value: `${guildCount}`, inline: true },
-      { name: "Usuarios cacheados", value: `${memberCount}`, inline: true },
-      { name: "Canales cacheados", value: `${channelCount}`, inline: true },
-      { name: "Gateway ping", value: `${Math.round(client.ws.ping)}ms`, inline: true },
+      { name: "🧩 Versión", value: `**${BOT_VERSION}**`, inline: true },
+      { name: "🌍 Entorno", value: `**${process.env.NODE_ENV ?? "desarrollo"}**`, inline: true },
+      { name: "🆔 PID", value: `\`${process.pid}\``, inline: true },
+      { name: "⏱️ Uptime", value: `**${formatDuration(uptimeMs)}**`, inline: true },
+      { name: "📚 Comandos", value: `**${commandCount}** registrados`, inline: true },
+      { name: "🏠 Servidores", value: `**${guildCount}**`, inline: true },
+      { name: "👥 Usuarios cacheados", value: `**${memberCount}**`, inline: true },
+      { name: "🗂️ Canales cacheados", value: `**${channelCount}**`, inline: true },
+      { name: "⚡ Gateway ping", value: `**${Math.round(client.ws.ping)}ms**`, inline: true },
       {
-        name: "Memoria RSS",
-        value: formatBytes(memory.rss),
+        name: "🧠 Memoria RSS",
+        value: `**${formatBytes(memory.rss)}**`,
         inline: true,
       },
       {
-        name: "Heap usado / total",
-        value: `${formatBytes(memory.heapUsed)} / ${formatBytes(memory.heapTotal)}`,
+        name: "📦 Heap usado / total",
+        value: `**${formatBytes(memory.heapUsed)} / ${formatBytes(memory.heapTotal)}**`,
         inline: true,
       },
       {
-        name: "External",
-        value: formatBytes(memory.external),
+        name: "🧾 External",
+        value: `**${formatBytes(memory.external)}**`,
         inline: true,
       },
     )
-    .setFooter({ text: `Canal de estadísticas activado | ${new Date().toLocaleString()}` })
+    .setThumbnail(client.user?.displayAvatarURL({ size: 256 }) ?? undefined)
+    .setFooter({ text: `Canal de estadísticas activado • ${new Date().toLocaleString()}` })
     .setTimestamp();
 
   try {
