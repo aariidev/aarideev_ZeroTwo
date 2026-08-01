@@ -1,20 +1,34 @@
 /**
  * Persist Discord messages to MySQL so logs don't depend on discord.js cache.
+ * New messages are indexed live; historical messages via backfillGuildHistory.
  */
 import {
   db,
   messageSnapshotsTable,
   type MessageSnapshot,
 } from "@workspace/db";
-import { eq, inArray, lt } from "drizzle-orm";
-import type { Message, PartialMessage } from "discord.js";
+import { count, eq, inArray, lt } from "drizzle-orm";
+import {
+  ChannelType,
+  type Guild,
+  type Message,
+  type PartialMessage,
+  type TextChannel,
+} from "discord.js";
 import { logger } from "../../lib/logger.js";
 
 const MAX_CONTENT = 3500;
 /** Keep snapshots this long (days) for delete/edit reconstruction */
-const RETENTION_DAYS = 14;
-/** Skip indexing DMs / empty system noise optionally */
+const RETENTION_DAYS = 30;
 const PRUNE_EVERY_MS = 30 * 60 * 1000;
+/** Default / hard caps for history backfill */
+export const BACKFILL_DEFAULT_PER_CHANNEL = 1_000;
+export const BACKFILL_MAX_PER_CHANNEL = 5_000;
+/** Delay between Discord fetch pages (rate-limit friendly) */
+const FETCH_PAGE_DELAY_MS = 350;
+const CHANNEL_DELAY_MS = 600;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export type AttachmentMeta = {
   name: string;
@@ -92,54 +106,267 @@ function rowToStored(row: MessageSnapshot): StoredMessage {
   };
 }
 
+type SnapshotInsert = {
+  messageId: string;
+  guildId: string;
+  channelId: string;
+  authorId: string;
+  authorTag: string;
+  authorBot: boolean;
+  content: string;
+  attachments: string;
+  stickers: string;
+  embedCount: number;
+  webhookId: string | null;
+  messageCreatedAt: Date;
+  messageUpdatedAt: Date;
+  indexedAt: Date;
+};
+
+function messageToInsert(
+  message: Message | PartialMessage,
+): SnapshotInsert | null {
+  if (!message.guildId || !message.channelId || !message.id) return null;
+  if (!message.author && !message.webhookId) return null;
+  // System messages without useful payload still ok if author exists
+  if (message.system && !message.content && !message.attachments?.size) {
+    return null;
+  }
+  const content = (message.content ?? "").slice(0, MAX_CONTENT);
+  const now = new Date();
+  const created =
+    message.createdAt instanceof Date ? message.createdAt : now;
+  const updated =
+    "editedAt" in message && message.editedAt instanceof Date
+      ? message.editedAt
+      : created;
+
+  return {
+    messageId: message.id,
+    guildId: message.guildId,
+    channelId: message.channelId,
+    authorId: message.author?.id ?? message.webhookId ?? "0",
+    authorTag: tagOf(message).slice(0, 120),
+    authorBot: Boolean(message.author?.bot || message.webhookId),
+    content,
+    attachments: JSON.stringify(attachmentsOf(message)),
+    stickers: JSON.stringify(stickersOf(message)),
+    embedCount: message.embeds?.length ?? 0,
+    webhookId: message.webhookId ?? null,
+    messageCreatedAt: created,
+    messageUpdatedAt: updated,
+    indexedAt: now,
+  };
+}
+
+async function upsertSnapshots(rows: SnapshotInsert[]): Promise<number> {
+  if (!rows.length) return 0;
+  // Upsert one-by-one in small parallel waves (MySQL-safe, rate-friendly)
+  const wave = 8;
+  let n = 0;
+  for (let i = 0; i < rows.length; i += wave) {
+    const slice = rows.slice(i, i + wave);
+    await Promise.all(
+      slice.map((row) =>
+        db
+          .insert(messageSnapshotsTable)
+          .values(row)
+          .onDuplicateKeyUpdate({
+            set: {
+              content: row.content,
+              attachments: row.attachments,
+              stickers: row.stickers,
+              embedCount: row.embedCount,
+              authorTag: row.authorTag,
+              authorBot: row.authorBot,
+              messageUpdatedAt: row.messageUpdatedAt,
+              indexedAt: row.indexedAt,
+            },
+          }),
+      ),
+    );
+    n += slice.length;
+  }
+  return n;
+}
+
 /** Index a message (create or update content). Fire-and-forget safe. */
 export async function indexMessage(
   message: Message | PartialMessage,
 ): Promise<void> {
   try {
-    if (!message.guildId || !message.channelId || !message.id) return;
-    if (!message.author && !message.webhookId) return;
-    // Skip pure empty system? still index for completeness if author exists
-    const content = (message.content ?? "").slice(0, MAX_CONTENT);
-    const now = new Date();
-    const created =
-      message.createdAt instanceof Date ? message.createdAt : now;
-    const updated =
-      "editedAt" in message && message.editedAt instanceof Date
-        ? message.editedAt
-        : created;
-
-    await db
-      .insert(messageSnapshotsTable)
-      .values({
-        messageId: message.id,
-        guildId: message.guildId,
-        channelId: message.channelId,
-        authorId: message.author?.id ?? message.webhookId ?? "0",
-        authorTag: tagOf(message).slice(0, 120),
-        authorBot: Boolean(message.author?.bot || message.webhookId),
-        content,
-        attachments: JSON.stringify(attachmentsOf(message)),
-        stickers: JSON.stringify(stickersOf(message)),
-        embedCount: message.embeds?.length ?? 0,
-        webhookId: message.webhookId ?? null,
-        messageCreatedAt: created,
-        messageUpdatedAt: updated,
-        indexedAt: now,
-      })
-      .onDuplicateKeyUpdate({
-        set: {
-          content,
-          attachments: JSON.stringify(attachmentsOf(message)),
-          stickers: JSON.stringify(stickersOf(message)),
-          embedCount: message.embeds?.length ?? 0,
-          authorTag: tagOf(message).slice(0, 120),
-          messageUpdatedAt: updated,
-          indexedAt: now,
-        },
-      });
+    const row = messageToInsert(message);
+    if (!row) return;
+    await upsertSnapshots([row]);
   } catch (err) {
     logger.warn({ err, id: message.id }, "messageStore.indexMessage failed");
+  }
+}
+
+/**
+ * Fetch up to `maxMessages` from a text channel (newest first) and store them.
+ */
+export async function backfillChannelHistory(
+  channel: TextChannel,
+  maxMessages = BACKFILL_DEFAULT_PER_CHANNEL,
+): Promise<{ scanned: number; indexed: number }> {
+  const limit = Math.max(
+    1,
+    Math.min(BACKFILL_MAX_PER_CHANNEL, Math.floor(maxMessages)),
+  );
+  let scanned = 0;
+  let indexed = 0;
+  let before: string | undefined;
+
+  while (scanned < limit) {
+    const pageSize = Math.min(100, limit - scanned);
+    const batch = await channel.messages
+      .fetch({ limit: pageSize, ...(before ? { before } : {}) })
+      .catch((err) => {
+        logger.debug(
+          { err, channelId: channel.id },
+          "messageStore: fetch page failed",
+        );
+        return null;
+      });
+
+    if (!batch || batch.size === 0) break;
+
+    const rows: SnapshotInsert[] = [];
+    const sorted = [...batch.values()].sort(
+      (a, b) => b.createdTimestamp - a.createdTimestamp,
+    );
+    for (const msg of sorted) {
+      const row = messageToInsert(msg);
+      if (row) rows.push(row);
+    }
+    indexed += await upsertSnapshots(rows);
+    scanned += batch.size;
+
+    const oldest = sorted[sorted.length - 1];
+    if (!oldest || batch.size < pageSize) break;
+    before = oldest.id;
+    await sleep(FETCH_PAGE_DELAY_MS);
+  }
+
+  return { scanned, indexed };
+}
+
+export type GuildBackfillResult = {
+  channels: number;
+  scanned: number;
+  indexed: number;
+  errors: string[];
+  perChannel: { id: string; name: string; scanned: number; indexed: number }[];
+};
+
+/**
+ * Index historical messages across guild text/announcement channels.
+ * Rate-limited to respect Discord API.
+ */
+export async function backfillGuildHistory(
+  guild: Guild,
+  opts?: {
+    maxPerChannel?: number;
+    channelIds?: string[];
+    onProgress?: (info: {
+      channelName: string;
+      done: number;
+      total: number;
+    }) => void;
+  },
+): Promise<GuildBackfillResult> {
+  const maxPer = Math.max(
+    1,
+    Math.min(
+      BACKFILL_MAX_PER_CHANNEL,
+      opts?.maxPerChannel ?? BACKFILL_DEFAULT_PER_CHANNEL,
+    ),
+  );
+
+  await guild.channels.fetch().catch(() => null);
+
+  const candidates = [...guild.channels.cache.values()].filter((ch) => {
+    if (opts?.channelIds?.length && !opts.channelIds.includes(ch.id)) {
+      return false;
+    }
+    if (
+      ch.type !== ChannelType.GuildText &&
+      ch.type !== ChannelType.GuildAnnouncement
+    ) {
+      return false;
+    }
+    // Must be text-based with messages manager
+    return "messages" in ch;
+  }) as TextChannel[];
+
+  // Prefer channels the bot can read
+  const me = guild.members.me;
+  const readable = candidates.filter((ch) => {
+    if (!me) return true;
+    const perms = ch.permissionsFor(me);
+    return perms?.has("ViewChannel") && perms?.has("ReadMessageHistory");
+  });
+
+  const result: GuildBackfillResult = {
+    channels: 0,
+    scanned: 0,
+    indexed: 0,
+    errors: [],
+    perChannel: [],
+  };
+
+  let done = 0;
+  for (const ch of readable) {
+    done++;
+    opts?.onProgress?.({
+      channelName: ch.name,
+      done,
+      total: readable.length,
+    });
+    try {
+      const r = await backfillChannelHistory(ch, maxPer);
+      result.channels++;
+      result.scanned += r.scanned;
+      result.indexed += r.indexed;
+      result.perChannel.push({
+        id: ch.id,
+        name: ch.name,
+        scanned: r.scanned,
+        indexed: r.indexed,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      result.errors.push(`#${ch.name}: ${msg}`);
+      logger.warn({ err, channelId: ch.id }, "backfill channel failed");
+    }
+    await sleep(CHANNEL_DELAY_MS);
+  }
+
+  logger.info(
+    {
+      guildId: guild.id,
+      channels: result.channels,
+      scanned: result.scanned,
+      indexed: result.indexed,
+      maxPer,
+    },
+    "messageStore: guild backfill done",
+  );
+
+  return result;
+}
+
+/** Count snapshots for a guild. */
+export async function countGuildSnapshots(guildId: string): Promise<number> {
+  try {
+    const rows = await db
+      .select({ c: count() })
+      .from(messageSnapshotsTable)
+      .where(eq(messageSnapshotsTable.guildId, guildId));
+    return Number(rows[0]?.c ?? 0);
+  } catch {
+    return 0;
   }
 }
 

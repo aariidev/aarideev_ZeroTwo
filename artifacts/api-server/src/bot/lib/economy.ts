@@ -1,5 +1,6 @@
 import { db, economyTable, inventoryTable, Economy, InventoryRow } from "@workspace/db";
 import { eq, and, sql, desc } from "drizzle-orm";
+import { PermissionFlagsBits, type GuildMember } from "discord.js";
 import { logger } from "../../lib/logger.js";
 
 const DAILY_COOLDOWN_MS = 24 * 60 * 60 * 1000;
@@ -7,6 +8,71 @@ const DAILY_BASE = 200;
 const DAILY_STREAK_BONUS = 50;
 const DAILY_STREAK_MAX_BONUS = 350;
 const STARTING_BALANCE = 500;
+
+// ── Inventory privacy cache ───────────────────────────────────────────────────
+
+const PRIVACY_TTL_MS = 90_000;
+const privacyCache = new Map<string, { v: boolean; exp: number }>();
+
+function privacyKey(guildId: string, userId: string): string {
+  return `${guildId}:${userId}`;
+}
+
+export function invalidatePrivacyCache(guildId: string, userId: string): void {
+  privacyCache.delete(privacyKey(guildId, userId));
+}
+
+export function setPrivacyCache(
+  guildId: string,
+  userId: string,
+  inventoryPrivate: boolean,
+): void {
+  privacyCache.set(privacyKey(guildId, userId), {
+    v: inventoryPrivate,
+    exp: Date.now() + PRIVACY_TTL_MS,
+  });
+}
+
+function readPrivacyCache(guildId: string, userId: string): boolean | null {
+  const hit = privacyCache.get(privacyKey(guildId, userId));
+  if (!hit) return null;
+  if (hit.exp <= Date.now()) {
+    privacyCache.delete(privacyKey(guildId, userId));
+    return null;
+  }
+  return hit.v;
+}
+
+export function isBotOwnerId(userId: string): boolean {
+  return (process.env.OWNER_IDS ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .includes(userId);
+}
+
+export type InventoryViewReason =
+  | "self"
+  | "owner"
+  | "staff"
+  | "public"
+  | "private";
+
+export type InventoryViewAccess = {
+  allowed: boolean;
+  reason: InventoryViewReason;
+  inventoryPrivate: boolean;
+};
+
+/** Staff del guild: Administrator o ManageGuild. */
+export function isGuildEconomyStaff(member: GuildMember | null | undefined): boolean {
+  if (!member) return false;
+  const perms = member.permissions;
+  return (
+    perms.has(PermissionFlagsBits.Administrator) ||
+    perms.has(PermissionFlagsBits.ManageGuild)
+  );
+}
 
 // ── Core economy ──────────────────────────────────────────────────────────────
 
@@ -44,9 +110,71 @@ export async function getEconomy(guildId: string, userId: string): Promise<Econo
       gamesWon: 0,
       streak: 0,
       lastDaily: null,
+      inventoryPrivate: false,
       createdAt: new Date(),
     }
   );
+}
+
+/** Preferencia de privacidad del inventario (por guild). Cache TTL ~90s. */
+export async function isInventoryPrivate(
+  guildId: string,
+  userId: string,
+): Promise<boolean> {
+  const cached = readPrivacyCache(guildId, userId);
+  if (cached !== null) return cached;
+
+  const eco = await getEconomy(guildId, userId);
+  const v = Boolean(eco.inventoryPrivate);
+  setPrivacyCache(guildId, userId, v);
+  return v;
+}
+
+/**
+ * Actualiza la privacidad del inventario.
+ * No bloquea trade / uso de ítems — solo la vista pública.
+ */
+export async function setInventoryPrivate(
+  guildId: string,
+  userId: string,
+  inventoryPrivate: boolean,
+): Promise<boolean> {
+  await ensureAccount(guildId, userId);
+  await db
+    .update(economyTable)
+    .set({ inventoryPrivate })
+    .where(
+      and(eq(economyTable.guildId, guildId), eq(economyTable.userId, userId)),
+    );
+  setPrivacyCache(guildId, userId, inventoryPrivate);
+  return inventoryPrivate;
+}
+
+/**
+ * ¿Puede `viewerId` ver el inventario de `targetUserId`?
+ * Dueño del inv, OWNER_IDS y staff del guild siempre pueden.
+ */
+export async function resolveInventoryView(
+  guildId: string,
+  targetUserId: string,
+  viewerId: string,
+  viewerMember?: GuildMember | null,
+): Promise<InventoryViewAccess> {
+  const inventoryPrivate = await isInventoryPrivate(guildId, targetUserId);
+
+  if (viewerId === targetUserId) {
+    return { allowed: true, reason: "self", inventoryPrivate };
+  }
+  if (isBotOwnerId(viewerId)) {
+    return { allowed: true, reason: "owner", inventoryPrivate };
+  }
+  if (isGuildEconomyStaff(viewerMember)) {
+    return { allowed: true, reason: "staff", inventoryPrivate };
+  }
+  if (!inventoryPrivate) {
+    return { allowed: true, reason: "public", inventoryPrivate };
+  }
+  return { allowed: false, reason: "private", inventoryPrivate };
 }
 
 export async function getBalance(guildId: string, userId: string): Promise<number> {

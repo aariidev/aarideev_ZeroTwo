@@ -99,6 +99,7 @@ export function registerServerLogs(client: Client) {
   // ── INDEX messages into MySQL (source of truth for delete/edit logs) ───────
   client.on("messageCreate", (message) => {
     if (!message.guildId || message.system) return;
+    // Index every guild message so delete/edit logs can show full content
     void indexMessage(message);
   });
 
@@ -115,6 +116,8 @@ export function registerServerLogs(client: Client) {
         event: "ban",
         guildName: guild.name,
         guildIcon: guild.iconURL({ size: 64 }),
+        guildId: guild.id,
+        targetId: user.id,
         description: "Un miembro fue **baneado** del servidor.",
       })
         .setThumbnail(safeAvatar(user))
@@ -153,6 +156,8 @@ export function registerServerLogs(client: Client) {
         event: "unban",
         guildName: guild.name,
         guildIcon: guild.iconURL({ size: 64 }),
+        guildId: guild.id,
+        targetId: user.id,
         description: "Se revocó un **ban**.",
       })
         .setThumbnail(safeAvatar(user))
@@ -244,6 +249,8 @@ export function registerServerLogs(client: Client) {
         description: `${actor.label}\n📦 Fuente: **${source}**`,
         guildName: guild.name,
         guildIcon: guild.iconURL({ size: 64 }),
+        guildId: guild.id,
+        targetId: message.id,
       }).addFields(
         {
           name: "👤 Autor del mensaje",
@@ -345,6 +352,7 @@ export function registerServerLogs(client: Client) {
       persistServerLog({
         event: "message_delete",
         guildId: guild.id,
+        targetId: message.id,
         guildName: guild.name,
         userId: data?.authorId ?? message.author?.id,
         username: data?.authorTag ?? message.author?.username,
@@ -524,6 +532,8 @@ export function registerServerLogs(client: Client) {
           event: "message_edit",
           guildName: newMessage.guild.name,
           guildIcon: newMessage.guild.iconURL({ size: 64 }),
+          guildId: newMessage.guild.id,
+          targetId: newMessage.id,
           description:
             "Cambio de contenido detectado. El **antes** se lee de BD si el caché no lo tenía.",
         })
@@ -576,6 +586,7 @@ export function registerServerLogs(client: Client) {
         persistServerLog({
           event: "message_edit",
           guildId: newMessage.guild.id,
+        targetId: newMessage.id,
           guildName: newMessage.guild.name,
           userId: newMessage.author?.id ?? dbBefore?.authorId,
           username: newMessage.author?.username ?? dbBefore?.authorTag,
@@ -608,6 +619,8 @@ export function registerServerLogs(client: Client) {
         event: "member_join",
         guildName: member.guild.name,
         guildIcon: member.guild.iconURL({ size: 64 }),
+        guildId: member.guild.id,
+        targetId: member.id,
         description: `${member} se unió al nexo.`,
       })
         .setThumbnail(safeAvatar(member.user))
@@ -749,6 +762,8 @@ export function registerServerLogs(client: Client) {
             description: "Un miembro fue aislado temporalmente.",
             guildName: guild.name,
             guildIcon: guild.iconURL({ size: 64 }),
+            guildId: guild.id,
+        targetId: newMember.id,
           })
             .setThumbnail(safeAvatar(newMember.user))
             .addFields(
@@ -792,6 +807,8 @@ export function registerServerLogs(client: Client) {
             event: "untimeout",
             guildName: guild.name,
             guildIcon: guild.iconURL({ size: 64 }),
+            guildId: guild.id,
+        targetId: newMember.id,
           })
             .setThumbnail(safeAvatar(newMember.user))
             .addFields(
@@ -830,6 +847,8 @@ export function registerServerLogs(client: Client) {
               event: "member_nickname",
               guildName: guild.name,
               guildIcon: guild.iconURL({ size: 64 }),
+              guildId: guild.id,
+        targetId: newMember.id,
             },
           )
             .setThumbnail(safeAvatar(newMember.user))
@@ -943,6 +962,8 @@ export function registerServerLogs(client: Client) {
         event: "channel_create",
         guildName: ch.guild.name,
         guildIcon: ch.guild.iconURL({ size: 64 }),
+        guildId: ch.guild.id,
+        targetId: ch.id,
       }).addFields(
         {
           name: "Canal",
@@ -969,6 +990,8 @@ export function registerServerLogs(client: Client) {
         event: "channel_delete",
         guildName: ch.guild.name,
         guildIcon: ch.guild.iconURL({ size: 64 }),
+        guildId: ch.guild.id,
+        targetId: ch.id,
       }).addFields(
         {
           name: "Canal",
@@ -994,6 +1017,8 @@ export function registerServerLogs(client: Client) {
         event: "role_create",
         guildName: role.guild.name,
         guildIcon: role.guild.iconURL({ size: 64 }),
+        guildId: role.guild.id,
+        targetId: role.id,
       })
         .setColor(role.color || COLORS.role_create)
         .addFields(
@@ -1020,6 +1045,8 @@ export function registerServerLogs(client: Client) {
         event: "role_delete",
         guildName: role.guild.name,
         guildIcon: role.guild.iconURL({ size: 64 }),
+        guildId: role.guild.id,
+        targetId: role.id,
       }).addFields({
         name: "Rol",
         value: `\`${role.name}\` · \`${role.id}\``,
@@ -1112,6 +1139,7 @@ export function registerServerLogs(client: Client) {
               event: "voice_server_mute",
               guildName: guild.name,
               guildIcon: guild.iconURL({ size: 64 }),
+              guildId: guild.id,
             },
           )
             .setThumbnail(safeAvatar(member.user))
@@ -1142,6 +1170,7 @@ export function registerServerLogs(client: Client) {
               event: "voice_server_deaf",
               guildName: guild.name,
               guildIcon: guild.iconURL({ size: 64 }),
+              guildId: guild.id,
             },
           )
             .setThumbnail(safeAvatar(member.user))
@@ -1167,6 +1196,8 @@ export function registerServerLogs(client: Client) {
             event: "voice_join",
             guildName: guild.name,
             guildIcon: guild.iconURL({ size: 64 }),
+            guildId: guild.id,
+        targetId: newState.member?.id ?? newState.id,
           })
             .setThumbnail(safeAvatar(member.user))
             .addFields(
@@ -1190,6 +1221,8 @@ export function registerServerLogs(client: Client) {
             event: "voice_leave",
             guildName: guild.name,
             guildIcon: guild.iconURL({ size: 64 }),
+            guildId: guild.id,
+        targetId: newState.member?.id ?? newState.id,
           })
             .setThumbnail(safeAvatar(member.user))
             .addFields(
@@ -1213,6 +1246,8 @@ export function registerServerLogs(client: Client) {
             event: "voice_move",
             guildName: guild.name,
             guildIcon: guild.iconURL({ size: 64 }),
+            guildId: guild.id,
+        targetId: newState.member?.id ?? newState.id,
           })
             .setThumbnail(safeAvatar(member.user))
             .addFields(
@@ -1273,6 +1308,8 @@ export function registerServerLogs(client: Client) {
         event: "channel_update",
         guildName: n.guild.name,
         guildIcon: n.guild.iconURL({ size: 64 }),
+        guildId: n.guild.id,
+        targetId: newCh.id,
         description: changes.join("\n\n").slice(0, 3500),
       }).addFields({
         name: "Canal",
@@ -1312,6 +1349,8 @@ export function registerServerLogs(client: Client) {
         event: "role_update",
         guildName: newRole.guild.name,
         guildIcon: newRole.guild.iconURL({ size: 64 }),
+        guildId: newRole.guild.id,
+        targetId: newRole.id,
         description: changes.join("\n"),
       })
         .setColor(newRole.color || COLORS.role_update)
@@ -1334,6 +1373,8 @@ export function registerServerLogs(client: Client) {
         event: "thread_create",
         guildName: thread.guild.name,
         guildIcon: thread.guild.iconURL({ size: 64 }),
+        guildId: thread.guild.id,
+        targetId: thread.id,
       }).addFields(
         {
           name: "Hilo",
@@ -1385,6 +1426,8 @@ export function registerServerLogs(client: Client) {
         event: "emoji_create",
         guildName: emoji.guild.name,
         guildIcon: emoji.guild.iconURL({ size: 64 }),
+        guildId: emoji.guild.id,
+        targetId: emoji.id ?? emoji.name,
       })
         .setThumbnail(emoji.imageURL())
         .addFields(
@@ -1437,6 +1480,8 @@ export function registerServerLogs(client: Client) {
             event: "member_boost",
             guildName: newMember.guild.name,
             guildIcon: newMember.guild.iconURL({ size: 64 }),
+            guildId: newMember.guild.id,
+        targetId: newMember.id,
             description: nowBoost
               ? `${newMember} impulsó el servidor 💎`
               : `${newMember} ya no impulsa el servidor.`,

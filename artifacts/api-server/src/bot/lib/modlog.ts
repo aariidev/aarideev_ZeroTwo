@@ -668,6 +668,9 @@ const CATEGORY_LABEL: Record<LogEventCategory, string> = {
 /**
  * Base embed style for server monitoring logs.
  * Prefer passing `event` for consistent colors/emojis.
+ *
+ * Footer shows real Discord snowflakes (target/guild), never the event key
+ * (e.g. never `id:channel_delete`).
  */
 export function baseLogEmbed(
   client: Client,
@@ -678,6 +681,13 @@ export function baseLogEmbed(
     guildName?: string;
     event?: LogEventKey;
     guildIcon?: string | null;
+    /** Guild snowflake — shown in footer when no targetId */
+    guildId?: string;
+    /**
+     * Primary entity snowflake for this log (channel, user, role, message…).
+     * Prefer this over guildId in the footer.
+     */
+    targetId?: string;
   },
 ): EmbedBuilder {
   const event = opts?.event;
@@ -687,6 +697,12 @@ export function baseLogEmbed(
   const prettyTitle = title.match(/^[^\w\s]/)
     ? title
     : `${emoji} ${title}`;
+
+  const idLabel = opts?.targetId
+    ? `ID \`${opts.targetId}\``
+    : opts?.guildId
+      ? `Servidor \`${opts.guildId}\``
+      : null;
 
   const emb = new EmbedBuilder()
     .setColor(resolvedColor)
@@ -702,10 +718,11 @@ export function baseLogEmbed(
       text: [
         opts?.guildName ?? "Zero Two",
         event ? LOG_EVENT_META[event].label : "Logs",
-        event ? `id:${event}` : null,
+        idLabel,
       ]
         .filter(Boolean)
-        .join(" · "),
+        .join(" · ")
+        .slice(0, 2048),
       iconURL:
         opts?.guildIcon ??
         client.user?.displayAvatarURL({ size: 32 }) ??

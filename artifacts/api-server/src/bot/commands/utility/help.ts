@@ -67,7 +67,11 @@ const META: Record<
   slots:     { emoji: "🎰", category: "Casino", usage: "/slots <apuesta>" },
   wallet:    { emoji: "💳", category: "Casino", usage: "/wallet [usuario]" },
   shop:      { emoji: "🏪", category: "Casino", usage: "/shop" },
-  inventory: { emoji: "🎒", category: "Casino", usage: "/inventory" },
+  inventory: {
+    emoji: "🎒",
+    category: "Casino",
+    usage: "/inventory [usuario] [privacidad]",
+  },
   pay:       { emoji: "💸", category: "Casino", usage: "/pay <usuario> <cantidad>" },
   top:       { emoji: "🏆", category: "Casino", usage: "/top [tipo]" },
 
