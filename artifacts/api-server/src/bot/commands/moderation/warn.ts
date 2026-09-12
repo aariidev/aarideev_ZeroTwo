@@ -10,6 +10,7 @@ import { Command } from "../../types.js";
 import { logBotEvent } from "../../../lib/botLogger.js";
 import { sendModLog } from "../../lib/modlog.js";
 import { addWarn, listWarns } from "../../lib/warns.js";
+import { checkAndApplyEscalation } from "../../lib/escalation.js";
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -91,6 +92,14 @@ const command: Command = {
 
     const allWarns = await listWarns(guildId, target.id);
 
+    // Check if escalation should be applied
+    const escalation = await checkAndApplyEscalation(
+      client,
+      guildId,
+      target.id,
+      target.username,
+    );
+
     let dmSent = false;
     try {
       await target.send({
@@ -149,6 +158,21 @@ const command: Command = {
         },
       )
       .setTimestamp();
+
+    // Add escalation info if action was taken
+    if (escalation.applied && escalation.action) {
+      const actionEmoji: { [key: string]: string } = {
+        mute: "🔇",
+        kick: "👢",
+        ban: "🔨",
+      };
+      const emoji = actionEmoji[escalation.action] || "⚠️";
+      embed.addFields({
+        name: "🚨 Acción Automática Aplicada",
+        value: `${emoji} **${escalation.action.toUpperCase()}** por escalación automática`,
+        inline: false,
+      });
+    }
 
     await interaction.editReply({ embeds: [embed] });
     await sendModLog(client, guildId, embed);

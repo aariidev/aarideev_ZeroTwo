@@ -6,10 +6,13 @@
   "scripts": {
     "hello": "tsx ./src/hello.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "watch": "node ./dev-watch.mjs"
+    "watch": "node ./dev-watch.mjs",
+    "cookies:login": "node ./youtube-cookie-fetcher.mjs --login",
+    "cookies:fetch": "node ./youtube-cookie-fetcher.mjs"
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "playwright": "^1.63.0",
     "tsx": "catalog:"
   }
 }

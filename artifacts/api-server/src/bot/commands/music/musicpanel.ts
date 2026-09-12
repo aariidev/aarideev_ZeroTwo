@@ -343,6 +343,44 @@ const command: Command = {
             ? (djFromSet?.id ?? cfg?.djRoleId ?? null)
             : undefined,
       });
+
+      // ✨ NEW: Limpiar canal y lockear
+      try {
+        // Borrar todos los mensajes excepto el panel
+        const messages = await ch.messages.fetch({ limit: 100 });
+        const toDelete = messages.filter((m) => m.id !== message.id);
+        
+        if (toDelete.size > 0) {
+          logger.info(
+            { channelId: ch.id, deleted: toDelete.size },
+            "🧹 Limpiando canal de mensajes no-panel",
+          );
+          for (const msg of toDelete.values()) {
+            await msg.delete().catch(() => null);
+          }
+        }
+
+        // Lockear canal: @everyone no puede escribir
+        const everyone = ch.guild.roles.everyone;
+        const me = interaction.guild?.members.me;
+
+        if (me && ch.permissionsFor(me)?.has(PermissionFlagsBits.ManageChannels)) {
+          // Set @everyone perms: DENY SendMessages
+          await ch.permissionOverwrites.edit(everyone.id, {
+            SendMessages: false,
+          });
+          logger.info(
+            { channelId: ch.id },
+            "🔒 Canal de panel locked (nadie puede escribir)",
+          );
+        }
+      } catch (cleanErr) {
+        logger.warn(
+          { cleanErr, channelId: ch.id },
+          "⚠️ No se pudo limpiar/lockear el canal (no hay permisos)",
+        );
+      }
+
       await interaction.editReply({
         embeds: [
           new EmbedBuilder()
@@ -356,6 +394,9 @@ const command: Command = {
                 `✅ Panel publicado en ${ch}.`,
                 `Mensaje: [ir al panel](${message.url})`,
                 `**Rol DJ:** ${config.djRoleId ? `<@&${config.djRoleId}>` : "`cualquiera en voz`"}`,
+                "",
+                "🧹 Canal limpiado de mensajes previos",
+                "🔒 Canal lockeado (@everyone no puede escribir)",
                 "",
                 "Botones: Añadir · Anterior · Pausa · Skip · Volumen · Vaciar cola…",
               ].join("\n"),

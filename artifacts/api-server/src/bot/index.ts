@@ -26,6 +26,7 @@ import sugerenciasCmd from "./commands/utility/sugerencias.js";
 import nivelCmd from "./commands/utility/nivel.js";
 import welcomeCmd from "./commands/utility/welcome.js";
 import reglasCmd, { rulesCmd } from "./commands/utility/reglas.js";
+import changelogCmd from "./commands/utility/changelog.js";
 
 // Moderation
 import banCmd from "./commands/moderation/ban.js";
@@ -78,6 +79,14 @@ import musicpanelCmd from "./commands/music/musicpanel.js";
 import removeCmd from "./commands/music/remove.js";
 import clearCmd from "./commands/music/clear.js";
 import continueCmd from "./commands/music/continue.js";
+import playlistCmd from "./commands/music/playlist.js";
+import musichistoryCmd from "./commands/music/musichistory.js";
+
+// Moderation (New)
+import modescalationCmd from "./commands/moderation/modescalation.js";
+import modhistoryCmd from "./commands/moderation/modhistory.js";
+
+// Game cleanup
 import { startGameCleanup } from "./lib/gameCleanup.js";
 
 const ALL_COMMANDS = [
@@ -95,6 +104,7 @@ const ALL_COMMANDS = [
   welcomeCmd,
   reglasCmd,
   rulesCmd,
+  changelogCmd,
   banCmd,
   antiraidCmd,
   kickCmd,
@@ -112,6 +122,8 @@ const ALL_COMMANDS = [
   automodCmd,
   autconfigCmd,
   giveroleCmd,
+  modescalationCmd,  // NEW: /modescalation set | status | toggle
+  modhistoryCmd,     // NEW: /modhistory
   eightballCmd,
   memeCmd,
   pokerCmd,
@@ -142,6 +154,8 @@ const ALL_COMMANDS = [
   removeCmd,
   clearCmd,
   continueCmd,
+  playlistCmd,        // NEW: /playlist save | load | list | delete | rename
+  musichistoryCmd,    // NEW: /musichistory
 ];
 
 export async function startBot() {
@@ -177,6 +191,15 @@ export async function startBot() {
 
   client.commands = new Collection();
   client.cooldowns = new Collection();
+
+  // Initialize global music sessions for playlist commands
+  try {
+    const { musicManager } = await import("./music/manager.js");
+    (global as any).musicSessions = musicManager.sessions;
+    logger.info("🎵 Music sessions initialized for playlist commands");
+  } catch (err) {
+    logger.warn({ err }, "⚠️ Could not initialize global music sessions");
+  }
 
   for (const command of ALL_COMMANDS) {
     if (command?.data?.name && typeof command.execute === "function") {

@@ -119,49 +119,77 @@ export default async function onReady(client: BotClient) {
   const channelCount = client.channels.cache.size;
   const commandCount = client.commands.size;
   const memory = process.memoryUsage();
+  const cpuUsage = process.cpuUsage();
+  const gatewayPing = Math.round(client.ws.ping);
+  
+  // Calculate memory percentage
+  const heapUsedPercent = ((memory.heapUsed / memory.heapTotal) * 100).toFixed(1);
+  
+  // Determine status color based on performance
+  let statusColor: number;
+  let statusEmoji: string;
+  if (gatewayPing < 50) {
+    statusColor = 0x00ff00; // Green
+    statusEmoji = "🟢";
+  } else if (gatewayPing < 150) {
+    statusColor = 0xffff00; // Yellow
+    statusEmoji = "🟡";
+  } else {
+    statusColor = 0xff0000; // Red
+    statusEmoji = "🔴";
+  }
+
   const statsEmbed = new EmbedBuilder()
-    .setColor(0x8b5cf6)
+    .setColor(statusColor)
     .setAuthor({
-      name: "Zero Two • Monitor de arranque",
-      iconURL: client.user?.displayAvatarURL() ?? undefined,
+      name: "🌸 Zero Two • Sistema Online",
+      iconURL: client.user?.displayAvatarURL({ size: 256 }) ?? undefined,
     })
-    .setTitle("✨ Bot online · resumen de arranque")
+    .setTitle("✨ Sincronización Exitosa")
     .setDescription(
       [
-        "**Zero Two ha vuelto a entrar en línea** y está lista para seguir operando.",
+        `${statusEmoji} **Estado:** En línea y operativo`,
+        `📡 **Última sincronización:** ${new Date().toLocaleTimeString("es-ES")}`,
         "",
-        "• **Estado:** `🟢 En línea`",
-        "• **Resumen:** el sistema ha sido inicializado o reiniciado correctamente.",
+        "Zero Two ha vuelto en línea y está lista para operar.",
+        "Todos los sistemas están funcionando correctamente.",
       ].join("\n"),
     )
     .addFields(
-      { name: "🧩 Versión", value: `**${BOT_VERSION}**`, inline: true },
-      { name: "🌍 Entorno", value: `**${process.env.NODE_ENV ?? "desarrollo"}**`, inline: true },
-      { name: "🆔 PID", value: `\`${process.pid}\``, inline: true },
-      { name: "⏱️ Uptime", value: `**${formatDuration(uptimeMs)}**`, inline: true },
-      { name: "📚 Comandos", value: `**${commandCount}** registrados`, inline: true },
-      { name: "🏠 Servidores", value: `**${guildCount}**`, inline: true },
-      { name: "👥 Usuarios cacheados", value: `**${memberCount}**`, inline: true },
-      { name: "🗂️ Canales cacheados", value: `**${channelCount}**`, inline: true },
-      { name: "⚡ Gateway ping", value: `**${Math.round(client.ws.ping)}ms**`, inline: true },
-      {
-        name: "🧠 Memoria RSS",
-        value: `**${formatBytes(memory.rss)}**`,
-        inline: true,
-      },
-      {
-        name: "📦 Heap usado / total",
-        value: `**${formatBytes(memory.heapUsed)} / ${formatBytes(memory.heapTotal)}**`,
-        inline: true,
-      },
-      {
-        name: "🧾 External",
-        value: `**${formatBytes(memory.external)}**`,
-        inline: true,
-      },
+      // Row 1: Core Info
+      { name: "🧩 Versión", value: BOT_VERSION, inline: true },
+      { name: "🌍 Entorno", value: process.env.NODE_ENV ?? "desarrollo", inline: true },
+      { name: "🆔 Proceso", value: `PID ${process.pid}`, inline: true },
+      
+      // Row 2: Performance
+      { name: "⏱️ Uptime", value: formatDuration(uptimeMs), inline: true },
+      { name: "⚡ Latencia", value: `${gatewayPing}ms`, inline: true },
+      { name: "💾 Memoria", value: `${heapUsedPercent}% (${formatBytes(memory.heapUsed)}/${formatBytes(memory.heapTotal)})`, inline: true },
+      
+      // Row 3: Servidor
+      { name: "━━━━━━━━━━━━━━━━━━", value: "", inline: false },
+      { name: "🏠 Servidores Activos", value: `**${guildCount}**`, inline: true },
+      { name: "👥 Miembros en Cache", value: `**${memberCount.toLocaleString("es-ES")}**`, inline: true },
+      { name: "🗂️ Canales en Cache", value: `**${channelCount}**`, inline: true },
+      
+      // Row 4: Sistema
+      { name: "━━━━━━━━━━━━━━━━━━", value: "", inline: false },
+      { name: "📚 Comandos Registrados", value: `**${commandCount}**`, inline: true },
+      { name: "🧠 Memoria RSS", value: formatBytes(memory.rss), inline: true },
+      { name: "🧾 Memoria Externa", value: formatBytes(memory.external), inline: true },
+      
+      // Row 5: CPU
+      { name: "━━━━━━━━━━━━━━━━━━", value: "", inline: false },
+      { name: "⚙️ CPU Usuario", value: `${(cpuUsage.user / 1000).toFixed(2)}ms`, inline: true },
+      { name: "⚙️ CPU Sistema", value: `${(cpuUsage.system / 1000).toFixed(2)}ms`, inline: true },
+      { name: "🔧 Node.js", value: process.version, inline: true },
     )
     .setThumbnail(client.user?.displayAvatarURL({ size: 256 }) ?? undefined)
-    .setFooter({ text: `Canal de estadísticas activado • ${new Date().toLocaleString()}` })
+    .setImage(client.user?.displayAvatarURL({ size: 512 }) ?? undefined)
+    .setFooter({ 
+      text: `Inicialización completada • Sistema listo para operaciones`,
+      iconURL: client.user?.displayAvatarURL() ?? undefined
+    })
     .setTimestamp();
 
   try {

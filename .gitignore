@@ -72,3 +72,7 @@ scratch/
 # Temp / OS noise
 pnpm-workspace.yaml.*
 *.tmp
+
+# Playwright auth state
+.auth/
+**/.auth/
